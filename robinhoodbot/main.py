@@ -1,13 +1,30 @@
 import robin_stocks as r
 import pandas as pd
 import numpy as np
+import ta as t
+import smtplib
 from pandas.plotting import register_matplotlib_converters
-from ta import *
 from misc import *
 from tradingstats import *
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 #Log in to Robinhood
 login = r.login('YOUR_EMAIL','YOUR_PASSWORD')
+email = "EMAIL"
+pas = "EMAIL PASSWORD"
+sms_gateway = 'PHONENUMBER@pm.sprint.com' #Phone number to send SMS
+server = smtplib.SMTP("smtp.gmail.com",587) #Gmail SMTP server
+server.starttls()
+server.login(email,pas)
+
+def send_text(message):
+    msg = MIMEMultipart()
+    msg['From'] = email
+    msg['To'] = sms_gateway
+    msg.attach(MIMEText(message, 'plain'))
+    sms = msg.as_string()
+    server.sendmail(email,sms_gateway,sms)
 
 def get_watchlist_symbols():
     """
@@ -167,8 +184,8 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
     price = pd.Series(closingPrices)
     dates = pd.Series(dates)
     dates = pd.to_datetime(dates)
-    sma1 = bollinger_mavg(price, n=int(n1), fillna=False)
-    sma2 = bollinger_mavg(price, n=int(n2), fillna=False)
+    sma1 = t.volatility.bollinger_mavg(price, n=int(n1), fillna=False)
+    sma2 = t.volatility.bollinger_mavg(price, n=int(n2), fillna=False)
     series = [price.rename("Price"), sma1.rename("Indicator1"), sma2.rename("Indicator2"), dates.rename("Dates")]
     df = pd.concat(series, axis=1)
     cross = get_last_crossing(df, days, symbol=stockTicker, direction=direction)
@@ -186,6 +203,7 @@ def sell_holdings(symbol, holdings_data):
     shares_owned = int(float(holdings_data[symbol].get("quantity")))
     r.order_sell_market(symbol, shares_owned)
     print("####### Selling " + str(shares_owned) + " shares of " + symbol + " #######")
+    send_text("SELL: \nSelling " + str(shares_owned) + " shares of " + symbol)
 
 def buy_holdings(potential_buys, profile_data, holdings_data):
     """ Places orders to buy holdings of stocks. This method will try to order
@@ -214,6 +232,7 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
             break
         print("####### Buying " + str(num_shares) + " shares of " + potential_buys[i] + " #######")
         r.order_buy_market(potential_buys[i], num_shares)
+        send_text("BUY: \nBuying " + str(num_shares) + " shares of " + potential_buys[i])
 
 def scan_stocks():
     """ The main method. Sells stocks in your portfolio if their 50 day moving average crosses
@@ -250,9 +269,14 @@ def scan_stocks():
                 potential_buys.append(symbol)
     if(len(potential_buys) > 0):
         buy_holdings(potential_buys, profile_data, holdings_data)
+    else:
+        send_text("Nothing to buy.")
     if(len(sells) > 0):
         update_trade_history(sells, holdings_data, "tradehistory.txt")
+    else:
+        send_text("Nothing to sell.")
     print("----- Scan over -----\n")
+    server.quit()
 
 #execute the scan
 scan_stocks()
