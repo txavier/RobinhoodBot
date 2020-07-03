@@ -1,20 +1,38 @@
 import robin_stocks as r
 import pandas as pd
 import numpy as np
-import ta as ta
+import ta as t
+import smtplib
 from pandas.plotting import register_matplotlib_converters
-from ta import *
 from misc import *
 from tradingstats import *
 from config import *
-
-#Log in to Robinhood
-#Put your username and password in a config.py file in the same directory (see sample file)
-login = r.login(rh_username,rh_password)
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 #Safe divide by zero division function
 def safe_division(n, d):
     return n / d if d else 0
+
+def login_to_sms(phone, company):
+    global sms_gateway
+    global server
+
+    #Log in to Robinhood
+    company_url = 'tmomail.net' if company == 'tmobile' else 'pm.sprint.com'
+    sms_gateway = rh_phone + '@' + company_url #Phone number to send SMS
+    server = smtplib.SMTP("smtp.gmail.com",587) #Gmail SMTP server
+    server.starttls()
+    server.login(rh_email,rh_mail_password)
+
+def send_text(message):
+    msg = MIMEMultipart()
+    msg['From'] = rh_email
+    msg['To'] = sms_gateway
+    msg['Subject'] = 'Robinhood Stocks'
+    msg.attach(MIMEText(message+'**', 'plain'))
+    sms = msg.as_string()
+    server.sendmail(rh_email,sms_gateway,sms)
 
 def get_watchlist_symbols():
     """
@@ -174,8 +192,8 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
     price = pd.Series(closingPrices)
     dates = pd.Series(dates)
     dates = pd.to_datetime(dates)
-    sma1 = ta.volatility.bollinger_mavg(price, n=int(n1), fillna=False)
-    sma2 = ta.volatility.bollinger_mavg(price, n=int(n2), fillna=False)
+    sma1 = t.volatility.bollinger_mavg(price, n=int(n1), fillna=False)
+    sma2 = t.volatility.bollinger_mavg(price, n=int(n2), fillna=False)
     series = [price.rename("Price"), sma1.rename("Indicator1"), sma2.rename("Indicator2"), dates.rename("Dates")]
     df = pd.concat(series, axis=1)
     cross = get_last_crossing(df, days, symbol=stockTicker, direction=direction)
@@ -194,6 +212,7 @@ def sell_holdings(symbol, holdings_data):
     if not debug:
         r.order_sell_market(symbol, shares_owned)
     print("####### Selling " + str(shares_owned) + " shares of " + symbol + " #######")
+    send_text("SELL: \nSelling " + str(shares_owned) + " shares of " + symbol)
 
 def buy_holdings(potential_buys, profile_data, holdings_data):
     """ Places orders to buy holdings of stocks. This method will try to order
@@ -221,8 +240,10 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
             print("####### Tried buying shares of " + potential_buys[i] + ", but not enough buying power to do so#######")
             break
         print("####### Buying " + str(num_shares) + " shares of " + potential_buys[i] + " #######")
+
         if not debug:
             r.order_buy_market(potential_buys[i], num_shares)
+        send_text("BUY: \nBuying " + str(num_shares) + " shares of " + potential_buys[i])
 
 def scan_stocks():
     """ The main method. Sells stocks in your portfolio if their 50 day moving average crosses
@@ -235,8 +256,15 @@ def scan_stocks():
         If you sell a stock, this updates tradehistory.txt with information about the position,
         how much you've earned/lost, etc.
     """
+
+    #Log in to Robinhood
+    #Put your username and password in a config.py file in the same directory (see sample file)
+    login = r.login(rh_username,rh_password)
+    login_to_sms(rh_phone, 'tmobile')
+
     if debug:
         print("----- DEBUG MODE -----\n")
+
     print("----- Starting scan... -----\n")
     register_matplotlib_converters()
     watchlist_symbols = get_watchlist_symbols()
@@ -261,9 +289,16 @@ def scan_stocks():
                 potential_buys.append(symbol)
     if(len(potential_buys) > 0):
         buy_holdings(potential_buys, profile_data, holdings_data)
+    else:
+        send_text("Nothing to buy.")
     if(len(sells) > 0):
         update_trade_history(sells, holdings_data, "tradehistory.txt")
+    else:
+        send_text("Nothing to sell.")
     print("----- Scan over -----\n")
+
+    server.quit()
+
     if debug:
         print("----- DEBUG MODE -----\n")
 

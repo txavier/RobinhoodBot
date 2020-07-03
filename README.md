@@ -27,3 +27,10 @@ To Run:
 cd RobinboodBot/robinhoodbot (If outside of root directory)
 python3 main.py
 ```
+
+To loop: 1 once an hour
+
+```python
+cd RobinboodBot/robinhoodbot (If outside of root directory)
+./run.sh # uses bash
+```
