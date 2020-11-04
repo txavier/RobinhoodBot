@@ -4,4 +4,8 @@ rh_username="Username"
 # change to false to run frfr
 debug=True
 # set to show plot; if set to false plot will not show
-plot=True
+plot=False
+rh_email="email@emailprovider.com"
+rh_mail_password="my password"
+rh_phone="7777777777"
+rh_company_url="phone company email address url"
