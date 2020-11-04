@@ -14,13 +14,12 @@ from email.mime.multipart import MIMEMultipart
 def safe_division(n, d):
     return n / d if d else 0
 
-def login_to_sms(phone, company):
+def login_to_sms(phone, company_url):
     global sms_gateway
     global server
 
     #Log in to Robinhood
-    company_url = 'tmomail.net' if company == 'tmobile' else 'pm.sprint.com'
-    sms_gateway = rh_phone + '@' + company_url #Phone number to send SMS
+    sms_gateway = rh_phone + '@' + rh_company_url #Phone number to send SMS
     server = smtplib.SMTP("smtp.gmail.com",587) #Gmail SMTP server
     server.starttls()
     server.login(rh_email,rh_mail_password)
@@ -40,14 +39,15 @@ def get_watchlist_symbols():
     """
     my_list_names = []
     symbols = []
-    for name in r.get_all_watchlists(info='name'):
+    for name in r.get_all_watchlists(info='id'):
         my_list_names.append(name)
     for name in my_list_names:
-        list = r.get_watchlist_by_name(name)
-        for item in list:
-            instrument_data = r.get_instrument_by_url(item.get('instrument'))
-            symbol = instrument_data['symbol']
+        list = r.get_watchlist_by_name()
+        for item in list['results']:
+            symbol = item['symbol']
             symbols.append(symbol)
+    x = np.array(symbols) 
+    symbols = np.unique(x).tolist()
     return symbols
 
 def get_portfolio_symbols():
@@ -55,7 +55,7 @@ def get_portfolio_symbols():
     Returns: the symbol for each stock in your portfolio as a list of strings
     """
     symbols = []
-    holdings_data = r.get_current_positions()
+    holdings_data = r.get_all_positions()
     for item in holdings_data:
         if not item:
             continue
@@ -91,7 +91,7 @@ def get_modified_holdings():
         position you have, which is 'bought_at': (the time the stock was purchased)
     """
     holdings = r.build_holdings()
-    holdings_data = r.get_current_positions()
+    holdings_data = r.get_all_positions()
     for symbol, dict in holdings.items():
         bought_at = get_position_creation_date(symbol, holdings_data)
         bought_at = str(pd.to_datetime(bought_at))
@@ -155,7 +155,7 @@ def five_year_check(stockTicker):
     list_date = instrument[0].get("list_date")
     if ((pd.Timestamp("now") - pd.to_datetime(list_date)) < pd.Timedelta("5 Y")):
         return True
-    fiveyear = r.get_historicals(stockTicker,span='5year',bounds='regular')
+    fiveyear = r.get_stock_historicals(stockTicker,interval='day',span='5year',bounds='regular')
     closingPrices = []
     for item in fiveyear:
         closingPrices.append(float(item['close_price']))
@@ -181,9 +181,12 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
         False if direction == "above" and five_year_check(stockTicker) returns False, meaning that we're considering whether to
             buy the stock but it hasn't risen overall in the last five years, suggesting it contains fundamental issues
     """
+    """ Apparently 5 year historicals are no longer available?
+    """
     if(direction == "above" and not five_year_check(stockTicker)):
         return False
-    history = r.get_historicals(stockTicker,span='year',bounds='regular')
+    
+    history = r.get_stock_historicals(stockTicker,interval='day',span='year',bounds='regular')
     closingPrices = []
     dates = []
     for item in history:
@@ -289,12 +292,12 @@ def scan_stocks():
                 potential_buys.append(symbol)
     if(len(potential_buys) > 0):
         buy_holdings(potential_buys, profile_data, holdings_data)
-    else:
-        send_text("Nothing to buy.")
+    # else:
+        # send_text("Nothing to buy.")
     if(len(sells) > 0):
         update_trade_history(sells, holdings_data, "tradehistory.txt")
-    else:
-        send_text("Nothing to sell.")
+    # else:
+        # send_text("Nothing to sell.")
     print("----- Scan over -----\n")
 
     server.quit()
