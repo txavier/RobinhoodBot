@@ -5,6 +5,7 @@ rh_username="Username"
 debug=True
 # set to show plot; if set to false plot will not show
 plot=False
+verbose=False
 rh_email="email@emailprovider.com"
 rh_mail_password="my password"
 rh_phone="7777777777"
