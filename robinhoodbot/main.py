@@ -161,6 +161,10 @@ def five_year_check(stockTicker):
         closingPrices.append(float(item['close_price']))
     recent_price = closingPrices[len(closingPrices) - 1]
     oldest_price = closingPrices[0]
+    if(recent_price <= oldest_price and verbose == True):
+        print("The stock " + stockTicker + " IPO'd, more than 5 years ago, on " + list_date + 
+        " with a price 5 years ago of " + str(oldest_price) + 
+        " and a current price of " + str(recent_price) + "\n")
     return (recent_price > oldest_price)
 
 def golden_cross(stockTicker, n1, n2, days, direction=""):
@@ -181,9 +185,11 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
         False if direction == "above" and five_year_check(stockTicker) returns False, meaning that we're considering whether to
             buy the stock but it hasn't risen overall in the last five years, suggesting it contains fundamental issues
     """
-    """ Apparently 5 year historicals are no longer available?
+    """ Apparently 5 year historicals are no longer available with hourly intervals.  Only with day intervals now.
     """
     if(direction == "above" and not five_year_check(stockTicker)):
+        if(verbose == True):
+            print("We're considering whether to buy the " + stockTicker + " but it hasn't risen overall in the last 5 years and it hasn't IPO'd in the last 5 years, suggesting it contains fundamental issues.\n")
         return False
     
     history = r.get_stock_historicals(stockTicker,interval='day',span='year',bounds='regular')
