@@ -292,18 +292,22 @@ def scan_stocks():
     profile_data = r.build_user_profile()
     print("\n----- Scanning watchlist for stocks to buy -----\n")
     for symbol in watchlist_symbols:
+        # If more money has been added then strengthen position of well performing portfolio holdings if the funds allow.
+        if(symbol in portfolio_symbols):
+            cross = golden_cross(symbol, n1=50, n2=200, days=10, direction="above")
+            if(cross == 1):
+                potential_buys.append(symbol)
+                if(verbose == True):
+                    print("Strengthen position of " + symbol + " as the golden cross is within 10 days.")
         if(symbol not in portfolio_symbols):
             cross = golden_cross(symbol, n1=50, n2=200, days=10, direction="above")
             if(cross == 1):
                 potential_buys.append(symbol)
     if(len(potential_buys) > 0):
         buy_holdings(potential_buys, profile_data, holdings_data)
-    # else:
-        # send_text("Nothing to buy.")
+        update_trade_history(potential_buys, holdings_data, "tradehistory.txt")
     if(len(sells) > 0):
         update_trade_history(sells, holdings_data, "tradehistory.txt")
-    # else:
-        # send_text("Nothing to sell.")
     print("----- Scan over -----\n")
 
     server.quit()
