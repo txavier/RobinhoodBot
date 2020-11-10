@@ -305,9 +305,9 @@ def scan_stocks():
                 potential_buys.append(symbol)
     if(len(potential_buys) > 0):
         buy_holdings(potential_buys, profile_data, holdings_data)
-        update_trade_history(potential_buys, holdings_data, "tradehistory.txt")
+        update_trade_history(potential_buys, holdings_data, trade_history_file_name)
     if(len(sells) > 0):
-        update_trade_history(sells, holdings_data, "tradehistory.txt")
+        update_trade_history(sells, holdings_data, trade_history_file_name)
     print("----- Scan over -----\n")
 
     server.quit()
