@@ -121,4 +121,4 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-robinhoodbot/tradehistory.txt
+robinhoodbot/tradehistory-real.txt
