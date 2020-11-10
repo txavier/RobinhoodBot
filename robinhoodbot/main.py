@@ -39,13 +39,10 @@ def get_watchlist_symbols():
     """
     my_list_names = []
     symbols = []
-    for name in r.get_all_watchlists(info='id'):
-        my_list_names.append(name)
-    for name in my_list_names:
-        list = r.get_watchlist_by_name()
-        for item in list['results']:
-            symbol = item['symbol']
-            symbols.append(symbol)
+    list = r.get_watchlist_by_name(name=watchlistName)
+    for item in list['results']:
+        symbol = item['symbol']
+        symbols.append(symbol)
     x = np.array(symbols) 
     symbols = np.unique(x).tolist()
     return symbols
