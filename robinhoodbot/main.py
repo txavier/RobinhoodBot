@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import ta as t
 import smtplib
+import sys
 from pandas.plotting import register_matplotlib_converters
 from misc import *
 from tradingstats import *
@@ -10,19 +11,23 @@ from config import *
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-#Safe divide by zero division function
+# Safe divide by zero division function
+
+
 def safe_division(n, d):
     return n / d if d else 0
 
-def login_to_sms(phone, company_url):
+
+def login_to_sms():
     global sms_gateway
     global server
 
-    #Log in to Robinhood
-    sms_gateway = rh_phone + '@' + rh_company_url #Phone number to send SMS
-    server = smtplib.SMTP("smtp.gmail.com",587) #Gmail SMTP server
+    # Log in to Robinhood
+    sms_gateway = rh_phone + '@' + rh_company_url  # Phone number to send SMS
+    server = smtplib.SMTP("smtp.gmail.com", 587)  # Gmail SMTP server
     server.starttls()
-    server.login(rh_email,rh_mail_password)
+    server.login(rh_email, rh_mail_password)
+
 
 def send_text(message):
     msg = MIMEMultipart()
@@ -31,7 +36,8 @@ def send_text(message):
     msg['Subject'] = 'Robinhood Stocks'
     msg.attach(MIMEText(message+'**', 'plain'))
     sms = msg.as_string()
-    server.sendmail(rh_email,sms_gateway,sms)
+    server.sendmail(rh_email, sms_gateway, sms)
+
 
 def get_watchlist_symbols():
     """
@@ -43,9 +49,10 @@ def get_watchlist_symbols():
     for item in list['results']:
         symbol = item['symbol']
         symbols.append(symbol)
-    x = np.array(symbols) 
+    x = np.array(symbols)
     symbols = np.unique(x).tolist()
     return symbols
+
 
 def get_portfolio_symbols():
     """
@@ -60,6 +67,7 @@ def get_portfolio_symbols():
         symbol = instrument_data['symbol']
         symbols.append(symbol)
     return symbols
+
 
 def get_position_creation_date(symbol, holdings_data):
     """Returns the time at which we bought a certain stock in our portfolio
@@ -78,6 +86,7 @@ def get_position_creation_date(symbol, holdings_data):
             return dict.get('created_at')
     return "Not found"
 
+
 def get_modified_holdings():
     """ Retrieves the same dictionary as r.build_holdings, but includes data about
         when the stock was purchased, which is useful for the read_trade_history() method
@@ -95,6 +104,7 @@ def get_modified_holdings():
         holdings[symbol].update({'bought_at': bought_at})
     return holdings
 
+
 def get_last_crossing(df, days, symbol="", direction=""):
     """Searches for a crossing between two indicators for a given stock
 
@@ -109,10 +119,10 @@ def get_last_crossing(df, days, symbol="", direction=""):
         0 if there is no cross between the indicators
         -1 if the short-term indicator crosses below the long-term one
     """
-    prices = df.loc[:,"Price"]
-    shortTerm = df.loc[:,"Indicator1"]
-    LongTerm = df.loc[:,"Indicator2"]
-    dates = df.loc[:,"Dates"]
+    prices = df.loc[:, "Price"]
+    shortTerm = df.loc[:, "Indicator1"]
+    LongTerm = df.loc[:, "Indicator2"]
+    dates = df.loc[:, "Dates"]
     lastIndex = prices.size - 1
     index = lastIndex
     found = index
@@ -120,8 +130,8 @@ def get_last_crossing(df, days, symbol="", direction=""):
     if((direction == "above" and not recentDiff) or (direction == "below" and recentDiff)):
         return 0
     index -= 1
-    while(index >= 0 and found == lastIndex and not np.isnan(shortTerm.at[index]) and not np.isnan(LongTerm.at[index]) \
-                        and ((pd.Timestamp("now", tz='UTC') - dates.at[index]) <= pd.Timedelta(str(days) + " days"))):
+    while(index >= 0 and found == lastIndex and not np.isnan(shortTerm.at[index]) and not np.isnan(LongTerm.at[index])
+          and ((pd.Timestamp("now", tz='UTC') - dates.at[index]) <= pd.Timedelta(str(days) + " days"))):
         if(recentDiff):
             if((shortTerm.at[index] - LongTerm.at[index]) < 0):
                 found = index
@@ -131,12 +141,14 @@ def get_last_crossing(df, days, symbol="", direction=""):
         index -= 1
     if(found != lastIndex):
         if((direction == "above" and recentDiff) or (direction == "below" and not recentDiff)):
-            print(symbol + ": Short SMA crossed" + (" ABOVE " if recentDiff else " BELOW ") + "Long SMA at " + str(dates.at[found]) \
-                +", which was " + str(pd.Timestamp("now", tz='UTC') - dates.at[found]) + " ago", ", price at cross: " + str(prices.at[found]) \
-                + ", current price: " + str(prices.at[lastIndex]))
+            print(symbol + ": Short SMA crossed" + (" ABOVE " if recentDiff else " BELOW ") + "Long SMA at " + str(dates.at[found])
+                  + ", which was " + str(pd.Timestamp("now", tz='UTC') -
+                                         dates.at[found]) + " ago", ", price at cross: " + str(prices.at[found])
+                  + ", current price: " + str(prices.at[lastIndex]))
         return (1 if recentDiff else -1)
     else:
         return 0
+
 
 def five_year_check(stockTicker):
     """Figure out if a stock has risen or been created within the last five years.
@@ -152,17 +164,19 @@ def five_year_check(stockTicker):
     list_date = instrument[0].get("list_date")
     if ((pd.Timestamp("now") - pd.to_datetime(list_date)) < pd.Timedelta("5 Y")):
         return True
-    fiveyear = r.get_stock_historicals(stockTicker,interval='day',span='5year',bounds='regular')
+    fiveyear = r.get_stock_historicals(
+        stockTicker, interval='day', span='5year', bounds='regular')
     closingPrices = []
     for item in fiveyear:
         closingPrices.append(float(item['close_price']))
     recent_price = closingPrices[len(closingPrices) - 1]
     oldest_price = closingPrices[0]
     if(recent_price <= oldest_price and verbose == True):
-        print("The stock " + stockTicker + " IPO'd, more than 5 years ago, on " + list_date + 
-        " with a price 5 years ago of " + str(oldest_price) + 
-        " and a current price of " + str(recent_price) + "\n")
+        print("The stock " + stockTicker + " IPO'd, more than 5 years ago, on " + list_date +
+              " with a price 5 years ago of " + str(oldest_price) +
+              " and a current price of " + str(recent_price) + "\n")
     return (recent_price > oldest_price)
+
 
 def golden_cross(stockTicker, n1, n2, days, direction=""):
     """Determine if a golden/death cross has occured for a specified stock in the last X trading days
@@ -186,10 +200,12 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
     """
     if(direction == "above" and not five_year_check(stockTicker)):
         if(verbose == True):
-            print("We're considering whether to buy the " + stockTicker + " but it hasn't risen overall in the last 5 years and it hasn't IPO'd in the last 5 years, suggesting it contains fundamental issues.\n")
+            print("We're considering whether to buy the " + stockTicker +
+                  " but it hasn't risen overall in the last 5 years and it hasn't IPO'd in the last 5 years, suggesting it contains fundamental issues.\n")
         return False
-    
-    history = r.get_stock_historicals(stockTicker,interval='day',span='year',bounds='regular')
+
+    history = r.get_stock_historicals(
+        stockTicker, interval='day', span='year', bounds='regular')
     closingPrices = []
     dates = []
     for item in history:
@@ -200,12 +216,16 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
     dates = pd.to_datetime(dates)
     sma1 = t.volatility.bollinger_mavg(price, n=int(n1), fillna=False)
     sma2 = t.volatility.bollinger_mavg(price, n=int(n2), fillna=False)
-    series = [price.rename("Price"), sma1.rename("Indicator1"), sma2.rename("Indicator2"), dates.rename("Dates")]
+    series = [price.rename("Price"), sma1.rename(
+        "Indicator1"), sma2.rename("Indicator2"), dates.rename("Dates")]
     df = pd.concat(series, axis=1)
-    cross = get_last_crossing(df, days, symbol=stockTicker, direction=direction)
+    cross = get_last_crossing(
+        df, days, symbol=stockTicker, direction=direction)
     if(cross) and plot:
-        show_plot(price, sma1, sma2, dates, symbol=stockTicker, label1=str(n1)+" day SMA", label2=str(n2)+" day SMA")
+        show_plot(price, sma1, sma2, dates, symbol=stockTicker,
+                  label1=str(n1)+" day SMA", label2=str(n2)+" day SMA")
     return cross
+
 
 def sell_holdings(symbol, holdings_data):
     """ Place an order to sell all holdings of a stock.
@@ -217,8 +237,10 @@ def sell_holdings(symbol, holdings_data):
     shares_owned = int(float(holdings_data[symbol].get("quantity")))
     if not debug:
         r.order_sell_market(symbol, shares_owned)
-    print("####### Selling " + str(shares_owned) + " shares of " + symbol + " #######")
+    print("####### Selling " + str(shares_owned) +
+          " shares of " + symbol + " #######")
     send_text("SELL: \nSelling " + str(shares_owned) + " shares of " + symbol)
+
 
 def buy_holdings(potential_buys, profile_data, holdings_data):
     """ Places orders to buy holdings of stocks. This method will try to order
@@ -234,7 +256,8 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
     """
     cash = float(profile_data.get('cash'))
     portfolio_value = float(profile_data.get('equity')) - cash
-    ideal_position_size = (safe_division(portfolio_value, len(holdings_data))+cash/len(potential_buys))/(2 * len(potential_buys))
+    ideal_position_size = (safe_division(portfolio_value, len(
+        holdings_data))+cash/len(potential_buys))/(2 * len(potential_buys))
     prices = r.get_latest_price(potential_buys)
     for i in range(0, len(potential_buys)):
         stock_price = float(prices[i])
@@ -243,13 +266,17 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
         elif (stock_price < ideal_position_size):
             num_shares = int(ideal_position_size/stock_price)
         else:
-            print("####### Tried buying shares of " + potential_buys[i] + ", but not enough buying power to do so#######")
+            print("####### Tried buying shares of " +
+                  potential_buys[i] + ", but not enough buying power to do so#######")
             break
-        print("####### Buying " + str(num_shares) + " shares of " + potential_buys[i] + " #######")
+        print("####### Buying " + str(num_shares) +
+              " shares of " + potential_buys[i] + " #######")
 
         if not debug:
             r.order_buy_market(potential_buys[i], num_shares)
-        send_text("BUY: \nBuying " + str(num_shares) + " shares of " + potential_buys[i])
+        send_text("BUY: \nBuying " + str(num_shares) +
+                  " shares of " + potential_buys[i])
+
 
 def scan_stocks():
     """ The main method. Sells stocks in your portfolio if their 50 day moving average crosses
@@ -262,55 +289,70 @@ def scan_stocks():
         If you sell a stock, this updates tradehistory.txt with information about the position,
         how much you've earned/lost, etc.
     """
+    try:
 
-    #Log in to Robinhood
-    #Put your username and password in a config.py file in the same directory (see sample file)
-    login = r.login(rh_username,rh_password)
-    login_to_sms(rh_phone, 'tmobile')
+        # Log in to Robinhood
+        # Put your username and password in a config.py file in the same directory (see sample file)
+        login = r.login(rh_username, rh_password)
+        login_to_sms()
+        
+        if debug:
+            print("----- DEBUG MODE -----\n")
 
-    if debug:
-        print("----- DEBUG MODE -----\n")
+        print("----- Starting scan... -----\n")
+        register_matplotlib_converters()
+        watchlist_symbols = get_watchlist_symbols()
+        portfolio_symbols = get_portfolio_symbols()
+        holdings_data = get_modified_holdings()
+        potential_buys = []
+        sells = []
+        print("Current Portfolio: " + str(portfolio_symbols) + "\n")
+        print("Current Watchlist: " + str(watchlist_symbols) + "\n")
+        print("----- Scanning portfolio for stocks to sell -----\n")
+        for symbol in portfolio_symbols:
+            cross = golden_cross(symbol, n1=50, n2=200, days=30, direction="below")
+            if(cross == -1):
+                sell_holdings(symbol, holdings_data)
+                sells.append(symbol)
+        profile_data = r.build_user_profile()
+        print("\n----- Scanning watchlist for stocks to buy -----\n")
+        for symbol in watchlist_symbols:
+            # If more money has been added then strengthen position of well performing portfolio holdings if the funds allow.
+            if(symbol in portfolio_symbols):
+                cross = golden_cross(symbol, n1=50, n2=200,
+                                    days=10, direction="above")
+                if(cross == 1):
+                    potential_buys.append(symbol)
+                    if(verbose == True):
+                        print("Strengthen position of " + symbol +
+                            " as the golden cross is within 10 days.")
+            if(symbol not in portfolio_symbols):
+                cross = golden_cross(symbol, n1=50, n2=200,
+                                    days=10, direction="above")
+                if(cross == 1):
+                    potential_buys.append(symbol)
+        if(len(potential_buys) > 0):
+            buy_holdings(potential_buys, profile_data, holdings_data)
+            update_trade_history(potential_buys, holdings_data,
+                                trade_history_file_name)
+        if(len(sells) > 0):
+            update_trade_history(sells, holdings_data, trade_history_file_name)
+        print("----- Scan over -----\n")
 
-    print("----- Starting scan... -----\n")
-    register_matplotlib_converters()
-    watchlist_symbols = get_watchlist_symbols()
-    portfolio_symbols = get_portfolio_symbols()
-    holdings_data = get_modified_holdings()
-    potential_buys = []
-    sells = []
-    print("Current Portfolio: " + str(portfolio_symbols) + "\n")
-    print("Current Watchlist: " + str(watchlist_symbols) + "\n")
-    print("----- Scanning portfolio for stocks to sell -----\n")
-    for symbol in portfolio_symbols:
-        cross = golden_cross(symbol, n1=50, n2=200, days=30, direction="below")
-        if(cross == -1):
-            sell_holdings(symbol, holdings_data)
-            sells.append(symbol)
-    profile_data = r.build_user_profile()
-    print("\n----- Scanning watchlist for stocks to buy -----\n")
-    for symbol in watchlist_symbols:
-        # If more money has been added then strengthen position of well performing portfolio holdings if the funds allow.
-        if(symbol in portfolio_symbols):
-            cross = golden_cross(symbol, n1=50, n2=200, days=10, direction="above")
-            if(cross == 1):
-                potential_buys.append(symbol)
-                if(verbose == True):
-                    print("Strengthen position of " + symbol + " as the golden cross is within 10 days.")
-        if(symbol not in portfolio_symbols):
-            cross = golden_cross(symbol, n1=50, n2=200, days=10, direction="above")
-            if(cross == 1):
-                potential_buys.append(symbol)
-    if(len(potential_buys) > 0):
-        buy_holdings(potential_buys, profile_data, holdings_data)
-        update_trade_history(potential_buys, holdings_data, trade_history_file_name)
-    if(len(sells) > 0):
-        update_trade_history(sells, holdings_data, trade_history_file_name)
-    print("----- Scan over -----\n")
+        server.quit()
 
-    server.quit()
+        if debug:
+            print("----- DEBUG MODE -----\n")
+        
+    except IOError as err:
+        errno, strerror = err.args
+        print("I/O error({0}): {1}".format(errno, strerror))
+    except ValueError:
+        print("Could not convert data to an integer.")
+    except:
+        print("Unexpected error:", sys.exc_info()[0])
+        send_text("Unexpected error:" + str(sys.exc_info()[0]))
+        raise
 
-    if debug:
-        print("----- DEBUG MODE -----\n")
-
-#execute the scan
+# execute the scan
 scan_stocks()
