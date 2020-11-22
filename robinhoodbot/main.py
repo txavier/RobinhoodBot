@@ -321,14 +321,14 @@ def get_accurate_gains():
     end_time = datetime.time(9,30)
     timenow = datetime.datetime.now().time()
 
-    if(timenow >= begin_time or timenow < end_time):
+    if(timenow >= begin_time and timenow < end_time):
         send_text(invested + "\n" + equity  + "\n" + gainIncrease)
 
     begin_time = datetime.time(17,30)
     end_time = datetime.time(18,30)
     timenow = datetime.datetime.now().time()
 
-    if(timenow >= begin_time or timenow < end_time):
+    if(timenow >= begin_time and timenow < end_time):
         send_text(invested + "\n" + equity  + "\n" + gainIncrease)
 
 def scan_stocks():
