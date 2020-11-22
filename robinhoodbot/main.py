@@ -266,8 +266,10 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
         elif (stock_price < ideal_position_size):
             num_shares = int(ideal_position_size/stock_price)
         else:
-            print("####### Tried buying shares of " +
-                  potential_buys[i] + ", but not enough buying power to do so#######")
+            output = "####### Tried buying shares of " +
+                  potential_buys[i] + ", but not enough buying power to do so#######"
+            print(output)
+            send_text(output)
             break
         print("####### Buying " + str(num_shares) +
               " shares of " + potential_buys[i] + " #######")
@@ -289,6 +291,7 @@ def scan_stocks():
         If you sell a stock, this updates tradehistory.txt with information about the position,
         how much you've earned/lost, etc.
     """
+
     try:
 
         # Log in to Robinhood
