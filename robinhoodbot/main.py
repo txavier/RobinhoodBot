@@ -4,6 +4,7 @@ import numpy as np
 import ta as t
 import smtplib
 import sys
+import datetime
 from pandas.plotting import register_matplotlib_converters
 from misc import *
 from tradingstats import *
@@ -266,8 +267,7 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
         elif (stock_price < ideal_position_size):
             num_shares = int(ideal_position_size/stock_price)
         else:
-            output = "####### Tried buying shares of " +
-                  potential_buys[i] + ", but not enough buying power to do so#######"
+            output = "####### Tried buying shares of " + potential_buys[i] + ", but not enough buying power to do so#######"
             print(output)
             send_text(output)
             break
@@ -279,6 +279,57 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
         send_text("BUY: \nBuying " + str(num_shares) +
                   " shares of " + potential_buys[i])
 
+def get_accurate_gains():
+    '''
+    Robinhood includes dividends as part of your net gain. This script removes
+    dividends from net gain to figure out how much your stocks/options have paid
+    off.
+    Note: load_portfolio_profile() contains some other useful breakdowns of equity.
+    Print profileData and see what other values you can play around with.
+    '''
+    
+    profileData = r.load_portfolio_profile()
+    allTransactions = r.get_bank_transfers()
+    cardTransactions= r.get_card_transactions()
+
+    deposits = sum(float(x['amount']) for x in allTransactions if (x['direction'] == 'deposit') and (x['state'] == 'completed'))
+    withdrawals = sum(float(x['amount']) for x in allTransactions if (x['direction'] == 'withdraw') and (x['state'] == 'completed'))
+    debits = sum(float(x['amount']['amount']) for x in cardTransactions if (x['direction'] == 'debit' and (x['transaction_type'] == 'settled')))
+    reversal_fees = sum(float(x['fees']) for x in allTransactions if (x['direction'] == 'deposit') and (x['state'] == 'reversed'))
+
+    money_invested = deposits + reversal_fees - (withdrawals - debits)
+    dividends = r.get_total_dividends()
+    percentDividend = dividends/money_invested*100
+
+    equity = float(profileData['extended_hours_equity'])
+    totalGainMinusDividends = equity - dividends - money_invested
+    percentGain = totalGainMinusDividends/money_invested*100
+
+    invested = "The total money invested is {:.2f}".format(money_invested)
+    equity = "The total equity is {:.2f}".format(equity)
+    dividendIncrease = "The net worth has increased {:0.2}% due to dividends that amount to {:0.2f}".format(percentDividend, dividends)
+    gainIncrease = "The net worth has increased {:0.3}% due to other gains that amount to {:0.2f}".format(percentGain, totalGainMinusDividends)
+
+    print(invested)
+    print(equity)
+    print(dividendIncrease)
+    print(gainIncrease)
+
+    """ Send a text message with the days metrics """
+
+    begin_time = datetime.time(8,30)
+    end_time = datetime.time(9,30)
+    timenow = datetime.datetime.now().time()
+
+    if(timenow >= begin_time or timenow < end_time):
+        send_text(invested + "\n" + equity  + "\n" + gainIncrease)
+
+    begin_time = datetime.time(17,30)
+    end_time = datetime.time(18,30)
+    timenow = datetime.datetime.now().time()
+
+    if(timenow >= begin_time or timenow < end_time):
+        send_text(invested + "\n" + equity  + "\n" + gainIncrease)
 
 def scan_stocks():
     """ The main method. Sells stocks in your portfolio if their 50 day moving average crosses
@@ -292,13 +343,13 @@ def scan_stocks():
         how much you've earned/lost, etc.
     """
 
-    try:
+    try:        
 
         # Log in to Robinhood
         # Put your username and password in a config.py file in the same directory (see sample file)
         login = r.login(rh_username, rh_password)
         login_to_sms()
-        
+
         if debug:
             print("----- DEBUG MODE -----\n")
 
@@ -342,19 +393,25 @@ def scan_stocks():
             update_trade_history(sells, holdings_data, trade_history_file_name)
         print("----- Scan over -----\n")
 
+        # Get the metrics report.
+        get_accurate_gains()
+
+        # Sign out of the email server.
         server.quit()
 
         if debug:
             print("----- DEBUG MODE -----\n")
-        
-    except IOError as err:
-        errno, strerror = err.args
-        print("I/O error({0}): {1}".format(errno, strerror))
+
+    except IOError as e:
+        print(e)
+        print(sys.exc_info()[0])
     except ValueError:
         print("Could not convert data to an integer.")
-    except:
-        print("Unexpected error:", sys.exc_info()[0])
-        send_text("Unexpected error:" + str(sys.exc_info()[0]))
+    except Exception as e:
+        print("Unexpected error:", str(e))
+        
+        login_to_sms()
+        send_text("Unexpected error:" + str(e))
         raise
 
 # execute the scan
