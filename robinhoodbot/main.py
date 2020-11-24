@@ -301,7 +301,7 @@ def get_accurate_gains():
     dividends = r.get_total_dividends()
     percentDividend = dividends/money_invested*100
 
-    equity = float(profileData['extended_hours_equity'])
+    equity = float(profileData['equity'])
     totalGainMinusDividends = equity - dividends - money_invested
     percentGain = totalGainMinusDividends/money_invested*100
 
@@ -322,13 +322,14 @@ def get_accurate_gains():
     timenow = datetime.datetime.now().time()
 
     if(timenow >= begin_time and timenow < end_time):
+        print("Sending morning report.")
         send_text(invested + "\n" + equity  + "\n" + gainIncrease)
 
     begin_time = datetime.time(17,30)
     end_time = datetime.time(18,30)
-    timenow = datetime.datetime.now().time()
 
     if(timenow >= begin_time and timenow < end_time):
+        print("Sending evening report.")
         send_text(invested + "\n" + equity  + "\n" + gainIncrease)
 
 def scan_stocks():
