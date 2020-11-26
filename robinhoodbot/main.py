@@ -293,44 +293,57 @@ def get_accurate_gains():
     cardTransactions= r.get_card_transactions()
 
     deposits = sum(float(x['amount']) for x in allTransactions if (x['direction'] == 'deposit') and (x['state'] == 'completed'))
+    moneyUsedToBuyStocks = sum(float(x['price'])*float(x['quantity']) for x in r.get_all_stock_orders() if (x['side'] == 'buy') and (x['state'] == 'filled'))
     withdrawals = sum(float(x['amount']) for x in allTransactions if (x['direction'] == 'withdraw') and (x['state'] == 'completed'))
     debits = sum(float(x['amount']['amount']) for x in cardTransactions if (x['direction'] == 'debit' and (x['transaction_type'] == 'settled')))
     reversal_fees = sum(float(x['fees']) for x in allTransactions if (x['direction'] == 'deposit') and (x['state'] == 'reversed'))
 
-    money_invested = deposits + reversal_fees - (withdrawals - debits)
+    withdrawable_amount = float(profileData['withdrawable_amount'])
+    money_invested = moneyUsedToBuyStocks + reversal_fees - (withdrawals - debits)
     dividends = r.get_total_dividends()
     percentDividend = dividends/money_invested*100
 
     equity = float(profileData['equity'])
     totalGainMinusDividends = equity - dividends - money_invested
     percentGain = totalGainMinusDividends/money_invested*100
+    equityAndWithdrawableAmount = equity + withdrawable_amount
 
-    invested = "The total money invested is {:.2f}".format(money_invested)
-    equity = "The total equity is {:.2f}".format(equity)
-    dividendIncrease = "The net worth has increased {:0.2}% due to dividends that amount to {:0.2f}".format(percentDividend, dividends)
-    gainIncrease = "The net worth has increased {:0.3}% due to other gains that amount to {:0.2f}".format(percentGain, totalGainMinusDividends)
+    bankTransfered = "The total money transferred from your bank is ${:.2f}".format(deposits)
+    withdrawable_amount = "The total money not invested is ${:.2f}".format(withdrawable_amount)
+    invested = "The total money invested is ${:.2f}".format(money_invested)
+    equity = "The total equity is now at ${:.2f}".format(equity)
+    equityAndWithdrawable = "Total ${:.2f}".format(equityAndWithdrawableAmount)
+    dividendIncrease = "The net worth has increased {:0.2}% due to dividends that amount to ${:0.2f}".format(percentDividend, dividends)
+    gainIncrease = "The net worth has increased {:0.3f}% due to other gains that amount to ${:0.2f}".format(percentGain, totalGainMinusDividends)
 
+    print(bankTransfered)
+    print(withdrawable_amount)
     print(invested)
     print(equity)
+    print(equityAndWithdrawable)
     print(dividendIncrease)
     print(gainIncrease)
 
     """ Send a text message with the days metrics """
 
+    # Evening Morning report
     begin_time = datetime.time(8,30)
-    end_time = datetime.time(9,30)
+    end_time = datetime.time(9,0)
     timenow = datetime.datetime.now().time()
 
     if(timenow >= begin_time and timenow < end_time):
         print("Sending morning report.")
-        send_text(invested + "\n" + equity  + "\n" + gainIncrease)
+        send_text(bankTransfered + "\n" + withdrawable_amount + "\n" + invested)
+        send_text(equity + "\n" + equityAndWithdrawable  + "\n" + gainIncrease)
 
+    # Evening report
     begin_time = datetime.time(17,30)
-    end_time = datetime.time(18,30)
+    end_time = datetime.time(18,0)
 
     if(timenow >= begin_time and timenow < end_time):
         print("Sending evening report.")
-        send_text(invested + "\n" + equity  + "\n" + gainIncrease)
+        send_text(bankTransfered + "\n" + withdrawable_amount + "\n" + invested)
+        send_text(equity + "\n" + equityAndWithdrawable  + "\n" + gainIncrease)
 
 def scan_stocks():
     """ The main method. Sells stocks in your portfolio if their 50 day moving average crosses
