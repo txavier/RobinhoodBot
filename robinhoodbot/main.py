@@ -321,7 +321,7 @@ def get_accurate_gains():
     equityAndWithdrawable = "Total ${:.2f}".format(equityAndWithdrawableAmount)
     dividendIncrease = "The net worth has increased {:0.2}% due to dividends that amount to ${:0.2f}".format(
         percentDividend, dividends)
-    gainIncrease = "The net worth has increased {:0.3f}% due to other gains that amount to ${:0.2f}".format(
+    gainIncrease = "The amount invested has increased {:0.3f}% which amounts to ${:0.2f}".format(
         percentGain, totalGainMinusDividends)
 
     print(bankTransfered)
@@ -365,12 +365,13 @@ def get_market_tag_stocks_report():
     try:
         report_string = ""
         all_market_tag_stocks = r.get_all_stocks_from_market_tag(
-            tag=market_tag_for_report, info='symbol')
+            tag=market_tag_for_report)
         for market_tag_stock in all_market_tag_stocks:
-            cross = golden_cross(market_tag_stock, n1=50,
+            cross = golden_cross(market_tag_stock['symbol'], n1=50,
                                  n2=200, days=10, direction="above")
             if(cross == 1):
-                report_string = report_string + " \n " + market_tag_stock
+                last_trade_price = "${:0.2f}".format(float(market_tag_stock["last_trade_price"]))
+                report_string = report_string + " \n " + market_tag_stock["symbol"] + " " + last_trade_price
         if(report_string != ""):
             return market_tag_for_report + " \n\n " + report_string
         return ""
