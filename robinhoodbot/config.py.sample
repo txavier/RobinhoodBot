@@ -4,6 +4,8 @@ rh_username="Username"
 # change to false to run frfr
 debug=True
 # set to show plot; if set to false plot will not show
+# beware, if plot is set to true it will stop execution
+# of this program until the plot diagram window is closed.
 plot=False
 verbose=False
 rh_email="email@emailprovider.com"
@@ -12,3 +14,6 @@ rh_phone="7777777777"
 rh_company_url="phone company email address url i.e. for Verizon this will be 'vtext.com'"
 trade_history_file_name="tradehistory.txt"
 watchlistName="My First Watchlist"
+# caution here, if the market tag returns too much data this
+# will crash.
+market_tag_for_report="most-popular-under-25"
