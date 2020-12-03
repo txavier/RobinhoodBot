@@ -22,7 +22,7 @@ def safe_division(n, d):
 def login_to_sms():
     global sms_gateway
     global server
-
+    
     # Log in to Robinhood
     sms_gateway = rh_phone + '@' + rh_company_url  # Phone number to send SMS
     server = smtplib.SMTP("smtp.gmail.com", 587)  # Gmail SMTP server
@@ -142,10 +142,10 @@ def get_last_crossing(df, days, symbol="", direction=""):
         index -= 1
     if(found != lastIndex):
         if((direction == "above" and recentDiff) or (direction == "below" and not recentDiff)):
-            print(symbol + ": Short SMA crossed" + (" ABOVE " if recentDiff else " BELOW ") + "Long SMA at " + str(dates.at[found])
-                  + ", which was " + str(pd.Timestamp("now", tz='UTC') -
-                                         dates.at[found]) + " ago", ", price at cross: " + str(prices.at[found])
-                  + ", current price: " + str(prices.at[lastIndex]))
+            last_crossing_report = symbol + ": Short SMA crossed" + (" ABOVE " if recentDiff else " BELOW ") + "Long SMA at " + str(dates.at[found]) + ", which was " + str(
+                pd.Timestamp("now", tz='UTC') - dates.at[found]) + " ago", ", price at cross: " + str(prices.at[found]) + ", current price: " + str(prices.at[lastIndex])
+
+            print(last_crossing_report)
         return (1 if recentDiff else -1)
     else:
         return 0
@@ -222,7 +222,7 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
     df = pd.concat(series, axis=1)
     cross = get_last_crossing(
         df, days, symbol=stockTicker, direction=direction)
-    if(cross) and plot:
+    if(plot):
         show_plot(price, sma1, sma2, dates, symbol=stockTicker,
                   label1=str(n1)+" day SMA", label2=str(n2)+" day SMA")
     return cross
@@ -276,8 +276,7 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
 
         if not debug:
             r.order_buy_market(potential_buys[i], num_shares)
-        send_text("BUY: \nBuying " + str(num_shares) +
-                  " shares of " + potential_buys[i])
+        send_text("BUY: \nBuying " + str(num_shares) + " shares of " + potential_buys[i])
 
 def get_accurate_gains():
     '''
@@ -287,16 +286,21 @@ def get_accurate_gains():
     Note: load_portfolio_profile() contains some other useful breakdowns of equity.
     Print profileData and see what other values you can play around with.
     '''
-    
+
     profileData = r.load_portfolio_profile()
     allTransactions = r.get_bank_transfers()
-    cardTransactions= r.get_card_transactions()
+    cardTransactions = r.get_card_transactions()
 
-    deposits = sum(float(x['amount']) for x in allTransactions if (x['direction'] == 'deposit') and (x['state'] == 'completed'))
-    moneyUsedToBuyStocks = sum(float(x['price'])*float(x['quantity']) for x in r.get_all_stock_orders() if (x['side'] == 'buy') and (x['state'] == 'filled'))
-    withdrawals = sum(float(x['amount']) for x in allTransactions if (x['direction'] == 'withdraw') and (x['state'] == 'completed'))
-    debits = sum(float(x['amount']['amount']) for x in cardTransactions if (x['direction'] == 'debit' and (x['transaction_type'] == 'settled')))
-    reversal_fees = sum(float(x['fees']) for x in allTransactions if (x['direction'] == 'deposit') and (x['state'] == 'reversed'))
+    deposits = sum(float(x['amount']) for x in allTransactions if (
+        x['direction'] == 'deposit') and (x['state'] == 'completed'))
+    moneyUsedToBuyStocks = sum(float(x['price'])*float(x['quantity'])
+                               for x in r.get_all_stock_orders() if (x['side'] == 'buy') and (x['state'] == 'filled'))
+    withdrawals = sum(float(x['amount']) for x in allTransactions if (
+        x['direction'] == 'withdraw') and (x['state'] == 'completed'))
+    debits = sum(float(x['amount']['amount']) for x in cardTransactions if (
+        x['direction'] == 'debit' and (x['transaction_type'] == 'settled')))
+    reversal_fees = sum(float(x['fees']) for x in allTransactions if (
+        x['direction'] == 'deposit') and (x['state'] == 'reversed'))
 
     withdrawable_amount = float(profileData['withdrawable_amount'])
     money_invested = moneyUsedToBuyStocks + reversal_fees - (withdrawals - debits)
@@ -308,13 +312,17 @@ def get_accurate_gains():
     percentGain = totalGainMinusDividends/money_invested*100
     equityAndWithdrawableAmount = equity + withdrawable_amount
 
-    bankTransfered = "The total money transferred from your bank is ${:.2f}".format(deposits)
-    withdrawable_amount = "The total money not invested is ${:.2f}".format(withdrawable_amount)
+    bankTransfered = "The total money transferred from your bank is ${:.2f}".format(
+        deposits)
+    withdrawable_amount = "The total money not invested is ${:.2f}".format(
+        withdrawable_amount)
     invested = "The total money invested is ${:.2f}".format(money_invested)
     equity = "The total equity is now at ${:.2f}".format(equity)
     equityAndWithdrawable = "Total ${:.2f}".format(equityAndWithdrawableAmount)
-    dividendIncrease = "The net worth has increased {:0.2}% due to dividends that amount to ${:0.2f}".format(percentDividend, dividends)
-    gainIncrease = "The net worth has increased {:0.3f}% due to other gains that amount to ${:0.2f}".format(percentGain, totalGainMinusDividends)
+    dividendIncrease = "The net worth has increased {:0.2}% due to dividends that amount to ${:0.2f}".format(
+        percentDividend, dividends)
+    gainIncrease = "The net worth has increased {:0.3f}% due to other gains that amount to ${:0.2f}".format(
+        percentGain, totalGainMinusDividends)
 
     print(bankTransfered)
     print(withdrawable_amount)
@@ -327,23 +335,58 @@ def get_accurate_gains():
     """ Send a text message with the days metrics """
 
     # Evening Morning report
-    begin_time = datetime.time(8,30)
-    end_time = datetime.time(9,0)
+    begin_time = datetime.time(8, 30)
+    end_time = datetime.time(9, 0)
     timenow = datetime.datetime.now().time()
 
     if(timenow >= begin_time and timenow < end_time):
         print("Sending morning report.")
-        send_text(bankTransfered + "\n" + withdrawable_amount + "\n" + invested)
-        send_text(equity + "\n" + equityAndWithdrawable  + "\n" + gainIncrease)
+        send_text(bankTransfered + "\n" +
+                  withdrawable_amount + "\n" + invested)
+        send_text(equity + "\n" + equityAndWithdrawable + "\n" + gainIncrease)
+        # Get interesting stocks report.
+        market_tag_report = get_market_tag_stocks_report()
+        send_text(market_tag_report)
 
     # Evening report
-    begin_time = datetime.time(17,30)
-    end_time = datetime.time(18,0)
+    begin_time = datetime.time(17, 30)
+    end_time = datetime.time(18, 0)
 
     if(timenow >= begin_time and timenow < end_time):
         print("Sending evening report.")
-        send_text(bankTransfered + "\n" + withdrawable_amount + "\n" + invested)
-        send_text(equity + "\n" + equityAndWithdrawable  + "\n" + gainIncrease)
+        send_text(bankTransfered + "\n" +
+                  withdrawable_amount + "\n" + invested)
+        send_text(equity + "\n" + equityAndWithdrawable + "\n" + gainIncrease)
+        # Get interesting stocks report.
+        market_tag_report = get_market_tag_stocks_report()
+        send_text(market_tag_report)
+
+def get_market_tag_stocks_report():
+    try:
+        report_string = ""
+        all_market_tag_stocks = r.get_all_stocks_from_market_tag(
+            tag=market_tag_for_report, info='symbol')
+        for market_tag_stock in all_market_tag_stocks:
+            cross = golden_cross(market_tag_stock, n1=50,
+                                 n2=200, days=10, direction="above")
+            if(cross == 1):
+                report_string = report_string + " \n " + market_tag_stock
+        if(report_string != ""):
+            return market_tag_for_report + " \n\n " + report_string
+        return ""
+
+    except IOError as e:
+        print(e)
+        print(sys.exc_info()[0])
+    except ValueError:
+        print("Could not convert data to an integer.")
+    except Exception as e:
+        print("Unexpected error could not generate interesting stocks report:", str(e))
+
+        login_to_sms()
+        send_text(
+            "Unexpected error could not generate interesting stocks report:" + str(e))
+
 
 def scan_stocks():
     """ The main method. Sells stocks in your portfolio if their 50 day moving average crosses
@@ -357,7 +400,7 @@ def scan_stocks():
         how much you've earned/lost, etc.
     """
 
-    try:        
+    try:
 
         # Log in to Robinhood
         # Put your username and password in a config.py file in the same directory (see sample file)
@@ -378,7 +421,8 @@ def scan_stocks():
         print("Current Watchlist: " + str(watchlist_symbols) + "\n")
         print("----- Scanning portfolio for stocks to sell -----\n")
         for symbol in portfolio_symbols:
-            cross = golden_cross(symbol, n1=50, n2=200, days=30, direction="below")
+            cross = golden_cross(symbol, n1=50, n2=200,
+                                 days=30, direction="below")
             if(cross == -1):
                 sell_holdings(symbol, holdings_data)
                 sells.append(symbol)
@@ -388,27 +432,28 @@ def scan_stocks():
             # If more money has been added then strengthen position of well performing portfolio holdings if the funds allow.
             if(symbol in portfolio_symbols):
                 cross = golden_cross(symbol, n1=50, n2=200,
-                                    days=10, direction="above")
+                                     days=10, direction="above")
                 if(cross == 1):
                     potential_buys.append(symbol)
                     if(verbose == True):
                         print("Strengthen position of " + symbol +
-                            " as the golden cross is within 10 days.")
+                              " as the golden cross is within 10 days.")
             if(symbol not in portfolio_symbols):
                 cross = golden_cross(symbol, n1=50, n2=200,
-                                    days=10, direction="above")
+                                     days=10, direction="above")
                 if(cross == 1):
                     potential_buys.append(symbol)
         if(len(potential_buys) > 0):
             buy_holdings(potential_buys, profile_data, holdings_data)
             update_trade_history(potential_buys, holdings_data,
-                                trade_history_file_name)
+                                 trade_history_file_name)
         if(len(sells) > 0):
             update_trade_history(sells, holdings_data, trade_history_file_name)
-        print("----- Scan over -----\n")
 
         # Get the metrics report.
         get_accurate_gains()
+        
+        print("----- Scan over -----\n")
 
         # Sign out of the email server.
         server.quit()
@@ -423,7 +468,7 @@ def scan_stocks():
         print("Could not convert data to an integer.")
     except Exception as e:
         print("Unexpected error:", str(e))
-        
+
         login_to_sms()
         send_text("Unexpected error:" + str(e))
         raise
