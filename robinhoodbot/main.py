@@ -162,6 +162,9 @@ def five_year_check(stockTicker):
         False otherwise
     """
     instrument = r.get_instruments_by_symbols(stockTicker)
+    if(len(r.get_instruments_by_symbols(stockTicker)) == 0):
+        return False
+
     list_date = instrument[0].get("list_date")
     if ((pd.Timestamp("now") - pd.to_datetime(list_date)) < pd.Timedelta("5 Y")):
         return True
@@ -199,10 +202,9 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
     """
     """ Apparently 5 year historicals are no longer available with hourly intervals.  Only with day intervals now.
     """
-    if(direction == "above" and not five_year_check(stockTicker)):
-        if(verbose == True):
-            print("We're considering whether to buy the " + stockTicker +
-                  " but it hasn't risen overall in the last 5 years and it hasn't IPO'd in the last 5 years, suggesting it contains fundamental issues.\n")
+    yearCheck = five_year_check(stockTicker)
+
+    if(direction == "above" and not yearCheck):
         return False
 
     history = r.get_stock_historicals(
@@ -222,6 +224,9 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
     df = pd.concat(series, axis=1)
     cross = get_last_crossing(
         df, days, symbol=stockTicker, direction=direction)
+    if(verbose == True and cross == 1 and direction == "above" and yearCheck):
+        print("We're considering whether to buy the " + stockTicker +
+                  " but it hasn't risen overall in the last 5 years and it hasn't IPO'd in the last 5 years, suggesting it contains fundamental issues.\n")
     if(plot):
         show_plot(price, sma1, sma2, dates, symbol=stockTicker,
                   label1=str(n1)+" day SMA", label2=str(n2)+" day SMA")
@@ -309,7 +314,7 @@ def get_accurate_gains():
 
     equity = float(profileData['equity'])
     totalGainMinusDividends = equity - dividends - money_invested
-    percentGain = totalGainMinusDividends/money_invested*100
+    percentGain = (totalGainMinusDividends/money_invested)*100
     equityAndWithdrawableAmount = equity + withdrawable_amount
 
     bankTransfered = "The total money transferred from your bank is ${:.2f}".format(
@@ -321,7 +326,7 @@ def get_accurate_gains():
     equityAndWithdrawable = "Total ${:.2f}".format(equityAndWithdrawableAmount)
     dividendIncrease = "The net worth has increased {:0.2}% due to dividends that amount to ${:0.2f}".format(
         percentDividend, dividends)
-    gainIncrease = "The amount invested has increased {:0.3f}% which amounts to ${:0.2f}".format(
+    gainIncrease = "The amount invested has now increased {:0.2f}% which amounts to ${:0.2f}".format(
         percentGain, totalGainMinusDividends)
 
     print(bankTransfered)
@@ -364,14 +369,13 @@ def get_accurate_gains():
 def get_market_tag_stocks_report():
     try:
         report_string = ""
-        all_market_tag_stocks = r.get_all_stocks_from_market_tag(
-            tag=market_tag_for_report)
+        
+        all_market_tag_stocks = r.get_all_stocks_from_market_tag(market_tag_for_report, info = 'symbol')
         for market_tag_stock in all_market_tag_stocks:
-            cross = golden_cross(market_tag_stock['symbol'], n1=50,
+            cross = golden_cross(market_tag_stock, n1=50,
                                  n2=200, days=10, direction="above")
             if(cross == 1):
-                last_trade_price = "${:0.2f}".format(float(market_tag_stock["last_trade_price"]))
-                report_string = report_string + " \n " + market_tag_stock["symbol"] + " " + last_trade_price
+                report_string = report_string + " \n " + market_tag_stock
         if(report_string != ""):
             return market_tag_for_report + " \n\n " + report_string
         return ""
@@ -425,6 +429,7 @@ def scan_stocks():
             cross = golden_cross(symbol, n1=50, n2=200,
                                  days=30, direction="below")
             if(cross == -1):
+                send_text("Attempting to sell " + symbol)
                 sell_holdings(symbol, holdings_data)
                 sells.append(symbol)
         profile_data = r.build_user_profile()
@@ -435,6 +440,7 @@ def scan_stocks():
                 cross = golden_cross(symbol, n1=50, n2=200,
                                      days=10, direction="above")
                 if(cross == 1):
+                    send_text("Attempting to buy " + symbol)
                     potential_buys.append(symbol)
                     if(verbose == True):
                         print("Strengthen position of " + symbol +
@@ -443,6 +449,7 @@ def scan_stocks():
                 cross = golden_cross(symbol, n1=50, n2=200,
                                      days=10, direction="above")
                 if(cross == 1):
+                    send_text("Attempting to buy " + symbol)
                     potential_buys.append(symbol)
         if(len(potential_buys) > 0):
             buy_holdings(potential_buys, profile_data, holdings_data)
