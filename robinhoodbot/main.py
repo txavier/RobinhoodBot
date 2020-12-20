@@ -322,7 +322,7 @@ def get_accurate_gains():
     withdrawable_amount = "The total money not invested is ${:.2f}".format(
         withdrawable_amount)
     invested = "The total money invested is ${:.2f}".format(money_invested)
-    equity = "The total equity is now at ${:.2f}".format(equity)
+    equity = "The total equity of the amount invested is now at ${:.2f}".format(equity)
     equityAndWithdrawable = "Total ${:.2f}".format(equityAndWithdrawableAmount)
     dividendIncrease = "The net worth has increased {:0.2}% due to dividends that amount to ${:0.2f}".format(
         percentDividend, dividends)
@@ -343,6 +343,9 @@ def get_accurate_gains():
     begin_time = datetime.time(8, 30)
     end_time = datetime.time(9, 0)
     timenow = datetime.datetime.now().time()
+
+    if debug: 
+        market_tag_report = get_market_tag_stocks_report()
 
     if(timenow >= begin_time and timenow < end_time):
         print("Sending morning report.")
@@ -369,13 +372,16 @@ def get_accurate_gains():
 def get_market_tag_stocks_report():
     try:
         report_string = ""
-        
-        all_market_tag_stocks = r.get_all_stocks_from_market_tag(market_tag_for_report, info = 'symbol')
-        for market_tag_stock in all_market_tag_stocks:
-            cross = golden_cross(market_tag_stock, n1=50,
-                                 n2=200, days=10, direction="above")
-            if(cross == 1):
-                report_string = report_string + " \n " + market_tag_stock
+        market_tag_for_report_array = market_tag_for_report.split(',')
+
+        for market_tag_for_report_item in market_tag_for_report_array:
+            all_market_tag_stocks = r.get_all_stocks_from_market_tag(market_tag_for_report_item, info = 'symbol')
+            for market_tag_stock in all_market_tag_stocks:
+                cross = golden_cross(market_tag_stock, n1=50,
+                                    n2=200, days=10, direction="above")
+                if(cross == 1):
+                    report_string = report_string + " \n " + market_tag_stock
+                    
         if(report_string != ""):
             return market_tag_for_report + " \n\n " + report_string
         return ""
