@@ -5,6 +5,7 @@ import ta as t
 import smtplib
 import sys
 import datetime
+import traceback
 from pandas.plotting import register_matplotlib_converters
 from misc import *
 from tradingstats import *
@@ -34,7 +35,10 @@ def send_text(message):
     msg = MIMEMultipart()
     msg['From'] = rh_email
     msg['To'] = sms_gateway
-    msg['Subject'] = 'Robinhood Stocks'
+    if debug:
+        msg['Subject'] = 'DEBUG Robinhood Stocks'
+    else:
+        msg['Subject'] = 'Robinhood Stocks'
     msg.attach(MIMEText(message+'**', 'plain'))
     sms = msg.as_string()
     server.sendmail(rh_email, sms_gateway, sms)
@@ -46,7 +50,14 @@ def get_watchlist_symbols():
     """
     my_list_names = []
     symbols = []
-    list = r.get_watchlist_by_name(name=watchlistName)
+    list = r.get_watchlist_by_name(name=watch_list_name)
+    # Remove any exclusions.
+    if use_exclusion_watchlist:
+        exclusion_list = r.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
+        for list_item in list['results']:
+            for exclusion_item in exclusion_list['results']:
+                if exclusion_item['symbol'] == list_item['symbol']:
+                    list_item.remove(exclusion_item['symbol'])
     for item in list['results']:
         symbol = item['symbol']
         symbols.append(symbol)
@@ -175,10 +186,10 @@ def five_year_check(stockTicker):
         closingPrices.append(float(item['close_price']))
     recent_price = closingPrices[len(closingPrices) - 1]
     oldest_price = closingPrices[0]
-    if(recent_price <= oldest_price and verbose == True):
-        print("The stock " + stockTicker + " IPO'd, more than 5 years ago, on " + list_date +
-              " with a price 5 years ago of " + str(oldest_price) +
-              " and a current price of " + str(recent_price) + "\n")
+    # if(recent_price <= oldest_price and verbose == True):
+    #     print("The stock " + stockTicker + " IPO'd, more than 5 years ago, on " + list_date +
+    #           " with a price 5 years ago of " + str(oldest_price) +
+    #           " and a current price of " + str(recent_price) + "\n")
     return (recent_price > oldest_price)
 
 
@@ -207,13 +218,28 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
     if(direction == "above" and not yearCheck):
         return False
 
-    history = r.get_stock_historicals(
-        stockTicker, interval='day', span='year', bounds='regular')
+    history = r.get_stock_historicals(stockTicker, interval='hour', span='3month', bounds='regular')
     closingPrices = []
     dates = []
-    for item in history:
-        closingPrices.append(float(item['close_price']))
-        dates.append(item['begins_at'])
+    for history_item in history:
+        closingPrices.append(float(history_item['close_price']))
+        dates.append(history_item['begins_at'])
+
+    # If we are in extended hours then add extended hours close_prices.
+    # extended_hours = False
+    # begin_time = datetime.time(17, 30)
+    # end_time = datetime.time(9, 0)
+    # timenow = datetime.datetime.now().time()
+
+    # if(timenow >= begin_time or timenow < begin_time):
+    #     extended_hours = True
+
+    # if(extended_hours):
+    #     today_history = r.get_stock_historicals(stockTicker, interval='hour', span='day', bounds='extended')
+    #     for today_history_item in today_history:
+    #         closingPrices.append(float(today_history_item['close_price']))
+    #         dates.append(today_history_item['begins_at'])
+
     price = pd.Series(closingPrices)
     dates = pd.Series(dates)
     dates = pd.to_datetime(dates)
@@ -224,9 +250,9 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
     df = pd.concat(series, axis=1)
     cross = get_last_crossing(
         df, days, symbol=stockTicker, direction=direction)
-    if(verbose == True and cross == 1 and direction == "above" and yearCheck):
-        print("We're considering whether to buy the " + stockTicker +
-                  " but it hasn't risen overall in the last 5 years and it hasn't IPO'd in the last 5 years, suggesting it contains fundamental issues.\n")
+    # if(verbose == True and cross == 1 and direction == "above" and yearCheck):
+    #     print("We're considering whether to buy the " + stockTicker +
+    #               " but it hasn't risen overall in the last 5 years and it hasn't IPO'd in the last 5 years, suggesting it contains fundamental issues.\n")
     if(plot):
         show_plot(price, sma1, sma2, dates, symbol=stockTicker,
                   label1=str(n1)+" day SMA", label2=str(n2)+" day SMA")
@@ -259,15 +285,24 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
         potential_buys(list): List of strings, the strings are the symbols of stocks we want to buy
         symbol(str): Symbol of the stock we want to sell
         holdings_data(dict): dict obtained from r.build_holdings() or get_modified_holdings() method
+
+    Returns: 
+        False if order has not been placed because there was not enough buying power.
     """
     cash = float(profile_data.get('cash'))
     portfolio_value = float(profile_data.get('equity')) - cash
     ideal_position_size = (safe_division(portfolio_value, len(
         holdings_data))+cash/len(potential_buys))/(2 * len(potential_buys))
     prices = r.get_latest_price(potential_buys)
+    buying_power = r.load_account_profile(info='buying_power')
+    order_placed = False
     for i in range(0, len(potential_buys)):
         stock_price = float(prices[i])
-        if(ideal_position_size < stock_price < ideal_position_size*1.5):
+        if (float(buying_power) < ideal_position_size):
+            output = "####### Tried buying shares of " + potential_buys[i] + ", but at ${:.2f}".format(ideal_position_size) + " your account balance of ${:.2f}".format(float(buying_power)) + " is not enough buying power to do so#######"
+            print(output)
+            break
+        elif(ideal_position_size < stock_price < ideal_position_size*1.5):
             num_shares = int(ideal_position_size*1.5/stock_price)
         elif (stock_price < ideal_position_size):
             num_shares = int(ideal_position_size/stock_price)
@@ -279,11 +314,20 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
         print("####### Buying " + str(num_shares) +
               " shares of " + potential_buys[i] + " #######")
 
-        if not debug:
-            r.order_buy_market(potential_buys[i], num_shares)
-        send_text("BUY: \nBuying " + str(num_shares) + " shares of " + potential_buys[i])
+        send_text("Attempting to buy " + potential_buys[i])
 
-def get_accurate_gains():
+        message = "BUY: \nBuying " + str(num_shares) + " shares of " + potential_buys[i]
+
+        if not debug:
+            result = r.order_buy_market(potential_buys[i], num_shares)
+            if 'detail' in result:
+                message = message +  ". The result is " + result['detail']
+        order_placed = True
+        send_text(message)
+    return order_placed
+    
+
+def get_accurate_gains(portfolio_symbols):
     '''
     Robinhood includes dividends as part of your net gain. This script removes
     dividends from net gain to figure out how much your stocks/options have paid
@@ -346,7 +390,10 @@ def get_accurate_gains():
 
     if debug: 
         market_tag_report = get_market_tag_stocks_report()
-
+        send_text(market_tag_report[0])
+        if market_report_auto_invest:
+            auto_invest(market_tag_report[1], portfolio_symbols)
+            
     if(timenow >= begin_time and timenow < end_time):
         print("Sending morning report.")
         send_text(bankTransfered + "\n" +
@@ -354,7 +401,9 @@ def get_accurate_gains():
         send_text(equity + "\n" + equityAndWithdrawable + "\n" + gainIncrease)
         # Get interesting stocks report.
         market_tag_report = get_market_tag_stocks_report()
-        send_text(market_tag_report)
+        send_text(market_tag_report[0])
+        if market_report_auto_invest:
+            auto_invest(market_tag_report[1], portfolio_symbols)
 
     # Evening report
     begin_time = datetime.time(17, 30)
@@ -369,21 +418,69 @@ def get_accurate_gains():
         market_tag_report = get_market_tag_stocks_report()
         send_text(market_tag_report)
 
+def auto_invest(stock_array, portfolio_symbols):
+    try:
+        invest = True
+
+        # If the previous stock that we added to the watchlist is still here
+        # or the stock is in an exclusion list if one has been set
+        # then dont auto invest any other stocks for now to prevent just adding
+        # all stocks to the investment pool thus diluting the investment potential
+        # in the previous stock that has been autoinvested.
+        exclusion_list = r.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
+        for stock in stock_array:
+            if (stock in portfolio_symbols):
+                invest = False
+                print(stock + " is still in the recomended list. Auto-Invest will skip this interval in order to allow time between stock generation.")
+            if (use_exclusion_watchlist):
+                for exclusion_result in exclusion_list['results']:
+                    if (stock == exclusion_result['symbol']):
+                        stock_array.remove(stock)
+
+        if (invest):
+            # Find stock with the lowest stock price and add it to the watchlist.
+            price_array = r.get_latest_price(stock_array)
+            stock_and_price_float_array = [float(i) for i in price_array]
+            sorted_price_array = sorted(stock_and_price_float_array, key=float)
+            lowest_price = sorted_price_array[0]
+            # Convert the string price array to float and find the index of the 
+            # stock with the lowest price.
+            index_of_lowest_price = [float(i) for i in price_array].index(lowest_price)
+            symbol_of_lowest_price = stock_array[index_of_lowest_price]
+            message = "Auto-Invest is adding " + symbol_of_lowest_price + " at ${:.2f}".format(lowest_price) + " to the " + watch_list_name + " watchlist."
+            send_text(message)
+            print(message)
+            if not debug:
+                r.post_symbols_to_watchlist(symbol_of_lowest_price, watch_list_name)
+
+    except IOError as e:
+        print(e)
+        print(sys.exc_info()[0])
+    except ValueError:
+        print("Could not convert data to an integer.")
+    except Exception as e:
+        print("Unexpected error could not generate interesting stocks report:", str(e))
+
+        login_to_sms()
+        send_text(
+            "Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.print_exc())
+
 def get_market_tag_stocks_report():
     try:
         report_string = ""
         market_tag_for_report_array = market_tag_for_report.split(',')
+        stock_array = []
 
         for market_tag_for_report_item in market_tag_for_report_array:
             all_market_tag_stocks = r.get_all_stocks_from_market_tag(market_tag_for_report_item, info = 'symbol')
             for market_tag_stock in all_market_tag_stocks:
-                cross = golden_cross(market_tag_stock, n1=50,
-                                    n2=200, days=10, direction="above")
+                cross = golden_cross(market_tag_stock, n1=21, n2=84, days=10, direction="above")
                 if(cross == 1):
                     report_string = report_string + " \n " + market_tag_stock
-                    
+                    stock_array.append(market_tag_stock)
+
         if(report_string != ""):
-            return market_tag_for_report + " \n\n " + report_string
+            return market_tag_for_report + " \n\n " + report_string, stock_array
         return ""
 
     except IOError as e:
@@ -396,7 +493,7 @@ def get_market_tag_stocks_report():
 
         login_to_sms()
         send_text(
-            "Unexpected error could not generate interesting stocks report:" + str(e))
+            "Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.print_exc())
 
 
 def scan_stocks():
@@ -432,8 +529,7 @@ def scan_stocks():
         print("Current Watchlist: " + str(watchlist_symbols) + "\n")
         print("----- Scanning portfolio for stocks to sell -----\n")
         for symbol in portfolio_symbols:
-            cross = golden_cross(symbol, n1=50, n2=200,
-                                 days=30, direction="below")
+            cross = golden_cross(symbol, n1=21, n2=84, days=30, direction="below")
             if(cross == -1):
                 send_text("Attempting to sell " + symbol)
                 sell_holdings(symbol, holdings_data)
@@ -443,29 +539,27 @@ def scan_stocks():
         for symbol in watchlist_symbols:
             # If more money has been added then strengthen position of well performing portfolio holdings if the funds allow.
             if(symbol in portfolio_symbols):
-                cross = golden_cross(symbol, n1=50, n2=200,
-                                     days=10, direction="above")
+                cross = golden_cross(symbol, n1=21, n2=84, days=10, direction="above")
                 if(cross == 1):
-                    send_text("Attempting to buy " + symbol)
                     potential_buys.append(symbol)
                     if(verbose == True):
                         print("Strengthen position of " + symbol +
                               " as the golden cross is within 10 days.")
             if(symbol not in portfolio_symbols):
-                cross = golden_cross(symbol, n1=50, n2=200,
-                                     days=10, direction="above")
+                cross = golden_cross(symbol, n1=21, n2=84, days=10, direction="above")
                 if(cross == 1):
-                    send_text("Attempting to buy " + symbol)
                     potential_buys.append(symbol)
         if(len(potential_buys) > 0):
-            buy_holdings(potential_buys, profile_data, holdings_data)
-            update_trade_history(potential_buys, holdings_data,
-                                 trade_history_file_name)
+            buy_holdings_succeeded = buy_holdings(potential_buys, profile_data, holdings_data)
+            if buy_holdings_succeeded:
+                new_holdings = get_modified_holdings()
+                update_trade_history(potential_buys, new_holdings, trade_history_file_name)
         if(len(sells) > 0):
-            update_trade_history(sells, holdings_data, trade_history_file_name)
+            new_holdings = get_modified_holdings()
+            update_trade_history(sells, new_holdings, trade_history_file_name)
 
         # Get the metrics report.
-        get_accurate_gains()
+        get_accurate_gains(portfolio_symbols)
         
         print("----- Scan over -----\n")
 
@@ -478,8 +572,8 @@ def scan_stocks():
     except IOError as e:
         print(e)
         print(sys.exc_info()[0])
-    except ValueError:
-        print("Could not convert data to an integer.")
+    # except ValueError:
+    #     print("Could not convert data to an integer.")
     except Exception as e:
         print("Unexpected error:", str(e))
 

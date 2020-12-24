@@ -13,7 +13,10 @@ rh_mail_password="my password"
 rh_phone="7777777777"
 rh_company_url="phone company email address url i.e. for Verizon this will be 'vtext.com'"
 trade_history_file_name="tradehistory.txt"
-watchlistName="My First Watchlist"
+watch_list_name="My First Watchlist"
 # caution here, if the market tag returns too much data this
 # will crash.
-market_tag_for_report="most-popular-under-25"
+market_tag_for_report="most-popular-under-25,technology,upcoming-earnings"
+market_report_auto_invest=False
+use_exclusion_watchlist=False
+auto_invest_exclusion_watchlist="ExclusionList"
