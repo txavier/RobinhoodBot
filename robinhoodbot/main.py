@@ -416,7 +416,7 @@ def get_accurate_gains(portfolio_symbols):
         send_text(equity + "\n" + equityAndWithdrawable + "\n" + gainIncrease)
         # Get interesting stocks report.
         market_tag_report = get_market_tag_stocks_report()
-        send_text(market_tag_report)
+        send_text(market_tag_report[0])
 
 def auto_invest(stock_array, portfolio_symbols):
     try:
@@ -469,7 +469,7 @@ def find_symbol_with_highest_volume(stock_array):
     volume_array = r.get_stock_historicals(stock_array, interval='hour', span='day', bounds='regular', info='volume')
     stock_and_volume_float_array = [float(i) for i in volume_array]
     sorted_volume_array = sorted(stock_and_volume_float_array, key=float)
-    highest_volume = sorted_volume_array[sorted_volume_array - 1]
+    highest_volume = sorted_volume_array[len(sorted_volume_array) - 1]
     # Convert the string price array to float and find the index of the 
     # stock with the lowest price.
     index_of_highest_volume = [float(i) for i in volume_array].index(highest_volume)
