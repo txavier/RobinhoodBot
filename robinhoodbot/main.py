@@ -438,20 +438,20 @@ def auto_invest(stock_array, portfolio_symbols):
                         stock_array.remove(stock)
 
         if (invest):
-            # Find stock with the lowest stock price and add it to the watchlist.
-            price_array = r.get_latest_price(stock_array)
-            stock_and_price_float_array = [float(i) for i in price_array]
-            sorted_price_array = sorted(stock_and_price_float_array, key=float)
-            lowest_price = sorted_price_array[0]
-            # Convert the string price array to float and find the index of the 
-            # stock with the lowest price.
-            index_of_lowest_price = [float(i) for i in price_array].index(lowest_price)
-            symbol_of_lowest_price = stock_array[index_of_lowest_price]
-            message = "Auto-Invest is adding " + symbol_of_lowest_price + " at ${:.2f}".format(lowest_price) + " to the " + watch_list_name + " watchlist."
+            # Lowest price.
+            # symbol_and_price = find_symbol_with_lowest_price(stock_array)
+            # selected_symbol = symbol_and_price[0]
+            # lowest_price = symbol_and_price[1]
+            # message = "Auto-Invest is adding " + selected_symbol + " at ${:.2f}".format(lowest_price) + " to the " + watch_list_name + " watchlist."
+
+            # Highest volume.
+            selected_symbol = find_symbol_with_highest_volume(stock_array)
+            message = "Auto-Invest is adding " + selected_symbol + " to the " + watch_list_name + " watchlist."
+
             send_text(message)
             print(message)
             if not debug:
-                r.post_symbols_to_watchlist(symbol_of_lowest_price, watch_list_name)
+                r.post_symbols_to_watchlist(selected_symbol, watch_list_name)
 
     except IOError as e:
         print(e)
@@ -464,6 +464,29 @@ def auto_invest(stock_array, portfolio_symbols):
         login_to_sms()
         send_text(
             "Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.print_exc())
+
+def find_symbol_with_highest_volume(stock_array):
+    volume_array = r.get_stock_historicals(stock_array, interval='hour', span='day', bounds='regular', info='volume')
+    stock_and_volume_float_array = [float(i) for i in volume_array]
+    sorted_volume_array = sorted(stock_and_volume_float_array, key=float)
+    highest_volume = sorted_volume_array[sorted_volume_array - 1]
+    # Convert the string price array to float and find the index of the 
+    # stock with the lowest price.
+    index_of_highest_volume = [float(i) for i in volume_array].index(highest_volume)
+    symbol_of_highest_volume = stock_array[index_of_highest_volume]
+    return symbol_of_highest_volume
+
+def find_stock_with_lowest_price(stock_array):
+    # Find stock with the lowest stock price.
+    price_array = r.get_latest_price(stock_array)
+    stock_and_price_float_array = [float(i) for i in price_array]
+    sorted_price_array = sorted(stock_and_price_float_array, key=float)
+    lowest_price = sorted_price_array[0]
+    # Convert the string price array to float and find the index of the 
+    # stock with the lowest price.
+    index_of_lowest_price = [float(i) for i in price_array].index(lowest_price)
+    symbol_of_lowest_price = stock_array[index_of_lowest_price]
+    return symbol_of_lowest_price, index_of_lowest_price
 
 def get_market_tag_stocks_report():
     try:
