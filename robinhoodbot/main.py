@@ -474,7 +474,7 @@ def get_market_tag_stocks_report():
         for market_tag_for_report_item in market_tag_for_report_array:
             all_market_tag_stocks = r.get_all_stocks_from_market_tag(market_tag_for_report_item, info = 'symbol')
             for market_tag_stock in all_market_tag_stocks:
-                cross = golden_cross(market_tag_stock, n1=21, n2=84, days=10, direction="above")
+                cross = golden_cross(market_tag_stock, n1=34, n2=84, days=10, direction="above")
                 if(cross == 1):
                     report_string = report_string + " \n " + market_tag_stock
                     stock_array.append(market_tag_stock)
@@ -529,7 +529,7 @@ def scan_stocks():
         print("Current Watchlist: " + str(watchlist_symbols) + "\n")
         print("----- Scanning portfolio for stocks to sell -----\n")
         for symbol in portfolio_symbols:
-            cross = golden_cross(symbol, n1=21, n2=84, days=30, direction="below")
+            cross = golden_cross(symbol, n1=34, n2=84, days=30, direction="below")
             if(cross == -1):
                 send_text("Attempting to sell " + symbol)
                 sell_holdings(symbol, holdings_data)
@@ -539,14 +539,14 @@ def scan_stocks():
         for symbol in watchlist_symbols:
             # If more money has been added then strengthen position of well performing portfolio holdings if the funds allow.
             if(symbol in portfolio_symbols):
-                cross = golden_cross(symbol, n1=21, n2=84, days=10, direction="above")
+                cross = golden_cross(symbol, n1=34, n2=84, days=10, direction="above")
                 if(cross == 1):
                     potential_buys.append(symbol)
                     if(verbose == True):
                         print("Strengthen position of " + symbol +
                               " as the golden cross is within 10 days.")
             if(symbol not in portfolio_symbols):
-                cross = golden_cross(symbol, n1=21, n2=84, days=10, direction="above")
+                cross = golden_cross(symbol, n1=34, n2=84, days=10, direction="above")
                 if(cross == 1):
                     potential_buys.append(symbol)
         if(len(potential_buys) > 0):
