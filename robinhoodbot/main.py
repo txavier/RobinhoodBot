@@ -71,7 +71,7 @@ def get_portfolio_symbols():
     Returns: the symbol for each stock in your portfolio as a list of strings
     """
     symbols = []
-    holdings_data = r.get_all_positions()
+    holdings_data = r.get_open_stock_positions()
     for item in holdings_data:
         if not item:
             continue
@@ -109,7 +109,7 @@ def get_modified_holdings():
         position you have, which is 'bought_at': (the time the stock was purchased)
     """
     holdings = r.build_holdings()
-    holdings_data = r.get_all_positions()
+    holdings_data = r.get_open_stock_positions()
     for symbol, dict in holdings.items():
         bought_at = get_position_creation_date(symbol, holdings_data)
         bought_at = str(pd.to_datetime(bought_at))
