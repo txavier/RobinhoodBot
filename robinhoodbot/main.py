@@ -201,7 +201,7 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
         n1(int): Specifies the short-term indicator as an X-day moving average.
         n2(int): Specifies the long-term indicator as an X-day moving average.
                  (n1 should be smaller than n2 to produce meaningful results, e.g n1=50, n2=200)
-        days(int): Specifies the maximum number of days that the cross can occur by
+        days(int): Specifies the maximum number of days that the cross can occur by e.g. 10
         direction(str): "above" if we are searching for an upwards cross, "below" if we are searching for a downwaords cross. Optional, used for printing purposes
 
     Returns:
@@ -466,7 +466,10 @@ def auto_invest(stock_array, portfolio_symbols):
             "Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.print_exc())
 
 def find_symbol_with_highest_volume(stock_array):
-    volume_array = r.get_stock_historicals(stock_array, interval='hour', span='day', bounds='regular', info='volume')
+    volume_array = []
+    for stock in stock_array:
+        volumes = r.get_stock_historicals(stock, interval='day', span='week', bounds='regular', info='volume')
+        volume_array.append(volumes[len(volumes) - 1])
     stock_and_volume_float_array = [float(i) for i in volume_array]
     sorted_volume_array = sorted(stock_and_volume_float_array, key=float)
     highest_volume = sorted_volume_array[len(sorted_volume_array) - 1]
@@ -561,13 +564,14 @@ def scan_stocks():
         print("\n----- Scanning watchlist for stocks to buy -----\n")
         for symbol in watchlist_symbols:
             # If more money has been added then strengthen position of well performing portfolio holdings if the funds allow.
-            if(symbol in portfolio_symbols):
-                cross = golden_cross(symbol, n1=34, n2=84, days=10, direction="above")
-                if(cross == 1):
-                    potential_buys.append(symbol)
-                    if(verbose == True):
-                        print("Strengthen position of " + symbol +
-                              " as the golden cross is within 10 days.")
+            # the below has been commented out to make the algorithm less aggressive in fear of violating day-trading policies.
+            # if(symbol in portfolio_symbols):
+            #     cross = golden_cross(symbol, n1=34, n2=84, days=10, direction="above")
+            #     if(cross == 1):
+            #         potential_buys.append(symbol)
+            #         if(verbose == True):
+            #             print("Strengthen position of " + symbol +
+            #                   " as the golden cross is within 10 days.")
             if(symbol not in portfolio_symbols):
                 cross = golden_cross(symbol, n1=34, n2=84, days=10, direction="above")
                 if(cross == 1):
@@ -578,8 +582,7 @@ def scan_stocks():
                 new_holdings = get_modified_holdings()
                 update_trade_history(potential_buys, new_holdings, trade_history_file_name)
         if(len(sells) > 0):
-            new_holdings = get_modified_holdings()
-            update_trade_history(sells, new_holdings, trade_history_file_name)
+            update_trade_history(sells, holdings_data, trade_history_file_name)
 
         # Get the metrics report.
         get_accurate_gains(portfolio_symbols)
