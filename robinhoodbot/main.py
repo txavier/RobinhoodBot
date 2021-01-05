@@ -338,42 +338,31 @@ def get_accurate_gains(portfolio_symbols):
 
     profileData = r.load_portfolio_profile()
     allTransactions = r.get_bank_transfers()
-    cardTransactions = r.get_card_transactions()
+    cardTransactions= r.get_card_transactions()
 
-    deposits = sum(float(x['amount']) for x in allTransactions if (
-        x['direction'] == 'deposit') and (x['state'] == 'completed'))
-    moneyUsedToBuyStocks = sum(float(x['price'])*float(x['quantity'])
-                               for x in r.get_all_stock_orders() if (x['side'] == 'buy') and (x['state'] == 'filled'))
-    withdrawals = sum(float(x['amount']) for x in allTransactions if (
-        x['direction'] == 'withdraw') and (x['state'] == 'completed'))
-    debits = sum(float(x['amount']['amount']) for x in cardTransactions if (
-        x['direction'] == 'debit' and (x['transaction_type'] == 'settled')))
-    reversal_fees = sum(float(x['fees']) for x in allTransactions if (
-        x['direction'] == 'deposit') and (x['state'] == 'reversed'))
+    deposits = sum(float(x['amount']) for x in allTransactions if (x['direction'] == 'deposit') and (x['state'] == 'completed'))
+    withdrawals = sum(float(x['amount']) for x in allTransactions if (x['direction'] == 'withdraw') and (x['state'] == 'completed'))
+    debits = sum(float(x['amount']['amount']) for x in cardTransactions if (x['direction'] == 'debit' and (x['transaction_type'] == 'settled')))
+    reversal_fees = sum(float(x['fees']) for x in allTransactions if (x['direction'] == 'deposit') and (x['state'] == 'reversed'))
 
-    withdrawable_amount = float(profileData['withdrawable_amount'])
-    money_invested = moneyUsedToBuyStocks + reversal_fees - (withdrawals - debits)
+    money_invested = deposits + reversal_fees - (withdrawals - debits)
     dividends = r.get_total_dividends()
     percentDividend = dividends/money_invested*100
 
-    equity = float(profileData['equity'])
-    totalGainMinusDividends = equity - dividends - money_invested
-    percentGain = (totalGainMinusDividends/money_invested)*100
-    equityAndWithdrawableAmount = equity + withdrawable_amount
+    equity_amount = float(profileData['equity'])
+    buying_power = float(profileData['equity']) - float(profileData['market_value'])
+    totalGainMinusDividends = equity_amount - dividends - money_invested + buying_power
+    percentGain = totalGainMinusDividends/money_invested*100
 
-    bankTransfered = "The total money transferred from your bank is ${:.2f}".format(
-        deposits)
-    withdrawable_amount = "The total money not invested is ${:.2f}".format(
-        withdrawable_amount)
-    invested = "The total money invested is ${:.2f}".format(money_invested)
-    equity = "The total equity of the amount invested is now at ${:.2f}".format(equity)
-    equityAndWithdrawable = "Total ${:.2f}".format(equityAndWithdrawableAmount)
-    dividendIncrease = "The net worth has increased {:0.2}% due to dividends that amount to ${:0.2f}".format(
-        percentDividend, dividends)
-    gainIncrease = "The amount invested has now increased {:0.2f}% which amounts to ${:0.2f}".format(
-        percentGain, totalGainMinusDividends)
+    bankTransfered = "The total money invested is {:.2f}".format(money_invested)
+    equity = "The total equity is {:.2f}".format(equity_amount)
+    withdrawable_amount = "The buying power is {:.2f}".format(buying_power)
+    equityAndWithdrawable = "For a total account value of  {:.2f}".format(float(equity_amount + buying_power))
+    dividendIncrease = "The net worth has increased {:0.2}% due to dividends that amount to {:0.2f}".format(percentDividend, dividends)
+    gainIncrease = "The net worth has increased {:0.3}% due to other gains that amount to {:0.2f}".format(percentGain, totalGainMinusDividends)
 
     print(bankTransfered)
+    print(equity)
     print(withdrawable_amount)
     print(invested)
     print(equity)
@@ -397,7 +386,7 @@ def get_accurate_gains(portfolio_symbols):
     if(timenow >= begin_time and timenow < end_time):
         print("Sending morning report.")
         send_text(bankTransfered + "\n" +
-                  withdrawable_amount + "\n" + invested)
+                  withdrawable_amount)
         send_text(equity + "\n" + equityAndWithdrawable + "\n" + gainIncrease)
         # Get interesting stocks report.
         market_tag_report = get_market_tag_stocks_report()
@@ -412,7 +401,7 @@ def get_accurate_gains(portfolio_symbols):
     if(timenow >= begin_time and timenow < end_time):
         print("Sending evening report.")
         send_text(bankTransfered + "\n" +
-                  withdrawable_amount + "\n" + invested)
+                  withdrawable_amount)
         send_text(equity + "\n" + equityAndWithdrawable + "\n" + gainIncrease)
         # Get interesting stocks report.
         market_tag_report = get_market_tag_stocks_report()
