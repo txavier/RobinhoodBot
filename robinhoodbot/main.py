@@ -367,7 +367,7 @@ def get_accurate_gains(portfolio_symbols):
     print(equityAndWithdrawable)
     print(dividendIncrease)
     print(gainIncrease)
-
+    
     """ Send a text message with the days metrics """
 
     # Evening Morning report
@@ -379,9 +379,9 @@ def get_accurate_gains(portfolio_symbols):
         market_tag_report = get_market_tag_stocks_report()
         # If the market tag report has some stock values...
         if market_tag_report[0] != '':
-        send_text(market_tag_report[0])
-        if market_report_auto_invest:
-            auto_invest(market_tag_report[1], portfolio_symbols)
+            send_text(market_tag_report[0])
+            if market_report_auto_invest:
+                auto_invest(market_tag_report[1], portfolio_symbols)
             
     if(timenow >= begin_time and timenow < end_time):
         print("Sending morning report.")
@@ -392,9 +392,9 @@ def get_accurate_gains(portfolio_symbols):
         market_tag_report = get_market_tag_stocks_report()
         if market_tag_report[0] != '':
             # If the market tag report has some stock values...
-        send_text(market_tag_report[0])
-        if market_report_auto_invest:
-            auto_invest(market_tag_report[1], portfolio_symbols)
+            send_text(market_tag_report[0])
+            if market_report_auto_invest:
+                auto_invest(market_tag_report[1], portfolio_symbols)
 
     # Evening report
     begin_time = datetime.time(17, 30)
@@ -409,10 +409,10 @@ def get_accurate_gains(portfolio_symbols):
         market_tag_report = get_market_tag_stocks_report()
         if market_tag_report[0] != '':
             # If the market tag report has some stock values...
-        send_text(market_tag_report[0])
+            send_text(market_tag_report[0])
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols)
-
+                
 def auto_invest(stock_array, portfolio_symbols):
     try:
         invest = True
@@ -571,7 +571,10 @@ def scan_stocks():
                 cross = golden_cross(symbol, n1=34, n2=84, days=10, direction="above")
                 if(cross == 1):
                     potential_buys.append(symbol)
-        if(len(potential_buys) > 0):
+        # If there are any open stock orders then dont buy more.  This is to avoid 
+        # entering multiple orders of the same stock if the order has not yet between
+        # filled.
+        if(len(potential_buys) > 0 and len(r.get_all_open_stock_orders()) == 0):
             buy_holdings_succeeded = buy_holdings(potential_buys, profile_data, holdings_data)
             if buy_holdings_succeeded:
                 new_holdings = get_modified_holdings()
