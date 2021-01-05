@@ -374,7 +374,7 @@ def get_accurate_gains(portfolio_symbols):
 
     # Evening Morning report
     begin_time = datetime.time(8, 30)
-    end_time = datetime.time(9, 0)
+    end_time = datetime.time(9, 30)
     timenow = datetime.datetime.now().time()
 
     if debug: 
@@ -396,7 +396,7 @@ def get_accurate_gains(portfolio_symbols):
 
     # Evening report
     begin_time = datetime.time(17, 30)
-    end_time = datetime.time(18, 0)
+    end_time = datetime.time(18, 30)
 
     if(timenow >= begin_time and timenow < end_time):
         print("Sending evening report.")
