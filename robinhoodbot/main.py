@@ -364,8 +364,6 @@ def get_accurate_gains(portfolio_symbols):
     print(bankTransfered)
     print(equity)
     print(withdrawable_amount)
-    print(invested)
-    print(equity)
     print(equityAndWithdrawable)
     print(dividendIncrease)
     print(gainIncrease)
@@ -379,6 +377,8 @@ def get_accurate_gains(portfolio_symbols):
 
     if debug: 
         market_tag_report = get_market_tag_stocks_report()
+        # If the market tag report has some stock values...
+        if market_tag_report[0] != '':
         send_text(market_tag_report[0])
         if market_report_auto_invest:
             auto_invest(market_tag_report[1], portfolio_symbols)
@@ -390,6 +390,8 @@ def get_accurate_gains(portfolio_symbols):
         send_text(equity + "\n" + equityAndWithdrawable + "\n" + gainIncrease)
         # Get interesting stocks report.
         market_tag_report = get_market_tag_stocks_report()
+        if market_tag_report[0] != '':
+            # If the market tag report has some stock values...
         send_text(market_tag_report[0])
         if market_report_auto_invest:
             auto_invest(market_tag_report[1], portfolio_symbols)
@@ -405,7 +407,11 @@ def get_accurate_gains(portfolio_symbols):
         send_text(equity + "\n" + equityAndWithdrawable + "\n" + gainIncrease)
         # Get interesting stocks report.
         market_tag_report = get_market_tag_stocks_report()
+        if market_tag_report[0] != '':
+            # If the market tag report has some stock values...
         send_text(market_tag_report[0])
+            if market_report_auto_invest:
+                auto_invest(market_tag_report[1], portfolio_symbols)
 
 def auto_invest(stock_array, portfolio_symbols):
     try:
@@ -496,7 +502,7 @@ def get_market_tag_stocks_report():
 
         if(report_string != ""):
             return market_tag_for_report + " \n\n " + report_string, stock_array
-        return ""
+        return "", stock_array
 
     except IOError as e:
         print(e)
