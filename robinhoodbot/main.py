@@ -549,12 +549,18 @@ def scan_stocks():
         print("Current Portfolio: " + str(portfolio_symbols) + "\n")
         print("Current Watchlist: " + str(watchlist_symbols) + "\n")
         print("----- Scanning portfolio for stocks to sell -----\n")
+        open_stock_orders = []
         for symbol in portfolio_symbols:
             cross = golden_cross(symbol, n1=34, n2=84, days=30, direction="below")
             if(cross == -1):
-                send_text("Attempting to sell " + symbol)
-                sell_holdings(symbol, holdings_data)
-                sells.append(symbol)
+                open_stock_orders = r.get_all_open_stock_orders()
+                # If there are any open stock orders then dont buy more.  This is to avoid 
+                # entering multiple orders of the same stock if the order has not yet between
+                # filled.
+                if(len(open_stock_orders) == 0):
+                    send_text("Attempting to sell " + symbol)
+                    sell_holdings(symbol, holdings_data)
+                    sells.append(symbol)
         profile_data = r.build_user_profile()
         print("\n----- Scanning watchlist for stocks to buy -----\n")
         for symbol in watchlist_symbols:
@@ -570,11 +576,14 @@ def scan_stocks():
             if(symbol not in portfolio_symbols):
                 cross = golden_cross(symbol, n1=34, n2=84, days=10, direction="above")
                 if(cross == 1):
-                    potential_buys.append(symbol)
-        # If there are any open stock orders then dont buy more.  This is to avoid 
-        # entering multiple orders of the same stock if the order has not yet between
-        # filled.
-        if(len(potential_buys) > 0 and len(r.get_all_open_stock_orders()) == 0):
+                    open_stock_orders = r.get_all_open_stock_orders()
+                    # If there are any open stock orders then dont buy more.  This is to avoid 
+                    # entering multiple orders of the same stock if the order has not yet between
+                    # filled.
+                    if(len(open_stock_orders) == 0):
+                        potential_buys.append(symbol)
+        
+        if(len(potential_buys) > 0):
             buy_holdings_succeeded = buy_holdings(potential_buys, profile_data, holdings_data)
             if buy_holdings_succeeded:
                 new_holdings = get_modified_holdings()
