@@ -6,6 +6,7 @@ import smtplib
 import sys
 import datetime
 import traceback
+import time
 from pandas.plotting import register_matplotlib_converters
 from misc import *
 from tradingstats import *
@@ -56,7 +57,7 @@ def get_watchlist_symbols():
         exclusion_list = r.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
     skip = False
     for item in list['results']:
-            for exclusion_item in exclusion_list['results']:
+        for exclusion_item in exclusion_list['results']:
                 if exclusion_item['symbol'] == item['symbol']:
                     skip = True
         if skip:
@@ -358,12 +359,12 @@ def get_accurate_gains(portfolio_symbols):
     totalGainMinusDividends = equity_amount - dividends - money_invested + buying_power
     percentGain = totalGainMinusDividends/money_invested*100
 
-    bankTransfered = "The total money invested is {:.2f}".format(money_invested)
-    equity = "The total equity is {:.2f}".format(equity_amount)
-    withdrawable_amount = "The buying power is {:.2f}".format(buying_power)
-    equityAndWithdrawable = "For a total account value of  {:.2f}".format(float(equity_amount + buying_power))
-    dividendIncrease = "The net worth has increased {:0.2}% due to dividends that amount to {:0.2f}".format(percentDividend, dividends)
-    gainIncrease = "The net worth has increased {:0.3}% due to other gains that amount to {:0.2f}".format(percentGain, totalGainMinusDividends)
+    bankTransfered = "The total money invested is ${:.2f}".format(money_invested)
+    equity = "The total equity is ${:.2f}".format(equity_amount)
+    withdrawable_amount = "The buying power is ${:.2f}".format(buying_power)
+    equityAndWithdrawable = "The total account value of ${:.2f}".format(float(equity_amount + buying_power))
+    dividendIncrease = "The net worth has increased {:0.3f}% due to dividends that amount to ${:0.2f}".format(percentDividend, dividends)
+    gainIncrease = "The net worth has increased {:0.3f}% due to other gains that amount to ${:0.2f}".format(percentGain, totalGainMinusDividends)
 
     print(bankTransfered)
     print(equity)
@@ -389,9 +390,11 @@ def get_accurate_gains(portfolio_symbols):
             
     if(timenow >= begin_time and timenow < end_time):
         print("Sending morning report.")
-        send_text(bankTransfered + "\n" +
-                  withdrawable_amount)
-        send_text(equity + "\n" + equityAndWithdrawable + "\n" + gainIncrease)
+        send_text(bankTransfered + "\n" + withdrawable_amount)
+        time.sleep(2)
+        send_text(equity)      
+        time.sleep(2)
+        send_text(equityAndWithdrawable + "\n" + gainIncrease)
         # Get interesting stocks report.
         market_tag_report = get_market_tag_stocks_report()
         if market_tag_report[0] != '':
@@ -406,9 +409,11 @@ def get_accurate_gains(portfolio_symbols):
 
     if(timenow >= begin_time and timenow < end_time):
         print("Sending evening report.")
-        send_text(bankTransfered + "\n" +
-                  withdrawable_amount)
-        send_text(equity + "\n" + equityAndWithdrawable + "\n" + gainIncrease)
+        send_text(bankTransfered + "\n" + withdrawable_amount)
+        time.sleep(2)
+        send_text(equity)      
+        time.sleep(2)
+        send_text(equityAndWithdrawable + "\n" + gainIncrease)
         # Get interesting stocks report.
         market_tag_report = get_market_tag_stocks_report()
         if market_tag_report[0] != '':
