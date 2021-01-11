@@ -48,17 +48,21 @@ def get_watchlist_symbols():
     """
     Returns: the symbol for each stock in your watchlist as a list of strings
     """
-    my_list_names = []
+    exclusion_list = []
     symbols = []
     list = r.get_watchlist_by_name(name=watch_list_name)
     # Remove any exclusions.
     if use_exclusion_watchlist:
         exclusion_list = r.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
-        for list_item in list['results']:
-            for exclusion_item in exclusion_list['results']:
-                if exclusion_item['symbol'] == list_item['symbol']:
-                    list_item.remove(exclusion_item['symbol'])
+    skip = False
     for item in list['results']:
+            for exclusion_item in exclusion_list['results']:
+                if exclusion_item['symbol'] == item['symbol']:
+                    skip = True
+        if skip:
+            skip = False
+            continue
+
         symbol = item['symbol']
         symbols.append(symbol)
     x = np.array(symbols)
@@ -423,6 +427,7 @@ def auto_invest(stock_array, portfolio_symbols):
         # all stocks to the investment pool thus diluting the investment potential
         # in the previous stock that has been autoinvested.
         exclusion_list = r.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
+        stock_array_copy = stock_array.copy()
         for stock in stock_array:
             if (stock in portfolio_symbols):
                 invest = False
@@ -430,9 +435,10 @@ def auto_invest(stock_array, portfolio_symbols):
             if (use_exclusion_watchlist):
                 for exclusion_result in exclusion_list['results']:
                     if (stock == exclusion_result['symbol']):
-                        stock_array.remove(stock)
+                        stock_array_copy.remove(stock)
 
         if (invest):
+            stock_array = stock_array_copy
             # Lowest price.
             # symbol_and_price = find_symbol_with_lowest_price(stock_array)
             # selected_symbol = symbol_and_price[0]
