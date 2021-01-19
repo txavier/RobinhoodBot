@@ -329,7 +329,14 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
         order_placed = True
         send_text(message)
     return order_placed
-    
+
+def is_market_in_uptrend():
+    stockTicker = 'NDAQ'
+    # day_trades = r.get_day_trades()
+    today_history = r.get_stock_historicals(stockTicker, interval='hour', span='day', bounds='extended')    
+    if(float(today_history[0]['open_price']) < float(today_history[len(today_history) - 1]['close_price'])):
+        return True
+    return False
 
 def get_accurate_gains(portfolio_symbols):
     '''
@@ -434,8 +441,14 @@ def auto_invest(stock_array, portfolio_symbols):
         stock_array_copy = stock_array.copy()
         for stock in stock_array:
             if (stock in portfolio_symbols):
-                invest = False
-                print(stock + " is still in the recomended list. Auto-Invest will skip this interval in order to allow time between stock generation.")
+                # The code below was meant to prevent too many purchases of stock in the hopes
+                # but this has now been commented out in the hopes of experiementing with the
+                # benefits of multiple investments.
+                # invest = False
+                # message_skip = stock + " is still in the recomended list. Auto-Invest will skip this interval in order to allow time between stock generation."
+                # print(message_skip)
+                # send_text(message_skip)
+                stock_array_copy.remove(stock)
             if (use_exclusion_watchlist):
                 for exclusion_result in exclusion_list['results']:
                     if (stock == exclusion_result['symbol']):
@@ -559,6 +572,7 @@ def scan_stocks():
         print("Current Portfolio: " + str(portfolio_symbols) + "\n")
         print("Current Watchlist: " + str(watchlist_symbols) + "\n")
         print("----- Scanning portfolio for stocks to sell -----\n")
+        market_uptrend = is_market_in_uptrend()
         open_stock_orders = []
         for symbol in portfolio_symbols:
             cross = golden_cross(symbol, n1=34, n2=84, days=30, direction="below")
@@ -595,7 +609,7 @@ def scan_stocks():
                         # meaning that the price is still rising then buy.
                         if(float(cross[2]) > float(cross[1])):
                             if(market_uptrend):
-                        potential_buys.append(symbol)
+                                potential_buys.append(symbol)
                             else:
                                 print("But the market is not in an uptrend.")
                         else:
