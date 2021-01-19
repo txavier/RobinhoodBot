@@ -145,7 +145,7 @@ def get_last_crossing(df, days, symbol="", direction=""):
     found = index
     recentDiff = (shortTerm.at[index] - LongTerm.at[index]) >= 0
     if((direction == "above" and not recentDiff) or (direction == "below" and recentDiff)):
-        return 0
+        return 0,0
     index -= 1
     while(index >= 0 and found == lastIndex and not np.isnan(shortTerm.at[index]) and not np.isnan(LongTerm.at[index])
           and ((pd.Timestamp("now", tz='UTC') - dates.at[index]) <= pd.Timedelta(str(days) + " days"))):
@@ -162,9 +162,9 @@ def get_last_crossing(df, days, symbol="", direction=""):
                 pd.Timestamp("now", tz='UTC') - dates.at[found]) + " ago", ", price at cross: " + str(prices.at[found]) + ", current price: " + str(prices.at[lastIndex])
 
             print(last_crossing_report)
-        return (1 if recentDiff else -1)
+        return (1 if recentDiff else -1), prices.at[found], prices.at[lastIndex]
     else:
-        return 0
+        return 0,0
 
 
 def five_year_check(stockTicker):
@@ -210,9 +210,9 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
         direction(str): "above" if we are searching for an upwards cross, "below" if we are searching for a downwaords cross. Optional, used for printing purposes
 
     Returns:
-        1 if the short-term indicator crosses above the long-term one
+        1, price if the short-term indicator crosses above the long-term one and the price at cross.
         0 if there is no cross between the indicators
-        -1 if the short-term indicator crosses below the long-term one
+        -1, price if the short-term indicator crosses below the long-term one and price at cross
         False if direction == "above" and five_year_check(stockTicker) returns False, meaning that we're considering whether to
             buy the stock but it hasn't risen overall in the last five years, suggesting it contains fundamental issues
     """
@@ -221,7 +221,7 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
     yearCheck = five_year_check(stockTicker)
 
     if(direction == "above" and not yearCheck):
-        return False
+        return False,0
 
     history = r.get_stock_historicals(stockTicker, interval='hour', span='3month', bounds='regular')
     closingPrices = []
@@ -507,12 +507,12 @@ def get_market_tag_stocks_report():
             all_market_tag_stocks = r.get_all_stocks_from_market_tag(market_tag_for_report_item, info = 'symbol')
             for market_tag_stock in all_market_tag_stocks:
                 cross = golden_cross(market_tag_stock, n1=34, n2=84, days=10, direction="above")
-                if(cross == 1):
-                    report_string = report_string + " \n " + market_tag_stock
+                if(cross[0] == 1):
+                    report_string = report_string + "\n" + market_tag_stock + "{:.2f}".format(cross[2])
                     stock_array.append(market_tag_stock)
 
         if(report_string != ""):
-            return market_tag_for_report + " \n\n " + report_string, stock_array
+            return market_tag_for_report + "\n" + report_string, stock_array
         return "", stock_array
 
     except IOError as e:
@@ -563,7 +563,7 @@ def scan_stocks():
         open_stock_orders = []
         for symbol in portfolio_symbols:
             cross = golden_cross(symbol, n1=34, n2=84, days=30, direction="below")
-            if(cross == -1):
+            if(cross[0] == -1):
                 open_stock_orders = r.get_all_open_stock_orders()
                 # If there are any open stock orders then dont buy more.  This is to avoid 
                 # entering multiple orders of the same stock if the order has not yet between
@@ -586,14 +586,23 @@ def scan_stocks():
             #                   " as the golden cross is within 10 days.")
             if(symbol not in portfolio_symbols):
                 cross = golden_cross(symbol, n1=34, n2=84, days=10, direction="above")
-                if(cross == 1):
+                if(cross[0] == 1):
                     open_stock_orders = r.get_all_open_stock_orders()
                     # If there are any open stock orders then dont buy more.  This is to avoid 
                     # entering multiple orders of the same stock if the order has not yet between
                     # filled.
                     if(len(open_stock_orders) == 0):
+                        # If the current price is greater than the price at cross,
+                        # meaning that the price is still rising then buy.
+                        if(float(cross[2]) > float(cross[1])):
+                            if(market_uptrend):
                         potential_buys.append(symbol)
-        
+                            else:
+                                print("But the market is not in an uptrend.")
+                        else:
+                            print("But the price is lower than it was initially today " + str(cross[2]) + " < " + str(cross[1]))
+                    else:
+                        print("But there are " + str(len(open_stock_orders)) + " current pending orders.")
         if(len(potential_buys) > 0):
             buy_holdings_succeeded = buy_holdings(potential_buys, profile_data, holdings_data)
             if buy_holdings_succeeded:
