@@ -253,8 +253,7 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
     series = [price.rename("Price"), sma1.rename(
         "Indicator1"), sma2.rename("Indicator2"), dates.rename("Dates")]
     df = pd.concat(series, axis=1)
-    cross = get_last_crossing(
-        df, days, symbol=stockTicker, direction=direction)
+    cross = get_last_crossing(df, days, symbol=stockTicker, direction=direction)
     # if(verbose == True and cross == 1 and direction == "above" and yearCheck):
     #     print("We're considering whether to buy the " + stockTicker +
     #               " but it hasn't risen overall in the last 5 years and it hasn't IPO'd in the last 5 years, suggesting it contains fundamental issues.\n")
