@@ -20,3 +20,5 @@ market_tag_for_report="most-popular-under-25,technology,upcoming-earnings"
 market_report_auto_invest=False
 use_exclusion_watchlist=False
 auto_invest_exclusion_watchlist="ExclusionList"
+use_price_cap=False
+price_cap=40
