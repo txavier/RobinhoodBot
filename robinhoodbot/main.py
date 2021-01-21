@@ -13,6 +13,7 @@ from tradingstats import *
 from config import *
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from scipy.stats import linregress
 
 # Safe divide by zero division function
 
@@ -178,7 +179,7 @@ def five_year_check(stockTicker):
         False otherwise
     """
     instrument = r.get_instruments_by_symbols(stockTicker)
-    if(len(r.get_instruments_by_symbols(stockTicker)) == 0):
+    if(len(instrument) == 0):
         return False
 
     list_date = instrument[0].get("list_date")
@@ -333,12 +334,13 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
 def is_market_in_uptrend():
     stockTicker = 'NDAQ'
     # day_trades = r.get_day_trades()
-    today_history = r.get_stock_historicals(stockTicker, interval='hour', span='day', bounds='extended')    
+    # Using NasDaq as the market uptrend indicator which does not have extended trading hours.
+    today_history = r.get_stock_historicals(stockTicker, interval='5minute', span='day', bounds='regular')    
     if(float(today_history[0]['open_price']) < float(today_history[len(today_history) - 1]['close_price'])):
         return True
     return False
 
-def get_accurate_gains(portfolio_symbols):
+def get_accurate_gains(portfolio_symbols, watchlist_symbols):
     '''
     Robinhood includes dividends as part of your net gain. This script removes
     dividends from net gain to figure out how much your stocks/options have paid
@@ -358,7 +360,9 @@ def get_accurate_gains(portfolio_symbols):
 
     money_invested = deposits + reversal_fees - (withdrawals - debits)
     dividends = r.get_total_dividends()
-    percentDividend = dividends/money_invested*100
+    percentDividend = 0
+    if not money_invested == 0:
+        percentDividend = dividends/money_invested*100
 
     equity_amount = float(profileData['equity'])
     buying_power = float(profileData['equity']) - float(profileData['market_value'])
@@ -392,7 +396,15 @@ def get_accurate_gains(portfolio_symbols):
         if market_tag_report[0] != '':
             send_text(market_tag_report[0])
             if market_report_auto_invest:
-                auto_invest(market_tag_report[1], portfolio_symbols)
+                auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
+    # The below code can be uncommented if the you wish to have auto-invest run every hour
+    # or whatever interval was set.
+    # if not debug:
+    #     market_tag_report = get_market_tag_stocks_report()
+    #     # If the market tag report has some stock values...
+    #     if market_tag_report[0] != '':
+    #         if market_report_auto_invest:
+    #             auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
             
     if(timenow >= begin_time and timenow < end_time):
         print("Sending morning report.")
@@ -407,7 +419,7 @@ def get_accurate_gains(portfolio_symbols):
             # If the market tag report has some stock values...
             send_text(market_tag_report[0])
             if market_report_auto_invest:
-                auto_invest(market_tag_report[1], portfolio_symbols)
+                auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
 
     # Evening report
     begin_time = datetime.time(17, 30)
@@ -426,9 +438,9 @@ def get_accurate_gains(portfolio_symbols):
             # If the market tag report has some stock values...
             send_text(market_tag_report[0])
             if market_report_auto_invest:
-                auto_invest(market_tag_report[1], portfolio_symbols)
+                auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
                 
-def auto_invest(stock_array, portfolio_symbols):
+def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
     try:
         invest = True
 
@@ -440,6 +452,7 @@ def auto_invest(stock_array, portfolio_symbols):
         exclusion_list = r.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
         stock_array_copy = stock_array.copy()
         for stock in stock_array:
+            removed = False
             if (stock in portfolio_symbols):
                 # The code below was meant to prevent too many purchases of stock in the hopes
                 # but this has now been commented out in the hopes of experiementing with the
@@ -449,23 +462,47 @@ def auto_invest(stock_array, portfolio_symbols):
                 # print(message_skip)
                 # send_text(message_skip)
                 stock_array_copy.remove(stock)
+                removed = True
             if (use_exclusion_watchlist):
                 for exclusion_result in exclusion_list['results']:
                     if (stock == exclusion_result['symbol']):
                         stock_array_copy.remove(stock)
+                        removed = True
+            if (stock in watchlist_symbols):
+                if stock in stock_array_copy:
+                    stock_array_copy.remove(stock)
+                    removed = True
+            if (not removed):
+                # If this stock is untradeable on the robin hood platform
+                # take it out of the list of stocks under consideration.
+                stock_info = r.get_instruments_by_symbols(stock)
+                if (not stock_info[0]['tradeable']):
+                    stock_array_copy.remove(stock)
+                    removed = True
+            if (not removed and use_price_cap):
+                # If a price cap has been set remove any stocks
+                # that go above the cap.
+                history = r.get_stock_historicals(stock, interval='hour', span='day', bounds='regular')
+                if (float(history[0]['close_price']) > price_cap):
+                    stock_array_copy.remove(stock)
+                    removed = True
 
         if (invest):
             stock_array = stock_array_copy
+
             # Lowest price.
             # symbol_and_price = find_symbol_with_lowest_price(stock_array)
             # selected_symbol = symbol_and_price[0]
             # lowest_price = symbol_and_price[1]
             # message = "Auto-Invest is adding " + selected_symbol + " at ${:.2f}".format(lowest_price) + " to the " + watch_list_name + " watchlist."
 
-            # Highest volume.
-            selected_symbol = find_symbol_with_highest_volume(stock_array)
-            message = "Auto-Invest is adding " + selected_symbol + " to the " + watch_list_name + " watchlist."
+            # Greatest slope for today.
+            selected_symbol = find_symbol_with_greatest_slope(stock_array)
 
+            # Highest volume.
+            # selected_symbol = find_symbol_with_highest_volume(stock_array)
+            
+            message = "Auto-Invest is adding " + selected_symbol + " to the " + watch_list_name + " watchlist."
             send_text(message)
             print(message)
             if not debug:
@@ -480,19 +517,44 @@ def auto_invest(stock_array, portfolio_symbols):
         print("Unexpected error could not generate interesting stocks report:", str(e))
 
         login_to_sms()
-        send_text(
-            "Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.print_exc())
+        # send_text("Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.print_exc())
+        send_text("Unexpected error could not generate interesting stocks report:" + str(e))
+
+def find_symbol_with_greatest_slope(stock_array):
+    linregressResults = []
+    for stockTicker in stock_array:
+        # Load stock numbers.
+        history = r.get_stock_historicals(stockTicker, interval='5minute', span='day', bounds='regular')
+        closingPrices = []
+        dates = []
+        i = 0
+        for history_item in history:
+            closingPrices.append(float(history_item['close_price']))
+            # dates.append(history_item['begins_at'])
+            i = i + 1
+            dates.append(i)
+        # Determine slopes.
+        linregressResult = linregress(dates, closingPrices)
+        linregressResults.append(linregressResult.slope)
+    # Find index.
+    sorted_lineregress = sorted(linregressResults)
+    highest_slope = sorted_lineregress[len(sorted_lineregress) - 1]
+    index_of_highest_slope = [float(i) for i in linregressResults].index(highest_slope)
+    symbol_of_highest_slope = stock_array[index_of_highest_slope]
+    return symbol_of_highest_slope
 
 def find_symbol_with_highest_volume(stock_array):
     volume_array = []
     for stock in stock_array:
         volumes = r.get_stock_historicals(stock, interval='day', span='week', bounds='regular', info='volume')
+        if len(volumes) == 0:
+            continue
         volume_array.append(volumes[len(volumes) - 1])
     stock_and_volume_float_array = [float(i) for i in volume_array]
     sorted_volume_array = sorted(stock_and_volume_float_array, key=float)
     highest_volume = sorted_volume_array[len(sorted_volume_array) - 1]
     # Convert the string price array to float and find the index of the 
-    # stock with the lowest price.
+    # stock with the highest volume.
     index_of_highest_volume = [float(i) for i in volume_array].index(highest_volume)
     symbol_of_highest_volume = stock_array[index_of_highest_volume]
     return symbol_of_highest_volume
@@ -613,7 +675,7 @@ def scan_stocks():
                             else:
                                 print("But the market is not in an uptrend.")
                         else:
-                            print("But the price is lower than it was initially today " + str(cross[2]) + " < " + str(cross[1]))
+                            print("But the price is lower than it was when the golden cross formed " + str(cross[2]) + " < " + str(cross[1]))
                     else:
                         print("But there are " + str(len(open_stock_orders)) + " current pending orders.")
         if(len(potential_buys) > 0):
@@ -625,7 +687,7 @@ def scan_stocks():
             update_trade_history(sells, holdings_data, trade_history_file_name)
 
         # Get the metrics report.
-        get_accurate_gains(portfolio_symbols)
+        get_accurate_gains(portfolio_symbols, watchlist_symbols)
         
         print("----- Scan over -----\n")
 
