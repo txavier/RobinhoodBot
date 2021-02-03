@@ -146,7 +146,7 @@ def get_last_crossing(df, days, symbol="", direction=""):
     found = index
     recentDiff = (shortTerm.at[index] - LongTerm.at[index]) >= 0
     if((direction == "above" and not recentDiff) or (direction == "below" and recentDiff)):
-        return 0,0
+        return 0,0,0
     index -= 1
     while(index >= 0 and found == lastIndex and not np.isnan(shortTerm.at[index]) and not np.isnan(LongTerm.at[index])
           and ((pd.Timestamp("now", tz='UTC') - dates.at[index]) <= pd.Timedelta(str(days) + " days"))):
@@ -165,7 +165,7 @@ def get_last_crossing(df, days, symbol="", direction=""):
             print(last_crossing_report)
         return (1 if recentDiff else -1), prices.at[found], prices.at[lastIndex]
     else:
-        return 0,0
+        return 0,0,0
 
 
 def five_year_check(stockTicker):
@@ -183,6 +183,10 @@ def five_year_check(stockTicker):
         return False
 
     list_date = instrument[0].get("list_date")
+    # If there is no list date then assume that the stocks list date data
+    # is just missing i.e. NNOX
+    if list_date == None:
+        return True
     if ((pd.Timestamp("now") - pd.to_datetime(list_date)) < pd.Timedelta("5 Y")):
         return True
     fiveyear = r.get_stock_historicals(
@@ -222,7 +226,7 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
     yearCheck = five_year_check(stockTicker)
 
     if(direction == "above" and not yearCheck):
-        return False,0
+        return False,0,0
 
     history = r.get_stock_historicals(stockTicker, interval='hour', span='3month', bounds='regular')
     closingPrices = []
@@ -230,21 +234,6 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
     for history_item in history:
         closingPrices.append(float(history_item['close_price']))
         dates.append(history_item['begins_at'])
-
-    # If we are in extended hours then add extended hours close_prices.
-    # extended_hours = False
-    # begin_time = datetime.time(17, 30)
-    # end_time = datetime.time(9, 0)
-    # timenow = datetime.datetime.now().time()
-
-    # if(timenow >= begin_time or timenow < begin_time):
-    #     extended_hours = True
-
-    # if(extended_hours):
-    #     today_history = r.get_stock_historicals(stockTicker, interval='hour', span='day', bounds='extended')
-    #     for today_history_item in today_history:
-    #         closingPrices.append(float(today_history_item['close_price']))
-    #         dates.append(today_history_item['begins_at'])
 
     price = pd.Series(closingPrices)
     dates = pd.Series(dates)
@@ -255,13 +244,11 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
         "Indicator1"), sma2.rename("Indicator2"), dates.rename("Dates")]
     df = pd.concat(series, axis=1)
     cross = get_last_crossing(df, days, symbol=stockTicker, direction=direction)
-    # if(verbose == True and cross == 1 and direction == "above" and yearCheck):
-    #     print("We're considering whether to buy the " + stockTicker +
-    #               " but it hasn't risen overall in the last 5 years and it hasn't IPO'd in the last 5 years, suggesting it contains fundamental issues.\n")
+    
     if(plot):
         show_plot(price, sma1, sma2, dates, symbol=stockTicker,
                   label1=str(n1)+" day SMA", label2=str(n2)+" day SMA")
-    return cross
+    return cross[0], cross[1], cross[2], history[len(history)-5]['close_price']
 
 
 def sell_holdings(symbol, holdings_data):
@@ -385,27 +372,21 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols):
     
     """ Send a text message with the days metrics """
 
-    # Evening Morning report
-    begin_time = datetime.time(8, 30)
-    end_time = datetime.time(9, 30)
-    timenow = datetime.datetime.now().time()
-
     if debug: 
+        print("----- Scanning market reports to add stocks to watchlist -----")
         market_tag_report = get_market_tag_stocks_report()
         # If the market tag report has some stock values...
         if market_tag_report[0] != '':
             send_text(market_tag_report[0])
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
-    # The below code can be uncommented if the you wish to have auto-invest run every hour
-    # or whatever interval was set.
-    # if not debug:
-    #     market_tag_report = get_market_tag_stocks_report()
-    #     # If the market tag report has some stock values...
-    #     if market_tag_report[0] != '':
-    #         if market_report_auto_invest:
-    #             auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
-            
+        print("----- End market reports scan -----")
+
+    # Evening Morning report
+    begin_time = datetime.time(8, 30)
+    end_time = datetime.time(9, 30)
+    timenow = datetime.datetime.now().time()
+
     if(timenow >= begin_time and timenow < end_time):
         print("Sending morning report.")
         send_text(bankTransfered + "\n" + withdrawable_amount)
@@ -439,6 +420,34 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols):
             send_text(market_tag_report[0])
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
+
+    # Morning auto-invest
+    begin_time = datetime.time(10, 00)
+    end_time = datetime.time(11, 00)
+    timenow = datetime.datetime.now().time()
+          
+    if(timenow >= begin_time and timenow < end_time):
+        print("----- Scanning market reports to add stocks to watchlist -----")
+        market_tag_report = get_market_tag_stocks_report()
+        # If the market tag report has some stock values...
+        if market_tag_report[0] != '':
+            if market_report_auto_invest:
+                auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
+        print("----- End market reports scan -----")    
+
+    # Afternoon auto-invest
+    begin_time = datetime.time(13, 00)
+    end_time = datetime.time(14, 00)
+    timenow = datetime.datetime.now().time()
+          
+    if(timenow >= begin_time and timenow < end_time):
+        print("----- Scanning market reports to add stocks to watchlist -----")
+        market_tag_report = get_market_tag_stocks_report()
+        # If the market tag report has some stock values...
+        if market_tag_report[0] != '':
+            if market_report_auto_invest:
+                auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
+        print("----- End market reports scan -----") 
                 
 def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
     try:
@@ -463,15 +472,18 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
                 # send_text(message_skip)
                 stock_array_copy.remove(stock)
                 removed = True
+                print(stock + " removed from auto-invest because it is already in the portfolio.")
             if (use_exclusion_watchlist):
                 for exclusion_result in exclusion_list['results']:
                     if (stock == exclusion_result['symbol']):
                         stock_array_copy.remove(stock)
                         removed = True
+                        print(stock + " removed from auto-invest because it was in the exclusion list.")
             if (stock in watchlist_symbols):
                 if stock in stock_array_copy:
                     stock_array_copy.remove(stock)
                     removed = True
+                    print(stock + " removed from auto-invest because it is already in the watchlist.")
             if (not removed):
                 # If this stock is untradeable on the robin hood platform
                 # take it out of the list of stocks under consideration.
@@ -479,13 +491,16 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
                 if (not stock_info[0]['tradeable']):
                     stock_array_copy.remove(stock)
                     removed = True
+                    print(stock + " removed from auto-invest because RobinHood has marked this stock as untradeable.")
             if (not removed and use_price_cap):
                 # If a price cap has been set remove any stocks
-                # that go above the cap.
-                history = r.get_stock_historicals(stock, interval='hour', span='day', bounds='regular')
-                if (float(history[0]['close_price']) > price_cap):
+                # that go above the cap or if the stock does not have
+                # any history for today.
+                history = r.get_stock_historicals(stock, interval='day')
+                if (len(history) == 0 or float(history[len(history) - 1]['close_price']) > price_cap):
                     stock_array_copy.remove(stock)
                     removed = True
+                    print(stock + " removed from auto-invest because its price of " + str(float(history[len(history) - 1]['close_price'])) + " was greater than your price cap of " + str(price_cap))
 
         if (invest):
             stock_array = stock_array_copy
@@ -502,6 +517,9 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
             # Highest volume.
             # selected_symbol = find_symbol_with_highest_volume(stock_array)
             
+            if(selected_symbol == ''):
+                return
+
             message = "Auto-Invest is adding " + selected_symbol + " to the " + watch_list_name + " watchlist."
             send_text(message)
             print(message)
@@ -538,6 +556,8 @@ def find_symbol_with_greatest_slope(stock_array):
         linregressResults.append(linregressResult.slope)
     # Find index.
     sorted_lineregress = sorted(linregressResults)
+    if(len(sorted_lineregress) == 0):
+        return ''
     highest_slope = sorted_lineregress[len(sorted_lineregress) - 1]
     index_of_highest_slope = [float(i) for i in linregressResults].index(highest_slope)
     symbol_of_highest_slope = stock_array[index_of_highest_slope]
@@ -579,6 +599,7 @@ def get_market_tag_stocks_report():
 
         for market_tag_for_report_item in market_tag_for_report_array:
             all_market_tag_stocks = r.get_all_stocks_from_market_tag(market_tag_for_report_item, info = 'symbol')
+            print(market_tag_for_report_item + str(len(all_market_tag_stocks)))
             for market_tag_stock in all_market_tag_stocks:
                 cross = golden_cross(market_tag_stock, n1=34, n2=84, days=10, direction="above")
                 if(cross[0] == 1):
@@ -601,6 +622,47 @@ def get_market_tag_stocks_report():
         send_text(
             "Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.print_exc())
 
+def order_symbols_by_slope(portfolio_symbols):
+    """ This method orders an array of symbols by their slope in descending order
+    """ 
+    try:
+        w, h = 2, 0
+        Matrix = [[0 for x in range(w)] for y in range(h)] 
+        for stockTicker in portfolio_symbols:
+            # Load stock numbers.
+            history = r.get_stock_historicals(stockTicker, interval='5minute', span='day', bounds='regular')
+            closingPrices = []
+            dates = []
+            i = 0
+            for history_item in history:
+                closingPrices.append(float(history_item['close_price']))
+                # dates.append(history_item['begins_at'])
+                i = i + 1
+                dates.append(i)
+            # Determine slopes.
+            linregressResult = linregress(dates, closingPrices)
+            Matrix.append([stockTicker, linregressResult.slope])
+        sorted_matrix = sorted(Matrix, key=lambda l:l[1], reverse=True)
+        result_matrix = [[0 for x in range(2)] for y in range(0)]
+        for row in sorted_matrix:
+            # Only return rows that have a positive slope. We dont need to invest 
+            # in stocks that have a negative slope in the current trading day.
+            if row[1] > 0.0008:
+                result_matrix.append(row)
+
+        just_first_column = [row[0] for row in result_matrix]
+        return just_first_column
+    except IOError as e:
+        print(e)
+        print(sys.exc_info()[0])
+    except ValueError:
+        print("Could not convert data to an integer.")
+    except Exception as e:
+        print("Unexpected error could not generate interesting stocks report:", str(e))
+
+        login_to_sms()
+        send_text(
+            "Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.print_exc())
 
 def scan_stocks():
     """ The main method. Sells stocks in your portfolio if their 50 day moving average crosses
@@ -648,8 +710,9 @@ def scan_stocks():
                     sell_holdings(symbol, holdings_data)
                     sells.append(symbol)
         profile_data = r.build_user_profile()
+        ordered_watchlist_symbols = order_symbols_by_slope(watchlist_symbols)
         print("\n----- Scanning watchlist for stocks to buy -----\n")
-        for symbol in watchlist_symbols:
+        for symbol in ordered_watchlist_symbols:
             # If more money has been added then strengthen position of well performing portfolio holdings if the funds allow.
             # the below has been commented out to make the algorithm less aggressive in fear of violating day-trading policies.
             # if(symbol in portfolio_symbols):
@@ -670,10 +733,16 @@ def scan_stocks():
                         # If the current price is greater than the price at cross,
                         # meaning that the price is still rising then buy.
                         if(float(cross[2]) > float(cross[1])):
-                            if(market_uptrend):
-                                potential_buys.append(symbol)
+                            # If the current price is greater than the price 5 hours ago,
+                            # meaning we have less of a chance of the stock showing a 
+                            # death cross soon then buy.
+                            if(float(cross[2]) > float(cross[3])):
+                                if(market_uptrend):
+                                    potential_buys.append(symbol)
+                                else:
+                                    print("But the market is not in an uptrend.")
                             else:
-                                print("But the market is not in an uptrend.")
+                                print("But the price is lower than it was 5 hours ago.")
                         else:
                             print("But the price is lower than it was when the golden cross formed " + str(cross[2]) + " < " + str(cross[1]))
                     else:
