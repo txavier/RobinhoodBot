@@ -286,12 +286,15 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
     ideal_position_size = (safe_division(portfolio_value, len(
         holdings_data))+cash/len(potential_buys))/(2 * len(potential_buys))
     prices = r.get_latest_price(potential_buys)
-    buying_power = r.load_account_profile(info='buying_power')
+    # The below line seemed to no longer work.  In my account I had $3 and the 
+    # commented out function reported a sum of $145.
+    # buying_power = r.load_account_profile(info='buying_power')
+    buying_power = r.load_phoenix_account(info='account_buying_power')['amount']
     order_placed = False
     for i in range(0, len(potential_buys)):
         stock_price = float(prices[i])
         if (float(buying_power) < ideal_position_size):
-            output = "####### Tried buying shares of " + potential_buys[i] + ", but at ${:.2f}".format(ideal_position_size) + " your account balance of ${:.2f}".format(float(buying_power)) + " is not enough buying power to do so#######"
+            output = "####### Tried buying shares of " + potential_buys[i] + " at ${:.2f}".format(ideal_position_size) + " however your account balance of ${:.2f}".format(float(buying_power)) + " is not enough buying power to do so#######"
             print(output)
             break
         elif(ideal_position_size < stock_price < ideal_position_size*1.5):
@@ -706,9 +709,13 @@ def scan_stocks():
                 # entering multiple orders of the same stock if the order has not yet between
                 # filled.
                 if(len(open_stock_orders) == 0):
-                    send_text("Attempting to sell " + symbol)
-                    sell_holdings(symbol, holdings_data)
-                    sells.append(symbol)
+                    day_trades = r.get_day_trades()['equity_day_trades']
+                    if len(day_trades) <= 1:
+                        send_text("Attempting to sell " + symbol)
+                        sell_holdings(symbol, holdings_data)
+                        sells.append(symbol)
+                    else:
+                        print("Unable to sell " + symbol + " because there are " + str(len(day_trades)) + " day trades.")
         profile_data = r.build_user_profile()
         ordered_watchlist_symbols = order_symbols_by_slope(watchlist_symbols)
         print("\n----- Scanning watchlist for stocks to buy -----\n")
@@ -738,7 +745,11 @@ def scan_stocks():
                             # death cross soon then buy.
                             if(float(cross[2]) > float(cross[3])):
                                 if(market_uptrend):
-                                    potential_buys.append(symbol)
+                                    day_trades = r.get_day_trades()['equity_day_trades']
+                                    if len(day_trades) <= 1:
+                                        potential_buys.append(symbol)
+                                    else:
+                                        print("Unable to buy " + symbol + " because there are " + str(len(day_trades)) + " day trades.")
                                 else:
                                     print("But the market is not in an uptrend.")
                             else:
