@@ -381,13 +381,13 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols):
 
     equity_amount = float(profileData['equity'])
     buying_power = float(profileData['equity']) - float(profileData['market_value'])
-    totalGainMinusDividends = equity_amount - dividends - money_invested + buying_power
+    totalGainMinusDividends = equity_amount - dividends - money_invested
     percentGain = totalGainMinusDividends/money_invested*100
 
     bankTransfered = "The total money invested is ${:.2f}".format(money_invested)
     equity = "The total equity is ${:.2f}".format(equity_amount)
     withdrawable_amount = "The buying power is ${:.2f}".format(buying_power)
-    equityAndWithdrawable = "The total account value of ${:.2f}".format(float(equity_amount + buying_power))
+    equityAndWithdrawable = "The total account value of ${:.2f}".format(float(equity_amount))
     dividendIncrease = "The net worth has increased {:0.3f}% due to dividends that amount to ${:0.2f}".format(percentDividend, dividends)
     gainIncrease = "The net worth has increased {:0.3f}% due to other gains that amount to ${:0.2f}".format(percentGain, totalGainMinusDividends)
 
