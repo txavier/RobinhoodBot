@@ -324,13 +324,31 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
     return order_placed
 
 def is_market_in_uptrend():
-    stockTicker = 'NDAQ'
-    # day_trades = r.get_day_trades()
+    stockTickerNdaq = 'NDAQ'
+    stockTickerDow = 'DIA'
+    stockTickerSP = 'SPY'
+    uptrendNdaq = False
+    uptrendDow = False
+    uptrendSp = False
+    # Nasdaq
     # Using NasDaq as the market uptrend indicator which does not have extended trading hours.
-    today_history = r.get_stock_historicals(stockTicker, interval='5minute', span='day', bounds='regular')    
+    today_history = r.get_stock_historicals(stockTickerNdaq, interval='5minute', span='day', bounds='regular')    
     if(float(today_history[0]['open_price']) < float(today_history[len(today_history) - 1]['close_price'])):
-        return True
-    return False
+        uptrendNdaq = True
+    # DOW
+    # Using Dow as the market uptrend indicator.
+    today_history = r.get_stock_historicals(stockTickerDow, interval='5minute', span='day', bounds='regular')    
+    if(float(today_history[0]['open_price']) < float(today_history[len(today_history) - 1]['close_price'])):
+        uptrendDow = True
+    # S&P Index
+    # Using S&P as the market uptrend indicator.
+    # day_trades = r.get_day_trades()
+    today_history = r.get_stock_historicals(stockTickerSP, interval='5minute', span='day', bounds='regular')    
+    if(float(today_history[0]['open_price']) < float(today_history[len(today_history) - 1]['close_price'])):
+        uptrendSp = True
+    
+    result = (uptrendNdaq + uptrendDow + uptrendSp) >= 2
+    return result
 
 def get_accurate_gains(portfolio_symbols, watchlist_symbols):
     '''
@@ -753,7 +771,7 @@ def scan_stocks():
                                     else:
                                         print("Unable to buy " + symbol + " because there are " + str(len(day_trades)) + " day trades.")
                                 else:
-                                    print("But the market is not in an uptrend.")
+                                    print("But the markets on average are not in an uptrend.")
                             else:
                                 print("But the price is lower than it was 5 hours ago.")
                         else:
