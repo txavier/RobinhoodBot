@@ -531,7 +531,7 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
                     if (len(history) == 0):
                         print(stock + " removed from auto-invest because it has no stock history to analyze.")
                     else:
-                    print(stock + " removed from auto-invest because its price of " + str(float(history[len(history) - 1]['close_price'])) + " was greater than your price cap of " + str(price_cap))
+                        print(stock + " removed from auto-invest because its price of " + str(float(history[len(history) - 1]['close_price'])) + " was greater than your price cap of " + str(price_cap))
 
         if (invest):
             stock_array = stock_array_copy
@@ -790,9 +790,11 @@ def scan_stocks():
             buy_holdings_succeeded = buy_holdings(potential_buys, profile_data, holdings_data)
             if buy_holdings_succeeded:
                 new_holdings = get_modified_holdings()
-                update_trade_history(potential_buys, new_holdings, trade_history_file_name)
+                # Trade history has been commented out because it seems to be error prone.
+                # update_trade_history(potential_buys, new_holdings, trade_history_file_name)
         if(len(sells) > 0):
-            update_trade_history(sells, holdings_data, trade_history_file_name)
+            # Trade history has been commented out because it seems to be error prone.
+            # update_trade_history(sells, holdings_data, trade_history_file_name)
 
         # Get the metrics report.
         get_accurate_gains(portfolio_symbols, watchlist_symbols)
