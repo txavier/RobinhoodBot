@@ -293,12 +293,16 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
     # buying_power = r.load_account_profile(info='buying_power')
     buying_power = pheonix_account['account_buying_power']['amount']
     order_placed = False
+    len_potential_buys = len(potential_buys)
     for i in range(0, len(potential_buys)):
+        ideal_position_size = (safe_division(portfolio_value, len(
+            holdings_data))+cash/len_potential_buys)/(2 * len_potential_buys)
         stock_price = float(prices[i])
         if (float(buying_power) < ideal_position_size):
             output = "####### Tried buying shares of " + potential_buys[i] + " at ${:.2f}".format(ideal_position_size) + " however your account balance of ${:.2f}".format(float(buying_power)) + " is not enough buying power to do so#######"
             print(output)
-            break
+            len_potential_buys = len_potential_buys - 1
+            continue
         elif(ideal_position_size < stock_price < ideal_position_size*1.5):
             num_shares = int(ideal_position_size*1.5/stock_price)
         elif (stock_price < ideal_position_size):
@@ -307,7 +311,8 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
             output = "####### Tried buying shares of " + potential_buys[i] + ", but not enough buying power to do so#######"
             print(output)
             send_text(output)
-            break
+            len_potential_buys = len_potential_buys - 1
+            continue
         print("####### Buying " + str(num_shares) +
               " shares of " + potential_buys[i] + " #######")
 
