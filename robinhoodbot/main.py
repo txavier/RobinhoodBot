@@ -281,15 +281,17 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
     Returns: 
         False if order has not been placed because there was not enough buying power.
     """
-    cash = float(profile_data.get('cash'))
+    # The below line was commented out and replaced because it inexplicably started 
+    # returning seeminly random negative numbers.
+    # cash = float(profile_data.get('cash'))
+    pheonix_account = r.load_phoenix_account()
+    cash = float(pheonix_account['cash_available_from_instant_deposits']['amount'])
     portfolio_value = float(profile_data.get('equity')) - cash
-    ideal_position_size = (safe_division(portfolio_value, len(
-        holdings_data))+cash/len(potential_buys))/(2 * len(potential_buys))
     prices = r.get_latest_price(potential_buys)
     # The below line seemed to no longer work.  In my account I had $3 and the 
     # commented out function reported a sum of $145.
     # buying_power = r.load_account_profile(info='buying_power')
-    buying_power = r.load_phoenix_account(info='account_buying_power')['amount']
+    buying_power = pheonix_account['account_buying_power']['amount']
     order_placed = False
     for i in range(0, len(potential_buys)):
         stock_price = float(prices[i])
