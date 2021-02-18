@@ -45,6 +45,19 @@ def send_text(message):
     sms = msg.as_string()
     server.sendmail(rh_email, sms_gateway, sms)
 
+def isInExclusionList(symbol):
+    """
+    Returns true if the symbol is in the exclusion list.
+    """
+    result = False
+    if use_exclusion_watchlist:
+        exclusion_list = r.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
+    for exclusion_item in exclusion_list['results']:
+            if exclusion_item['symbol'] == symbol:
+                result = True
+                return result
+    return result
+
 
 def get_watchlist_symbols():
     """
@@ -739,11 +752,16 @@ def scan_stocks():
                 if(len(open_stock_orders) == 0):
                     day_trades = r.get_day_trades()['equity_day_trades']
                     if len(day_trades) <= 1:
-                        send_text("Attempting to sell " + symbol)
-                        sell_holdings(symbol, holdings_data)
-                        sells.append(symbol)
+                        if (not isInExclusionList(symbol)):
+                            send_text("Attempting to sell " + symbol)
+                            sell_holdings(symbol, holdings_data)
+                            sells.append(symbol)
+                        else:
+                            print("Unable to sell " + symbol + " is in the exclusion list.")
                     else:
                         print("Unable to sell " + symbol + " because there are " + str(len(day_trades)) + " day trades.")
+                else:
+                    print("Unable to sell " + symbol + " because there are open stock orders.")
         profile_data = r.build_user_profile()
         ordered_watchlist_symbols = order_symbols_by_slope(watchlist_symbols)
         print("\n----- Scanning watchlist for stocks to buy -----\n")
@@ -788,11 +806,11 @@ def scan_stocks():
                         print("But there are " + str(len(open_stock_orders)) + " current pending orders.")
         if(len(potential_buys) > 0):
             buy_holdings_succeeded = buy_holdings(potential_buys, profile_data, holdings_data)
-            if buy_holdings_succeeded:
-                new_holdings = get_modified_holdings()
+            # if buy_holdings_succeeded:
+            #     new_holdings = get_modified_holdings()
                 # Trade history has been commented out because it seems to be error prone.
                 # update_trade_history(potential_buys, new_holdings, trade_history_file_name)
-        if(len(sells) > 0):
+        # if(len(sells) > 0):
             # Trade history has been commented out because it seems to be error prone.
             # update_trade_history(sells, holdings_data, trade_history_file_name)
 
