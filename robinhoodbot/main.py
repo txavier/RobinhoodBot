@@ -533,6 +533,13 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
                     stock_array_copy.remove(stock)
                     removed = True
                     print(stock + " removed from auto-invest because RobinHood has marked this stock as untradeable.")
+            if (not removed):
+                fundamentals = r.get_fundamentals(stock)
+                average_volume = float(fundamentals[0]['average_volume'])
+                if(average_volume < 64000):
+                    stock_array_copy.remove(stock)
+                    removed = True
+                    print(stock + " removed from auto-invest because the average volume of this stock is less than 64,000.")
             if (not removed and use_price_cap):
                 # If a price cap has been set remove any stocks
                 # that go above the cap or if the stock does not have
