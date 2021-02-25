@@ -766,15 +766,6 @@ def scan_stocks():
         ordered_watchlist_symbols = order_symbols_by_slope(watchlist_symbols)
         print("\n----- Scanning watchlist for stocks to buy -----\n")
         for symbol in ordered_watchlist_symbols:
-            # If more money has been added then strengthen position of well performing portfolio holdings if the funds allow.
-            # the below has been commented out to make the algorithm less aggressive in fear of violating day-trading policies.
-            # if(symbol in portfolio_symbols):
-            #     cross = golden_cross(symbol, n1=34, n2=84, days=10, direction="above")
-            #     if(cross == 1):
-            #         potential_buys.append(symbol)
-            #         if(verbose == True):
-            #             print("Strengthen position of " + symbol +
-            #                   " as the golden cross is within 10 days.")
             if(symbol not in portfolio_symbols):
                 cross = golden_cross(symbol, n1=34, n2=84, days=10, direction="above")
                 if(cross[0] == 1):
@@ -828,8 +819,6 @@ def scan_stocks():
     except IOError as e:
         print(e)
         print(sys.exc_info()[0])
-    # except ValueError:
-    #     print("Could not convert data to an integer.")
     except Exception as e:
         print("Unexpected error:", str(e))
 
