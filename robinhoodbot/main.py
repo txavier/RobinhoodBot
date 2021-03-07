@@ -99,6 +99,25 @@ def get_portfolio_symbols():
         symbols.append(symbol)
     return symbols
 
+def remove_watchlist_symbols(watchlist_symbols):
+    """ Removes all of the symbols from the watchlist.
+
+    Args:
+        watchlist_symbols(array): array with all of the symbols in the watchlist.
+
+    Returns:
+        Result of the delete request.
+    """
+    # Night
+    begin_time = datetime.time(22, 00)
+    end_time = datetime.time(23, 00)
+    timenow = datetime.datetime.now().time()
+          
+    if(timenow >= begin_time and timenow < end_time and datetime.datetime.today().weekday() == 4):
+        print("----- Removing all of this weeks stocks from watchlist -----")
+        result = r.delete_symbols_from_watchlist(watchlist_symbols, name = watch_list_name)
+        return result
+
 
 def get_position_creation_date(symbol, holdings_data):
     """Returns the time at which we bought a certain stock in our portfolio
@@ -814,6 +833,10 @@ def scan_stocks():
 
         # Get the metrics report.
         get_accurate_gains(portfolio_symbols, watchlist_symbols)
+        
+        # Remove all from watchlist_symbols if Friday evening.
+        if(reset_watchlist):
+            remove_watchlist_symbols(watchlist_symbols)
         
         print("----- Scan over -----\n")
 
