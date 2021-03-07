@@ -508,7 +508,27 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols):
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
         print("----- End market reports scan -----") 
-                
+
+def sudden_drop(symbol, percent, hours_apart):
+    """ Return true if the price drops more than the percent argument in the span of two hours.
+
+    Args:
+        symbol(str): The symbol of the stock.
+        percent(float): The amount of percentage drop from the previous high price.
+        hours_apart(float): Number of hours away from the current to check.
+
+    Returns:
+        True if there is a sudden drop.
+    """
+    historicals = r.get_stock_historicals(symbol, interval='hour', span='week')
+    percentage = (percent/100) * float(historicals[len(historicals) - 1 - hours_apart]['high_price'])
+    target_price = float(historicals[len(historicals) - 1 - hours_apart]['high_price']) - percentage
+
+    if float(historicals[len(historicals) - 1]['close_price']) <= target_price:
+        return True
+    
+    return False
+
 def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
     try:
         invest = True
@@ -769,8 +789,9 @@ def scan_stocks():
         market_uptrend = is_market_in_uptrend()
         open_stock_orders = []
         for symbol in portfolio_symbols:
+            is_sudden_drop = sudden_drop(symbol, 20, 2) or sudden_drop(symbol, 30, 1)
             cross = golden_cross(symbol, n1=34, n2=84, days=30, direction="below")
-            if(cross[0] == -1):
+            if(cross[0] == -1 or is_sudden_drop):
                 open_stock_orders = r.get_all_open_stock_orders()
                 # If there are any open stock orders then dont buy more.  This is to avoid 
                 # entering multiple orders of the same stock if the order has not yet between
@@ -833,7 +854,7 @@ def scan_stocks():
 
         # Get the metrics report.
         get_accurate_gains(portfolio_symbols, watchlist_symbols)
-        
+
         # Remove all from watchlist_symbols if Friday evening.
         if(reset_watchlist):
             remove_watchlist_symbols(watchlist_symbols)
