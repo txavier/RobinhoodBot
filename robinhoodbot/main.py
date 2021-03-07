@@ -525,6 +525,9 @@ def sudden_drop(symbol, percent, hours_apart):
     target_price = float(historicals[len(historicals) - 1 - hours_apart]['high_price']) - percentage
 
     if float(historicals[len(historicals) - 1]['close_price']) <= target_price:
+        message = "The " + symbol + " has dropped more than " + str(percent) + " in the span of " + str(hours_apart) + " hour(s)."
+        print(message)
+        send_text(message)
         return True
     
     return False
