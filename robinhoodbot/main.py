@@ -525,7 +525,7 @@ def sudden_drop(symbol, percent, hours_apart):
     target_price = float(historicals[len(historicals) - 1 - hours_apart]['high_price']) - percentage
 
     if float(historicals[len(historicals) - 1]['close_price']) <= target_price:
-        message = "The " + symbol + " has dropped more than " + str(percent) + " in the span of " + str(hours_apart) + " hour(s)."
+        message = "The " + symbol + " has dropped more than " + str(percent) + "% in the span of " + str(hours_apart) + " hour(s)."
         print(message)
         send_text(message)
         return True
@@ -792,7 +792,7 @@ def scan_stocks():
         market_uptrend = is_market_in_uptrend()
         open_stock_orders = []
         for symbol in portfolio_symbols:
-            is_sudden_drop = sudden_drop(symbol, 20, 2) or sudden_drop(symbol, 30, 1)
+            is_sudden_drop = sudden_drop(symbol, 15, 2) or sudden_drop(symbol, 20, 1)
             cross = golden_cross(symbol, n1=34, n2=84, days=30, direction="below")
             if(cross[0] == -1 or is_sudden_drop):
                 open_stock_orders = r.get_all_open_stock_orders()
