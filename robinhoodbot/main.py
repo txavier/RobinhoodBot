@@ -553,15 +553,17 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
                 # message_skip = stock + " is still in the recomended list. Auto-Invest will skip this interval in order to allow time between stock generation."
                 # print(message_skip)
                 # send_text(message_skip)
-                stock_array_copy.remove(stock)
-                removed = True
-                print(stock + " removed from auto-invest because it is already in the portfolio.")
+                if (stock in stock_array_copy):
+                    stock_array_copy.remove(stock)
+                    removed = True
+                    print(stock + " removed from auto-invest because it is already in the portfolio.")
             if (use_exclusion_watchlist):
                 for exclusion_result in exclusion_list['results']:
                     if (stock == exclusion_result['symbol']):
-                        stock_array_copy.remove(stock)
-                        removed = True
-                        print(stock + " removed from auto-invest because it was in the exclusion list.")
+                        if (stock in stock_array_copy):
+                            stock_array_copy.remove(stock)
+                            removed = True
+                            print(stock + " removed from auto-invest because it was in the exclusion list.")
             if (stock in watchlist_symbols):
                 if stock in stock_array_copy:
                     stock_array_copy.remove(stock)
