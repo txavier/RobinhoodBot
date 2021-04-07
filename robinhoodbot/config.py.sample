@@ -24,5 +24,7 @@ use_price_cap=False
 price_cap=500
 # The minimum amount of volume of shares a stock needs to be considered.
 min_volume=1000000
-# Reset the watchlist every week.
+# The minimum amount of market cap a stock needs to be considered.
+min_market_cap=900000
+# Reset the watchlist every week.  Useful for keeping the number of api requests low.
 reset_watchlist=False

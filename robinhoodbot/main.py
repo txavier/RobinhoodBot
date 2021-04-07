@@ -331,7 +331,7 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
             holdings_data))+cash/len_potential_buys)/(2 * len_potential_buys)
         stock_price = float(prices[i])
         if (float(buying_power) < ideal_position_size):
-            output = "####### Tried buying shares of " + potential_buys[i] + " at ${:.2f}".format(ideal_position_size) + " however your account balance of ${:.2f}".format(float(buying_power)) + " is not enough buying power to do so#######"
+            output = "####### Tried buying shares of " + potential_buys[i] + " at ${:.2f}".format(ideal_position_size) + " however your account balance of ${:.2f}".format(float(buying_power)) + " is not enough buying power to purchase at the ideal buying position size. #######"
             print(output)
             len_potential_buys = len_potential_buys - 1
             continue
@@ -514,18 +514,18 @@ def sudden_drop(symbol, percent, hours_apart):
 
     Args:
         symbol(str): The symbol of the stock.
-        percent(float): The amount of percentage drop from the previous high price.
+        percent(float): The amount of percentage drop from the previous close price.
         hours_apart(float): Number of hours away from the current to check.
 
     Returns:
         True if there is a sudden drop.
     """
     historicals = r.get_stock_historicals(symbol, interval='hour', span='week')
-    percentage = (percent/100) * float(historicals[len(historicals) - 1 - hours_apart]['high_price'])
-    target_price = float(historicals[len(historicals) - 1 - hours_apart]['high_price']) - percentage
+    percentage = (percent/100) * float(historicals[len(historicals) - 1 - hours_apart]['close_price'])
+    target_price = float(historicals[len(historicals) - 1 - hours_apart]['close_price']) - percentage
 
     if float(historicals[len(historicals) - 1]['close_price']) <= target_price:
-        message = "The " + symbol + " has dropped more than " + str(percent) + "% in the span of " + str(hours_apart) + " hour(s)."
+        message = "The " + symbol + " has dropped from " + str(float(historicals[len(historicals) - 1 - hours_apart]['close_price'])) + " to " + str(float(historicals[len(historicals) - 1]['close_price'])) + " which is more than " + str(percent) + "% (" + str(target_price) + ") in the span of " + str(hours_apart) + " hour(s)."
         print(message)
         send_text(message)
         return True
@@ -577,13 +577,19 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
                     stock_array_copy.remove(stock)
                     removed = True
                     print(stock + " removed from auto-invest because RobinHood has marked this stock as untradeable.")
+            fundamentals = r.get_fundamentals(stock)
             if (not removed):
-                fundamentals = r.get_fundamentals(stock)
                 average_volume = float(fundamentals[0]['average_volume'])
                 if(average_volume < min_volume):
                     stock_array_copy.remove(stock)
                     removed = True
                     print(stock + " removed from auto-invest because the average volume of this stock is less than " + str(min_volume) + ".")
+            if (not removed):
+                market_cap = float(fundamentals[0]['market_cap'])
+                if(market_cap < min_market_cap):
+                    stock_array_copy.remove(stock)
+                    removed = True
+                    print(stock + " removed from auto-invest because the market cap of this stock is less than " + str(min_market_cap) + ".")
             if (not removed and use_price_cap):
                 # If a price cap has been set remove any stocks
                 # that go above the cap or if the stock does not have
@@ -794,7 +800,7 @@ def scan_stocks():
         market_uptrend = is_market_in_uptrend()
         open_stock_orders = []
         for symbol in portfolio_symbols:
-            is_sudden_drop = sudden_drop(symbol, 15, 2) or sudden_drop(symbol, 20, 1)
+            is_sudden_drop = sudden_drop(symbol, 10, 2) or sudden_drop(symbol, 15, 1)
             cross = golden_cross(symbol, n1=34, n2=84, days=30, direction="below")
             if(cross[0] == -1 or is_sudden_drop):
                 open_stock_orders = r.get_all_open_stock_orders()
