@@ -272,12 +272,16 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
     dates = pd.to_datetime(dates)
     sma1 = t.volatility.bollinger_mavg(price, n=int(n1), fillna=False)
     sma2 = t.volatility.bollinger_mavg(price, n=int(n2), fillna=False)
+    # sma3 = t.volatility.bollinger_mavg(price, n=21, fillna=False)
+    # sma4 = t.volatility.bollinger_mavg(price, n=50, fillna=False)
     series = [price.rename("Price"), sma1.rename(
         "Indicator1"), sma2.rename("Indicator2"), dates.rename("Dates")]
     df = pd.concat(series, axis=1)
     cross = get_last_crossing(df, days, symbol=stockTicker, direction=direction)
     
     if(plot):
+        # show_plot(price, sma1, sma2, sma3, sma4, dates, symbol=stockTicker,
+        #           label1=str(n1)+" day SMA", label2=str(n2)+" day SMA", label3="21 day SMA", label4="50 day SMA")
         show_plot(price, sma1, sma2, dates, symbol=stockTicker,
                   label1=str(n1)+" day SMA", label2=str(n2)+" day SMA")
     return cross[0], cross[1], cross[2], history[len(history)-5]['close_price']
@@ -702,7 +706,7 @@ def get_market_tag_stocks_report():
             all_market_tag_stocks = r.get_all_stocks_from_market_tag(market_tag_for_report_item, info = 'symbol')
             print(market_tag_for_report_item + str(len(all_market_tag_stocks)))
             for market_tag_stock in all_market_tag_stocks:
-                cross = golden_cross(market_tag_stock, n1=34, n2=84, days=10, direction="above")
+                cross = golden_cross(market_tag_stock, n1=21, n2=50, days=10, direction="above")
                 if(cross[0] == 1):
                     report_string = report_string + "\n" + market_tag_stock + "{:.2f}".format(cross[2])
                     stock_array.append(market_tag_stock)
@@ -801,7 +805,7 @@ def scan_stocks():
         open_stock_orders = []
         for symbol in portfolio_symbols:
             is_sudden_drop = sudden_drop(symbol, 10, 2) or sudden_drop(symbol, 15, 1)
-            cross = golden_cross(symbol, n1=34, n2=84, days=30, direction="below")
+            cross = golden_cross(symbol, n1=21, n2=50, days=30, direction="below")
             if(cross[0] == -1 or is_sudden_drop):
                 open_stock_orders = r.get_all_open_stock_orders()
                 # If there are any open stock orders then dont buy more.  This is to avoid 
@@ -825,7 +829,7 @@ def scan_stocks():
         print("\n----- Scanning watchlist for stocks to buy -----\n")
         for symbol in ordered_watchlist_symbols:
             if(symbol not in portfolio_symbols):
-                cross = golden_cross(symbol, n1=34, n2=84, days=10, direction="above")
+                cross = golden_cross(symbol, n1=21, n2=50, days=10, direction="above")
                 if(cross[0] == 1):
                     open_stock_orders = r.get_all_open_stock_orders()
                     # If there are any open stock orders then dont buy more.  This is to avoid 

@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as plticker
 import numpy as np
 
+# def show_plot(price, firstIndicator, secondIndicator, thirdIndicator, fourthIndicator, dates, symbol="", label1="", label2="", label3="", label4=""):
 def show_plot(price, firstIndicator, secondIndicator, dates, symbol="", label1="", label2=""):
     """Displays a chart of the price and indicators for a stock
 
@@ -23,6 +24,8 @@ def show_plot(price, firstIndicator, secondIndicator, dates, symbol="", label1="
     plt.plot(dates, price, label="Closing prices")
     plt.plot(dates, firstIndicator, label=label1)
     plt.plot(dates, secondIndicator, label=label2)
+    # plt.plot(dates, thirdIndicator, label=label3)
+    # plt.plot(dates, fourthIndicator, label=label4)
     plt.yticks(np.arange(price.min(), price.max(), step=((price.max()-price.min())/15.0)))
     plt.legend()
     plt.show()
