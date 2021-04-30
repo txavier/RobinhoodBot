@@ -524,7 +524,7 @@ def sudden_drop(symbol, percent, hours_apart):
     Returns:
         True if there is a sudden drop.
     """
-    historicals = r.get_stock_historicals(symbol, interval='hour', span='week')
+    historicals = r.get_stock_historicals(symbol, interval='hour', span='month')
     percentage = (percent/100) * float(historicals[len(historicals) - 1 - hours_apart]['close_price'])
     target_price = float(historicals[len(historicals) - 1 - hours_apart]['close_price']) - percentage
 
@@ -578,34 +578,38 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
                 # take it out of the list of stocks under consideration.
                 stock_info = r.get_instruments_by_symbols(stock)
                 if (not stock_info[0]['tradeable']):
-                    stock_array_copy.remove(stock)
-                    removed = True
-                    print(stock + " removed from auto-invest because RobinHood has marked this stock as untradeable.")
+                    if stock in stock_array_copy:
+                        stock_array_copy.remove(stock)
+                        removed = True
+                        print(stock + " removed from auto-invest because RobinHood has marked this stock as untradeable.")
             fundamentals = r.get_fundamentals(stock)
             if (not removed):
                 average_volume = float(fundamentals[0]['average_volume'])
                 if(average_volume < min_volume):
-                    stock_array_copy.remove(stock)
-                    removed = True
-                    print(stock + " removed from auto-invest because the average volume of this stock is less than " + str(min_volume) + ".")
+                    if stock in stock_array_copy:
+                        stock_array_copy.remove(stock)
+                        removed = True
+                        print(stock + " removed from auto-invest because the average volume of this stock is less than " + str(min_volume) + ".")
             if (not removed):
                 market_cap = float(fundamentals[0]['market_cap'])
                 if(market_cap < min_market_cap):
-                    stock_array_copy.remove(stock)
-                    removed = True
-                    print(stock + " removed from auto-invest because the market cap of this stock is less than " + str(min_market_cap) + ".")
+                    if stock in stock_array_copy:
+                        stock_array_copy.remove(stock)
+                        removed = True
+                        print(stock + " removed from auto-invest because the market cap of this stock is less than " + str(min_market_cap) + ".")
             if (not removed and use_price_cap):
                 # If a price cap has been set remove any stocks
                 # that go above the cap or if the stock does not have
                 # any history for today.
                 history = r.get_stock_historicals(stock, interval='day')
                 if (len(history) == 0 or float(history[len(history) - 1]['close_price']) > price_cap):
-                    stock_array_copy.remove(stock)
-                    removed = True
-                    if (len(history) == 0):
-                        print(stock + " removed from auto-invest because it has no stock history to analyze.")
-                    else:
-                        print(stock + " removed from auto-invest because its price of " + str(float(history[len(history) - 1]['close_price'])) + " was greater than your price cap of " + str(price_cap))
+                    if stock in stock_array_copy:
+                        stock_array_copy.remove(stock)
+                        removed = True
+                        if (len(history) == 0):
+                            print(stock + " removed from auto-invest because it has no stock history to analyze.")
+                        else:
+                            print(stock + " removed from auto-invest because its price of " + str(float(history[len(history) - 1]['close_price'])) + " was greater than your price cap of " + str(price_cap))
 
         if (invest):
             stock_array = stock_array_copy
@@ -640,8 +644,8 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
         print("Unexpected error could not generate interesting stocks report:", str(e))
 
         login_to_sms()
-        # send_text("Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.print_exc())
-        send_text("Unexpected error could not generate interesting stocks report:" + str(e))
+        send_text("Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.print_exc())
+        # send_text("Unexpected error could not generate interesting stocks report:" + str(e))
 
 def find_symbol_with_greatest_slope(stock_array):
     linregressResults = []
