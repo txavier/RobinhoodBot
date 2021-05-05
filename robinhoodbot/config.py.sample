@@ -1,7 +1,7 @@
 #Enter your robinhood username and password here, then save this file in the same directory as a regular python file
 rh_password="Your Password"
 rh_username="Username"
-# change to false to run frfr
+# change to false to run in debug mode.
 debug=True
 # set to show plot; if set to false plot will not show
 # beware, if plot is set to true it will stop execution
@@ -16,15 +16,15 @@ trade_history_file_name="tradehistory.txt"
 watch_list_name="My First Watchlist"
 # caution here, if the market tag returns too much data this
 # will crash.
-market_tag_for_report="most-popular-under-25,technology,upcoming-earnings"
-market_report_auto_invest=False
-use_exclusion_watchlist=False
-auto_invest_exclusion_watchlist="ExclusionList"
-use_price_cap=False
-price_cap=500
+market_tag_for_report="top-movers,most-popular-under-25,blank-check,100-most-popular"
+market_report_auto_invest=True
+use_exclusion_watchlist=True
+auto_invest_exclusion_watchlist="Exclusion"
+use_price_cap=True
+price_cap=15
 # The minimum amount of volume of shares a stock needs to be considered.
 min_volume=1000000
 # The minimum amount of market cap a stock needs to be considered.
-min_market_cap=900000
+min_market_cap=400000
 # Reset the watchlist every week.  Useful for keeping the number of api requests low.
 reset_watchlist=False

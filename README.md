@@ -22,6 +22,7 @@ cp config.py.sample config.py # add auth info and watchlist name to monitor afte
 ```
 
 To Run:
+In RobinHood create a watchlist named "Exclusion".  This will be the watchlist that you will use to tell the bot to ignore the stock tickers contained within.
 
 ```python
 cd RobinboodBot/robinhoodbot (If outside of root directory)
