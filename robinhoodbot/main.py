@@ -319,9 +319,9 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
     """
     # The below line was commented out and replaced because it inexplicably started 
     # returning seeminly random negative numbers.
-    # cash = float(profile_data.get('cash'))
+    cash = float(profile_data.get('cash'))
     pheonix_account = r.load_phoenix_account()
-    cash = float(pheonix_account['withdrawable_cash']['amount'])
+    # cash = float(pheonix_account['withdrawable_cash']['amount'])
     portfolio_value = float(profile_data.get('equity')) - cash
     prices = r.get_latest_price(potential_buys)
     # The below line seemed to no longer work.  In my account I had $3 and the 
