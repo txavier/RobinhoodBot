@@ -109,7 +109,7 @@ def remove_watchlist_symbols(watchlist_symbols):
         Result of the delete request.
     """
     # Night
-    begin_time = datetime.time(22, 00)
+    begin_time = datetime.time(21, 00)
     end_time = datetime.time(23, 00)
     timenow = datetime.datetime.now().time()
           
@@ -321,7 +321,7 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
     # returning seeminly random negative numbers.
     # cash = float(profile_data.get('cash'))
     pheonix_account = r.load_phoenix_account()
-    cash = float(pheonix_account['cash_available_from_instant_deposits']['amount'])
+    cash = float(pheonix_account['withdrawable_cash']['amount'])
     portfolio_value = float(profile_data.get('equity')) - cash
     prices = r.get_latest_price(potential_buys)
     # The below line seemed to no longer work.  In my account I had $3 and the 
@@ -335,7 +335,7 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
             holdings_data))+cash/len_potential_buys)/(2 * len_potential_buys)
         stock_price = float(prices[i])
         if (float(buying_power) < ideal_position_size):
-            output = "####### Tried buying shares of " + potential_buys[i] + " at ${:.2f}".format(ideal_position_size) + " however your account balance of ${:.2f}".format(float(buying_power)) + " is not enough buying power to purchase at the ideal buying position size. #######"
+            output = "####### Tried buying " + str(int(ideal_position_size/stock_price)) + " or more shares of " + potential_buys[i] + " at ${:.2f}".format(stock_price) + " however your account balance of ${:.2f}".format(float(buying_power)) + " is not enough buying power to purchase at the ideal buying position size. #######"
             print(output)
             len_potential_buys = len_potential_buys - 1
             continue
@@ -344,7 +344,7 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
         elif (stock_price < ideal_position_size):
             num_shares = int(ideal_position_size/stock_price)
         else:
-            output = "####### Tried buying shares of " + potential_buys[i] + ", but not enough buying power to do so#######"
+            output = "####### Tried buying " + str(int(ideal_position_size/stock_price)) + " or more shares of " + potential_buys[i] + " at ${:.2f}".format(stock_price) + ", but not enough buying power at ${:.2f}".format(float(buying_power)) + " to do so. #######"
             print(output)
             send_text(output)
             len_potential_buys = len_potential_buys - 1
@@ -644,7 +644,7 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
         print("Unexpected error could not generate interesting stocks report:", str(e))
 
         login_to_sms()
-        send_text("Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.print_exc())
+        send_text("Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.format_exc())
         # send_text("Unexpected error could not generate interesting stocks report:" + str(e))
 
 def find_symbol_with_greatest_slope(stock_array):
@@ -729,7 +729,7 @@ def get_market_tag_stocks_report():
 
         login_to_sms()
         send_text(
-            "Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.print_exc())
+            "Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.format_exc())
 
 def order_symbols_by_slope(portfolio_symbols):
     """ This method orders an array of symbols by their slope in descending order
@@ -771,7 +771,7 @@ def order_symbols_by_slope(portfolio_symbols):
 
         login_to_sms()
         send_text(
-            "Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.print_exc())
+            "Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.format_exc())
 
 def scan_stocks():
     """ The main method. Sells stocks in your portfolio if their 50 day moving average crosses
