@@ -1,4 +1,5 @@
 import robin_stocks as r
+import robin_stocks.robinhood as rr
 import pandas as pd
 import numpy as np
 import ta as t
@@ -51,7 +52,7 @@ def isInExclusionList(symbol):
     """
     result = False
     if use_exclusion_watchlist:
-        exclusion_list = r.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
+        exclusion_list = rr.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
     for exclusion_item in exclusion_list['results']:
             if exclusion_item['symbol'] == symbol:
                 result = True
@@ -65,10 +66,10 @@ def get_watchlist_symbols():
     """
     exclusion_list = []
     symbols = []
-    list = r.get_watchlist_by_name(name=watch_list_name)
+    list = rr.get_watchlist_by_name(name=watch_list_name)
     # Remove any exclusions.
     if use_exclusion_watchlist:
-        exclusion_list = r.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
+        exclusion_list = rr.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
     skip = False
     for item in list['results']:
         for exclusion_item in exclusion_list['results']:
@@ -90,11 +91,11 @@ def get_portfolio_symbols():
     Returns: the symbol for each stock in your portfolio as a list of strings
     """
     symbols = []
-    holdings_data = r.get_open_stock_positions()
+    holdings_data = rr.get_open_stock_positions()
     for item in holdings_data:
         if not item:
             continue
-        instrument_data = r.get_instrument_by_url(item.get('instrument'))
+        instrument_data = rr.get_instrument_by_url(item.get('instrument'))
         symbol = instrument_data['symbol']
         symbols.append(symbol)
     return symbols
@@ -115,7 +116,7 @@ def remove_watchlist_symbols(watchlist_symbols):
           
     if(timenow >= begin_time and timenow < end_time and datetime.datetime.today().weekday() == 4):
         print("----- Removing all of this weeks stocks from watchlist -----")
-        result = r.delete_symbols_from_watchlist(watchlist_symbols, name = watch_list_name)
+        result = rr.delete_symbols_from_watchlist(watchlist_symbols, name = watch_list_name)
         return result
 
 
@@ -124,12 +125,12 @@ def get_position_creation_date(symbol, holdings_data):
 
     Args:
         symbol(str): Symbol of the stock that we are trying to figure out when it was bought
-        holdings_data(dict): dict returned by r.get_current_positions()
+        holdings_data(dict): dict returned by rr.get_current_positions()
 
     Returns:
         A string containing the date and time the stock was bought, or "Not found" otherwise
     """
-    instrument = r.get_instruments_by_symbols(symbol)
+    instrument = rr.get_instruments_by_symbols(symbol)
     url = instrument[0].get('url')
     for dict in holdings_data:
         if(dict.get('instrument') == url):
@@ -138,16 +139,16 @@ def get_position_creation_date(symbol, holdings_data):
 
 
 def get_modified_holdings():
-    """ Retrieves the same dictionary as r.build_holdings, but includes data about
+    """ Retrieves the same dictionary as rr.build_holdings, but includes data about
         when the stock was purchased, which is useful for the read_trade_history() method
         in tradingstats.py
 
     Returns:
-        the same dict from r.build_holdings, but with an extra key-value pair for each
+        the same dict from rr.build_holdings, but with an extra key-value pair for each
         position you have, which is 'bought_at': (the time the stock was purchased)
     """
-    holdings = r.build_holdings()
-    holdings_data = r.get_open_stock_positions()
+    holdings = rr.build_holdings()
+    holdings_data = rr.get_open_stock_positions()
     for symbol, dict in holdings.items():
         bought_at = get_position_creation_date(symbol, holdings_data)
         bought_at = str(pd.to_datetime(bought_at))
@@ -210,7 +211,7 @@ def five_year_check(stockTicker):
         True if the stock's current price is higher than it was five years ago, or the stock IPO'd within the last five years
         False otherwise
     """
-    instrument = r.get_instruments_by_symbols(stockTicker)
+    instrument = rr.get_instruments_by_symbols(stockTicker)
     if(len(instrument) == 0):
         return False
 
@@ -221,7 +222,7 @@ def five_year_check(stockTicker):
         return True
     if ((pd.Timestamp("now") - pd.to_datetime(list_date)) < pd.Timedelta("5 Y")):
         return True
-    fiveyear = r.get_stock_historicals(
+    fiveyear = rr.get_stock_historicals(
         stockTicker, interval='day', span='5year', bounds='regular')
     closingPrices = []
     for item in fiveyear:
@@ -260,7 +261,7 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
     if(direction == "above" and not yearCheck):
         return False,0,0
 
-    history = r.get_stock_historicals(stockTicker, interval='hour', span='3month', bounds='regular')
+    history = rr.get_stock_historicals(stockTicker, interval='hour', span='3month', bounds='regular')
     closingPrices = []
     dates = []
     for history_item in history:
@@ -296,7 +297,7 @@ def sell_holdings(symbol, holdings_data):
     """
     shares_owned = int(float(holdings_data[symbol].get("quantity")))
     if not debug:
-        r.order_sell_market(symbol, shares_owned)
+        rr.order_sell_market(symbol, shares_owned)
     print("####### Selling " + str(shares_owned) +
           " shares of " + symbol + " #######")
     send_text("SELL: \nSelling " + str(shares_owned) + " shares of " + symbol)
@@ -310,12 +311,12 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
     Args:
         potential_buys(list): List of strings, the strings are the symbols of stocks we want to buy
         symbol(str): Symbol of the stock we want to sell
-        holdings_data(dict): dict obtained from r.build_holdings() or get_modified_holdings() method
+        holdings_data(dict): dict obtained from rr.build_holdings() or get_modified_holdings() method
     """
     cash = float(profile_data.get('cash'))
     portfolio_value = float(profile_data.get('equity')) - cash
     ideal_position_size = (safe_division(portfolio_value, len(holdings_data))+cash/len(potential_buys))/(2 * len(potential_buys))
-    prices = r.get_latest_price(potential_buys)
+    prices = rr.get_latest_price(potential_buys)
     for i in range(0, len(potential_buys)):
         stock_price = float(prices[i])
         if(ideal_position_size < stock_price < ideal_position_size*1.5):
@@ -335,7 +336,7 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
         message = "BUY: \nBuying " + str(num_shares) + " shares of " + potential_buys[i]
 
         if not debug:
-            result = r.order_buy_market(potential_buys[i], num_shares)
+            result = rr.order_buy_market(potential_buys[i], num_shares)
             if 'detail' in result:
                 message = message +  ". The result is " + result['detail']
         send_text(message)
@@ -349,18 +350,18 @@ def is_market_in_uptrend():
     uptrendSp = False
     # Nasdaq
     # Using NasDaq as the market uptrend indicator which does not have extended trading hours.
-    today_history = r.get_stock_historicals(stockTickerNdaq, interval='5minute', span='day', bounds='regular')    
+    today_history = rr.get_stock_historicals(stockTickerNdaq, interval='5minute', span='day', bounds='regular')    
     if(float(today_history[0]['open_price']) < float(today_history[len(today_history) - 1]['close_price'])):
         uptrendNdaq = True
     # DOW
     # Using Dow as the market uptrend indicator.
-    today_history = r.get_stock_historicals(stockTickerDow, interval='5minute', span='day', bounds='regular')    
+    today_history = rr.get_stock_historicals(stockTickerDow, interval='5minute', span='day', bounds='regular')    
     if(float(today_history[0]['open_price']) < float(today_history[len(today_history) - 1]['close_price'])):
         uptrendDow = True
     # S&P Index
     # Using S&P as the market uptrend indicator.
-    # day_trades = r.get_day_trades()
-    today_history = r.get_stock_historicals(stockTickerSP, interval='5minute', span='day', bounds='regular')    
+    # day_trades = rr.get_day_trades()
+    today_history = rr.get_stock_historicals(stockTickerSP, interval='5minute', span='day', bounds='regular')    
     if(float(today_history[0]['open_price']) < float(today_history[len(today_history) - 1]['close_price'])):
         uptrendSp = True
     
@@ -376,9 +377,9 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols):
     Print profileData and see what other values you can play around with.
     '''
 
-    profileData = r.load_portfolio_profile()
-    allTransactions = r.get_bank_transfers()
-    cardTransactions= r.get_card_transactions()
+    profileData = rr.load_portfolio_profile()
+    allTransactions = rr.get_bank_transfers()
+    cardTransactions= rr.get_card_transactions()
 
     deposits = sum(float(x['amount']) for x in allTransactions if (x['direction'] == 'deposit') and (x['state'] == 'completed'))
     withdrawals = sum(float(x['amount']) for x in allTransactions if (x['direction'] == 'withdraw') and (x['state'] == 'completed'))
@@ -386,7 +387,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols):
     reversal_fees = sum(float(x['fees']) for x in allTransactions if (x['direction'] == 'deposit') and (x['state'] == 'reversed'))
 
     money_invested = deposits + reversal_fees - (withdrawals - debits)
-    dividends = r.get_total_dividends()
+    dividends = rr.get_total_dividends()
     percentDividend = 0
     if not money_invested == 0:
         percentDividend = dividends/money_invested*100
@@ -500,7 +501,7 @@ def sudden_drop(symbol, percent, hours_apart):
     Returns:
         True if there is a sudden drop.
     """
-    historicals = r.get_stock_historicals(symbol, interval='hour', span='month')
+    historicals = rr.get_stock_historicals(symbol, interval='hour', span='month')
     percentage = (percent/100) * float(historicals[len(historicals) - 1 - hours_apart]['close_price'])
     target_price = float(historicals[len(historicals) - 1 - hours_apart]['close_price']) - percentage
 
@@ -521,7 +522,7 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
         # then dont auto invest any other stocks for now to prevent just adding
         # all stocks to the investment pool thus diluting the investment potential
         # in the previous stock that has been autoinvested.
-        exclusion_list = r.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
+        exclusion_list = rr.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
         stock_array_copy = stock_array.copy()
         for stock in stock_array:
             removed = False
@@ -552,13 +553,13 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
             if (not removed):
                 # If this stock is untradeable on the robin hood platform
                 # take it out of the list of stocks under consideration.
-                stock_info = r.get_instruments_by_symbols(stock)
+                stock_info = rr.get_instruments_by_symbols(stock)
                 if (not stock_info[0]['tradeable']):
                     if stock in stock_array_copy:
                         stock_array_copy.remove(stock)
                         removed = True
                         print(stock + " removed from auto-invest because RobinHood has marked this stock as untradeable.")
-            fundamentals = r.get_fundamentals(stock)
+            fundamentals = rr.get_fundamentals(stock)
             if (not removed):
                 average_volume = float(fundamentals[0]['average_volume'])
                 if(average_volume < min_volume):
@@ -577,7 +578,7 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
                 # If a price cap has been set remove any stocks
                 # that go above the cap or if the stock does not have
                 # any history for today.
-                history = r.get_stock_historicals(stock, interval='day')
+                history = rr.get_stock_historicals(stock, interval='day')
                 if (len(history) == 0 or float(history[len(history) - 1]['close_price']) > price_cap):
                     if stock in stock_array_copy:
                         stock_array_copy.remove(stock)
@@ -609,7 +610,7 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
             send_text(message)
             print(message)
             if not debug:
-                r.post_symbols_to_watchlist(selected_symbol, watch_list_name)
+                rr.post_symbols_to_watchlist(selected_symbol, watch_list_name)
 
     except IOError as e:
         print(e)
@@ -627,7 +628,7 @@ def find_symbol_with_greatest_slope(stock_array):
     linregressResults = []
     for stockTicker in stock_array:
         # Load stock numbers.
-        history = r.get_stock_historicals(stockTicker, interval='5minute', span='day', bounds='regular')
+        history = rr.get_stock_historicals(stockTicker, interval='5minute', span='day', bounds='regular')
         closingPrices = []
         dates = []
         i = 0
@@ -651,7 +652,7 @@ def find_symbol_with_greatest_slope(stock_array):
 def find_symbol_with_highest_volume(stock_array):
     volume_array = []
     for stock in stock_array:
-        volumes = r.get_stock_historicals(stock, interval='day', span='week', bounds='regular', info='volume')
+        volumes = rr.get_stock_historicals(stock, interval='day', span='week', bounds='regular', info='volume')
         if len(volumes) == 0:
             continue
         volume_array.append(volumes[len(volumes) - 1])
@@ -666,7 +667,7 @@ def find_symbol_with_highest_volume(stock_array):
 
 def find_stock_with_lowest_price(stock_array):
     # Find stock with the lowest stock price.
-    price_array = r.get_latest_price(stock_array)
+    price_array = rr.get_latest_price(stock_array)
     stock_and_price_float_array = [float(i) for i in price_array]
     sorted_price_array = sorted(stock_and_price_float_array, key=float)
     lowest_price = sorted_price_array[0]
@@ -683,7 +684,7 @@ def get_market_tag_stocks_report():
         stock_array = []
 
         for market_tag_for_report_item in market_tag_for_report_array:
-            all_market_tag_stocks = r.get_all_stocks_from_market_tag(market_tag_for_report_item, info = 'symbol')
+            all_market_tag_stocks = rr.get_all_stocks_from_market_tag(market_tag_for_report_item, info = 'symbol')
             print(market_tag_for_report_item + str(len(all_market_tag_stocks)))
             for market_tag_stock in all_market_tag_stocks:
                 cross = golden_cross(market_tag_stock, n1=21, n2=50, days=10, direction="above")
@@ -715,7 +716,7 @@ def order_symbols_by_slope(portfolio_symbols):
         Matrix = [[0 for x in range(w)] for y in range(h)] 
         for stockTicker in portfolio_symbols:
             # Load stock numbers.
-            history = r.get_stock_historicals(stockTicker, interval='5minute', span='day', bounds='regular')
+            history = rr.get_stock_historicals(stockTicker, interval='5minute', span='day', bounds='regular')
             closingPrices = []
             dates = []
             i = 0
@@ -757,7 +758,7 @@ def build_pheonix_profile_data(profile_data_with_dividend):
     """
     profile_data = {}
 
-    pheonix_account = r.load_phoenix_account()
+    pheonix_account = rr.load_phoenix_account()
 
     profile_data['equity'] = pheonix_account['total_equity']['amount']
     if (pheonix_account['total_extended_hours_equity']):
@@ -784,7 +785,7 @@ def scan_stocks():
 
         # Log in to Robinhood
         # Put your username and password in a config.py file in the same directory (see sample file)
-        login = r.login(rh_username, rh_password)
+        login = rr.login(rh_username, rh_password)
         login_to_sms()
 
         if debug:
@@ -806,12 +807,12 @@ def scan_stocks():
             is_sudden_drop = sudden_drop(symbol, 10, 2) or sudden_drop(symbol, 15, 1)
             cross = golden_cross(symbol, n1=21, n2=50, days=30, direction="below")
             if(cross[0] == -1 or is_sudden_drop):
-                open_stock_orders = r.get_all_open_stock_orders()
+                open_stock_orders = rr.get_all_open_stock_orders()
                 # If there are any open stock orders then dont buy more.  This is to avoid 
                 # entering multiple orders of the same stock if the order has not yet between
                 # filled.
                 if(len(open_stock_orders) == 0):
-                    day_trades = r.get_day_trades()['equity_day_trades']
+                    day_trades = rr.get_day_trades()['equity_day_trades']
                     if len(day_trades) <= 1:
                         if (not isInExclusionList(symbol)):
                             send_text("Attempting to sell " + symbol)
@@ -823,7 +824,7 @@ def scan_stocks():
                         print("Unable to sell " + symbol + " because there are " + str(len(day_trades)) + " day trades.")
                 else:
                     print("Unable to sell " + symbol + " because there are open stock orders.")
-        profile_data_with_dividend_total = r.build_user_profile()
+        profile_data_with_dividend_total = rr.build_user_profile()
         profile_data = build_pheonix_profile_data(profile_data_with_dividend_total)
         ordered_watchlist_symbols = order_symbols_by_slope(watchlist_symbols)
         print("\n----- Scanning watchlist for stocks to buy -----\n")
@@ -831,7 +832,7 @@ def scan_stocks():
             if(symbol not in portfolio_symbols):
                 cross = golden_cross(symbol, n1=21, n2=50, days=10, direction="above")
                 if(cross[0] == 1):
-                    open_stock_orders = r.get_all_open_stock_orders()
+                    open_stock_orders = rr.get_all_open_stock_orders()
                     # If there are any open stock orders then dont buy more.  This is to avoid 
                     # entering multiple orders of the same stock if the order has not yet between
                     # filled.
@@ -844,7 +845,7 @@ def scan_stocks():
                             # death cross soon then buy.
                             if(float(cross[2]) > float(cross[3])):
                                 if(market_uptrend):
-                                    day_trades = r.get_day_trades()['equity_day_trades']
+                                    day_trades = rr.get_day_trades()['equity_day_trades']
                                     if len(day_trades) <= 1:
                                         potential_buys.append(symbol)
                                     else:

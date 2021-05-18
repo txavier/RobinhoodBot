@@ -1,4 +1,5 @@
 import robin_stocks as r
+import robin_stocks.robinhood as rr
 import pandas as pd
 import json
 
@@ -8,7 +9,7 @@ def update_trade_history(symbols, holdings_data, file_name):
 
     Args:
         symbols(list): List of strings, strings are the symbols of the stocks we've just sold and want to write data for.
-        holdings_data(dict): dict obtained from get_modified_holdings() method. We need this method rather than r.build_holdings() to get a stock's buying date
+        holdings_data(dict): dict obtained from get_modified_holdings() method. We need this method rather than rr.build_holdings() to get a stock's buying date
         file_name(str): name of the file we are writing the data to. Should be "tradehistory.txt" if this method is normally called by scan_stocks().
                         If you want to write to another file, create a new text file with two empty brackets with an empty line between them, to meet JSON formatting standards.
     """
@@ -39,14 +40,14 @@ def read_trade_history(file_name):
 def get_total_gains_minus_dividends():
     """ Returns the amount of money you've gained/lost through trading since the creation of your account, minus dividends
     """
-    profileData = r.load_portfolio_profile()
+    profileData = rr.load_portfolio_profile()
     print(profileData)
-    allTransactions = r.get_bank_transfers()
+    allTransactions = rr.get_bank_transfers()
     deposits = sum(float(x['amount']) for x in allTransactions if (x['direction'] == 'deposit')) # and (x['state'] == 'completed'))
     withdrawals = sum(float(x['amount']) for x in allTransactions if (x['direction'] == 'withdraw') and (x['state'] == 'completed'))
     money_invested = deposits - withdrawals
     print(deposits)
-    dividends = r.get_total_dividends()
+    dividends = rr.get_total_dividends()
     percentDividend = dividends/money_invested*100
     totalGainMinusDividends =float(profileData['extended_hours_equity'])-dividends-money_invested
     return totalGainMinusDividends
