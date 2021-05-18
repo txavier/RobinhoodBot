@@ -1,4 +1,5 @@
 import robin_stocks as r
+import robin_stocks.robinhood as rr
 import matplotlib.pyplot as plt
 import matplotlib.ticker as plticker
 import numpy as np
@@ -33,7 +34,7 @@ def show_plot(price, firstIndicator, secondIndicator, dates, symbol="", label1="
 def get_equity_data():
     """Displays a pie chart of your portfolio holdings
     """
-    holdings_data = r.build_holdings()
+    holdings_data = rr.build_holdings()
     equity_data = {}
     for key, value in holdings_data.items():
         equity_data[key] = {}
