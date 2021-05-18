@@ -301,58 +301,36 @@ def sell_holdings(symbol, holdings_data):
           " shares of " + symbol + " #######")
     send_text("SELL: \nSelling " + str(shares_owned) + " shares of " + symbol)
 
-
 def buy_holdings(potential_buys, profile_data, holdings_data):
     """ Places orders to buy holdings of stocks. This method will try to order
         an appropriate amount of shares such that your holdings of the stock will
         roughly match the average for the rest of your portfoilio. If the share
         price is too high considering the rest of your holdings and the amount of
         buying power in your account, it will not order any shares.
-
     Args:
         potential_buys(list): List of strings, the strings are the symbols of stocks we want to buy
         symbol(str): Symbol of the stock we want to sell
         holdings_data(dict): dict obtained from r.build_holdings() or get_modified_holdings() method
-
-    Returns: 
-        False if order has not been placed because there was not enough buying power.
     """
-    # The below line was commented out and replaced because it inexplicably started 
-    # returning seeminly random negative numbers.
     cash = float(profile_data.get('cash'))
-    pheonix_account = r.load_phoenix_account()
-    # cash = float(pheonix_account['withdrawable_cash']['amount'])
     portfolio_value = float(profile_data.get('equity')) - cash
+    ideal_position_size = (safe_division(portfolio_value, len(holdings_data))+cash/len(potential_buys))/(2 * len(potential_buys))
     prices = r.get_latest_price(potential_buys)
-    # The below line seemed to no longer work.  In my account I had $3 and the 
-    # commented out function reported a sum of $145.
-    # buying_power = r.load_account_profile(info='buying_power')
-    buying_power = pheonix_account['account_buying_power']['amount']
-    order_placed = False
-    len_potential_buys = len(potential_buys)
     for i in range(0, len(potential_buys)):
-        ideal_position_size = (safe_division(portfolio_value, len(
-            holdings_data))+cash/len_potential_buys)/(2 * len_potential_buys)
         stock_price = float(prices[i])
-        if (float(buying_power) < ideal_position_size):
-            output = "####### Tried buying " + str(int(ideal_position_size/stock_price)) + " or more shares of " + potential_buys[i] + " at ${:.2f}".format(stock_price) + " however your account balance of ${:.2f}".format(float(buying_power)) + " is not enough buying power to purchase at the ideal buying position size. #######"
-            print(output)
-            len_potential_buys = len_potential_buys - 1
-            continue
-        elif(ideal_position_size < stock_price < ideal_position_size*1.5):
+        if(ideal_position_size < stock_price < ideal_position_size*1.5):
             num_shares = int(ideal_position_size*1.5/stock_price)
         elif (stock_price < ideal_position_size):
             num_shares = int(ideal_position_size/stock_price)
         else:
-            output = "####### Tried buying " + str(int(ideal_position_size/stock_price)) + " or more shares of " + potential_buys[i] + " at ${:.2f}".format(stock_price) + ", but not enough buying power at ${:.2f}".format(float(buying_power)) + " to do so. #######"
+            output = "####### Tried buying " + str(int(ideal_position_size/stock_price)) + " or more shares of " + potential_buys[i] + " at ${:.2f}".format(stock_price) + " however your account balance of ${:.2f}".format(cash) + " is not enough buying power to purchase at the ideal buying position size. #######"
             print(output)
             send_text(output)
-            len_potential_buys = len_potential_buys - 1
-            continue
-        print("####### Buying " + str(num_shares) +
-              " shares of " + potential_buys[i] + " #######")
 
-        send_text("Attempting to buy " + potential_buys[i])
+            break
+
+        print("####### Buying " + str(num_shares) +
+                " shares of " + potential_buys[i] + " #######")
 
         message = "BUY: \nBuying " + str(num_shares) + " shares of " + potential_buys[i]
 
@@ -360,9 +338,7 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
             result = r.order_buy_market(potential_buys[i], num_shares)
             if 'detail' in result:
                 message = message +  ". The result is " + result['detail']
-        order_placed = True
         send_text(message)
-    return order_placed
 
 def is_market_in_uptrend():
     stockTickerNdaq = 'NDAQ'
@@ -773,6 +749,25 @@ def order_symbols_by_slope(portfolio_symbols):
         send_text(
             "Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.format_exc())
 
+def build_pheonix_profile_data(profile_data_with_dividend):
+    """Builds a dictionary of important information regarding the user account.
+
+    :returns: Returns a dictionary that has total equity, extended hours equity, cash, and divendend total.
+
+    """
+    profile_data = {}
+
+    pheonix_account = r.load_phoenix_account()
+
+    profile_data['equity'] = pheonix_account['total_equity']['amount']
+    if (pheonix_account['total_extended_hours_equity']):
+        profile_data['extended_hours_equity'] = pheonix_account['total_extended_hours_equity']['amount']
+    profile_data['cash'] = pheonix_account['uninvested_cash']['amount']
+
+    profile_data['dividend_total'] = profile_data_with_dividend['dividend_total']
+
+    return profile_data
+
 def scan_stocks():
     """ The main method. Sells stocks in your portfolio if their 50 day moving average crosses
         below the 200 day, and buys stocks in your watchlist if the opposite happens.
@@ -828,7 +823,8 @@ def scan_stocks():
                         print("Unable to sell " + symbol + " because there are " + str(len(day_trades)) + " day trades.")
                 else:
                     print("Unable to sell " + symbol + " because there are open stock orders.")
-        profile_data = r.build_user_profile()
+        profile_data_with_dividend_total = r.build_user_profile()
+        profile_data = build_pheonix_profile_data(profile_data_with_dividend_total)
         ordered_watchlist_symbols = order_symbols_by_slope(watchlist_symbols)
         print("\n----- Scanning watchlist for stocks to buy -----\n")
         for symbol in ordered_watchlist_symbols:
