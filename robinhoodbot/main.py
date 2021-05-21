@@ -876,13 +876,11 @@ def scan_stocks():
                         print("But there are " + str(len(open_stock_orders)) + " current pending orders.")
         if(len(potential_buys) > 0):
             buy_holdings_succeeded = buy_holdings(potential_buys, profile_data, holdings_data)
-            # if buy_holdings_succeeded:
-            #     new_holdings = get_modified_holdings()
-                # Trade history has been commented out because it seems to be error prone.
-                # update_trade_history(potential_buys, new_holdings, trade_history_file_name)
-        # if(len(sells) > 0):
-            # Trade history has been commented out because it seems to be error prone.
-            # update_trade_history(sells, holdings_data, trade_history_file_name)
+        if(len(sells) > 0):
+            file_name = trade_history_file_name
+            if debug:
+                file_name = "robinhoodbot/tradehistory-debug.txt"
+            update_trade_history(sells, holdings_data, file_name)
 
         # Get the metrics report.
         get_accurate_gains(portfolio_symbols, watchlist_symbols)
