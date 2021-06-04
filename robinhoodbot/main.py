@@ -873,7 +873,9 @@ def scan_stocks():
                         else:
                             print("But the price is lower than it was when the golden cross formed " + str(cross[2]) + " < " + str(cross[1]))
                     else:
-                        print("But there are " + str(len(open_stock_orders)) + " current pending orders.")
+                        pending_order_message = "But there are " + str(len(open_stock_orders)) + " current pending orders."
+                        print(pending_order_message)
+                        send_text("Wanted to buy " + symbol + ". " + pending_order_message)
         if(len(potential_buys) > 0):
             buy_holdings_succeeded = buy_holdings(potential_buys, profile_data, holdings_data)
         if(len(sells) > 0):
