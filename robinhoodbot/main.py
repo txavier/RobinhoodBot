@@ -518,6 +518,9 @@ def sudden_drop(symbol, percent, hours_apart):
         True if there is a sudden drop.
     """
     historicals = rr.get_stock_historicals(symbol, interval='hour', span='month')
+    if len(historicals) == 0:
+        return False
+        
     percentage = (percent/100) * float(historicals[len(historicals) - 1 - hours_apart]['close_price'])
     target_price = float(historicals[len(historicals) - 1 - hours_apart]['close_price']) - percentage
 
@@ -875,7 +878,7 @@ def scan_stocks():
                     else:
                         pending_order_message = "But there are " + str(len(open_stock_orders)) + " current pending orders."
                         print(pending_order_message)
-                        send_text("Wanted to buy " + symbol + ". " + pending_order_message)
+                        # send_text("Wanted to buy " + symbol + ". " + pending_order_message)
         if(len(potential_buys) > 0):
             buy_holdings_succeeded = buy_holdings(potential_buys, profile_data, holdings_data)
         if(len(sells) > 0):
