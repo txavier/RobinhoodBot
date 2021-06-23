@@ -15,7 +15,7 @@ This project supports Python 3.7+
 To Install:
 
 ```bash
-git clone https://github.com/2018kguo/RobinhoodBot.git
+git clone https://github.com/txavier/RobinhoodBot.git
 cd RobinhoodBot/
 pip install -r requirements.txt
 cp config.py.sample config.py # add auth info and watchlist name to monitor after copying

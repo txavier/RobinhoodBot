@@ -123,3 +123,4 @@ dmypy.json
 .pyre/
 robinhoodbot/tradehistory-real.txt
 robinhoodbot/tradehistory-debug.txt
+.vscode/
