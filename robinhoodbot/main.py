@@ -832,7 +832,7 @@ def scan_stocks():
                 # filled.
                 if(len(open_stock_orders) == 0):
                     day_trades = rr.get_day_trades()['equity_day_trades']
-                    if len(day_trades) <= 1:
+                    if (len(day_trades) <= 1 or not traded_today(symbol)):
                         if (not isInExclusionList(symbol)):
                             send_text("Attempting to sell " + symbol)
                             sell_holdings(symbol, holdings_data)
@@ -865,7 +865,7 @@ def scan_stocks():
                             if(float(cross[2]) > float(cross[3])):
                                 if(market_uptrend):
                                     day_trades = rr.get_day_trades()['equity_day_trades']
-                                    if len(day_trades) <= 1:
+                                    if len(day_trades) <= 1 or not traded_today(symbol):
                                         potential_buys.append(symbol)
                                     else:
                                         print("Unable to buy " + symbol + " because there are " + str(len(day_trades)) + " day trades.")
@@ -911,6 +911,22 @@ def scan_stocks():
         login_to_sms()
         send_text("Unexpected error:" + str(e))
         raise
+
+def traded_today(stock):
+    
+    stock_list = rr.get_open_stock_positions()
+    for stock_item in stock_list:
+        instrument = rr.get_instrument_by_url(stock_item['instrument'])
+        stock_item_creation_date = stock_item['created_at']
+        stock_item_symbol = instrument['symbol']
+        # If the stock was traded already and the date it was traded on was today then return true
+        if (stock_item_symbol == stock):
+            if (stock_item_creation_date.split('T')[0] == datetime.datetime.today().strftime('%Y-%m-%d')):
+                print(stock_item_symbol + " was already traded today " + stock_item_creation_date)
+                return True
+
+    return False
+
 
 # execute the scan
 scan_stocks()
