@@ -520,6 +520,9 @@ def sudden_drop(symbol, percent, hours_apart):
     historicals = rr.get_stock_historicals(symbol, interval='hour', span='month')
     if len(historicals) == 0:
         return False
+
+    if len(historicals) - 1 - hours_apart < 0:
+        return False
         
     percentage = (percent/100) * float(historicals[len(historicals) - 1 - hours_apart]['close_price'])
     target_price = float(historicals[len(historicals) - 1 - hours_apart]['close_price']) - percentage
@@ -823,6 +826,9 @@ def scan_stocks():
         market_uptrend = is_market_in_uptrend()
         open_stock_orders = []
         for symbol in portfolio_symbols:
+            tradeable_stock_info = rr.get_instruments_by_symbols(symbol)
+            if (len(tradeable_stock_info) == 0 or not tradeable_stock_info[0]['tradeable']):
+                continue
             is_sudden_drop = sudden_drop(symbol, 10, 2) or sudden_drop(symbol, 15, 1)
             cross = golden_cross(symbol, n1=21, n2=50, days=30, direction="below")
             if(cross[0] == -1 or is_sudden_drop):
