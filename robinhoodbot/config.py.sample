@@ -1,6 +1,10 @@
 #Enter your robinhood username and password here, then save this file in the same directory as a regular python file
 rh_password="Your Password"
 rh_username="Username"
+# You need to retrieve the authenticator token from the robinhood app when you enable 2FA with
+# an authenticator app, select "manual" as the authenticator app and put the resulting code here.
+# RH_DEVICE_TOKEN explanation: https://github.com/jmfernandes/robin_stocks/issues/296#issuecomment-872740673
+RH_DEVICE_TOKEN="Your authenticator token"
 # change to false to run in debug mode.
 debug=True
 # set to show plot; if set to false plot will not show
