@@ -3,6 +3,7 @@ rh_password="Your Password"
 rh_username="Username"
 # You need to retrieve the authenticator token from the robinhood app when you enable 2FA with
 # an authenticator app, select "manual" as the authenticator app and put the resulting code here.
+# https://robinhood.com/us/en/support/articles/twofactor-authentication/
 # RH_DEVICE_TOKEN explanation: https://github.com/jmfernandes/robin_stocks/issues/296#issuecomment-872740673
 RH_DEVICE_TOKEN="Your authenticator token"
 # change to false to run in debug mode.
