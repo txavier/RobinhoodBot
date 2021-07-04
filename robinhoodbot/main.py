@@ -15,6 +15,7 @@ from config import *
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from scipy.stats import linregress
+from pyotp import TOTP as otp
 
 # Safe divide by zero division function
 
@@ -807,7 +808,8 @@ def scan_stocks():
 
         # Log in to Robinhood
         # Put your username and password in a config.py file in the same directory (see sample file)
-        login = rr.login(rh_username, rh_password)
+        totp = otp(RH_DEVICE_TOKEN).now()
+        login = rr.authentication.login(username=rh_username,password=rh_password, mfa_code=totp)
         login_to_sms()
 
         if debug:
