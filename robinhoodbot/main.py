@@ -610,6 +610,8 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
                             print(stock + " removed from auto-invest because it has no stock history to analyze.")
                         else:
                             print(stock + " removed from auto-invest because its price of " + str(float(history[len(history) - 1]['close_price'])) + " was greater than your price cap of " + str(price_cap))
+            if (not removed):
+                print(stock + " has survived.")
 
         if (invest):
             stock_array = stock_array_copy
