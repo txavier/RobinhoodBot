@@ -576,8 +576,8 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
             if (not removed):
                 # If this stock is untradeable on the robin hood platform
                 # take it out of the list of stocks under consideration.
-                stock_info = rr.get_instruments_by_symbols(stock)
-                if (not stock_info[0]['tradeable']):
+                stock_info = rr.get_instruments_by_symbols(stock, info='tradeable')
+                if (len(stock_info) == 0 or not stock_info[0]):
                     if stock in stock_array_copy:
                         stock_array_copy.remove(stock)
                         removed = True
