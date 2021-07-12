@@ -546,6 +546,8 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
         # all stocks to the investment pool thus diluting the investment potential
         # in the previous stock that has been autoinvested.
         exclusion_list = rr.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
+        stock_array_numpy = np.array(stock_array)
+        stock_array = np.unique(stock_array_numpy).tolist()
         stock_array_copy = stock_array.copy()
         for stock in stock_array:
             removed = False
