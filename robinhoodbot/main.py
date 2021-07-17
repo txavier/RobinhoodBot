@@ -221,7 +221,7 @@ def five_year_check(stockTicker):
     # is just missing i.e. NNOX
     if list_date == None:
         return True
-    if ((pd.Timestamp("now") - pd.to_datetime(list_date)) < pd.Timedelta("5 Y")):
+    if ((pd.Timestamp("now") - pd.to_datetime(list_date)) < pd.Timedelta(str(365*5) + " days")):
         return True
     fiveyear = rr.get_stock_historicals(
         stockTicker, interval='day', span='5year', bounds='regular')
