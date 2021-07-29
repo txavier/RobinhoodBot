@@ -714,7 +714,7 @@ def get_market_tag_stocks_report():
             all_market_tag_stocks = rr.get_all_stocks_from_market_tag(market_tag_for_report_item, info = 'symbol')
             print(market_tag_for_report_item + str(len(all_market_tag_stocks)))
             for market_tag_stock in all_market_tag_stocks:
-                cross = golden_cross(market_tag_stock, n1=21, n2=50, days=5, direction="above")
+                cross = golden_cross(market_tag_stock, n1=20, n2=50, days=5, direction="above")
                 if(cross[0] == 1):
                     report_string = report_string + "\n" + market_tag_stock + "{:.2f}".format(cross[2])
                     stock_array.append(market_tag_stock)
@@ -836,7 +836,7 @@ def scan_stocks():
             if (len(tradeable_stock_info) == 0 or not tradeable_stock_info[0]['tradeable']):
                 continue
             is_sudden_drop = sudden_drop(symbol, 10, 2) or sudden_drop(symbol, 15, 1)
-            cross = golden_cross(symbol, n1=21, n2=50, days=30, direction="below")
+            cross = golden_cross(symbol, n1=20, n2=50, days=30, direction="below")
             if(cross[0] == -1 or is_sudden_drop):
                 open_stock_orders = rr.get_all_open_stock_orders()
                 # If there are any open stock orders then dont buy more.  This is to avoid 
@@ -861,7 +861,7 @@ def scan_stocks():
         print("\n----- Scanning watchlist for stocks to buy -----\n")
         for symbol in ordered_watchlist_symbols:
             if(symbol not in portfolio_symbols):
-                cross = golden_cross(symbol, n1=21, n2=50, days=5, direction="above")
+                cross = golden_cross(symbol, n1=20, n2=50, days=5, direction="above")
                 if(cross[0] == 1):
                     open_stock_orders = rr.get_all_open_stock_orders()
                     # If there are any open stock orders then dont buy more.  This is to avoid 
