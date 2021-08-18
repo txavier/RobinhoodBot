@@ -712,7 +712,7 @@ def get_market_tag_stocks_report():
 
         for market_tag_for_report_item in market_tag_for_report_array:
             all_market_tag_stocks = rr.get_all_stocks_from_market_tag(market_tag_for_report_item, info = 'symbol')
-            print(market_tag_for_report_item + str(len(all_market_tag_stocks)))
+            print(market_tag_for_report_item + " " + str(len(all_market_tag_stocks)) + " items.")
             for market_tag_stock in all_market_tag_stocks:
                 cross = golden_cross(market_tag_stock, n1=20, n2=50, days=5, direction="above")
                 if(cross[0] == 1):
