@@ -830,13 +830,18 @@ def scan_stocks():
         print("Current Watchlist: " + str(watchlist_symbols) + "\n")
         print("----- Scanning portfolio for stocks to sell -----\n")
         market_uptrend = is_market_in_uptrend()
+        # If we are not in a market uptrend, tighten the belt and set the 
+        # short term SMA to 18 instead of the default 20.
+        n1 = 20
+        if(not market_uptrend):
+            n1 = 18
         open_stock_orders = []
         for symbol in portfolio_symbols:
             tradeable_stock_info = rr.get_instruments_by_symbols(symbol)
             if (len(tradeable_stock_info) == 0 or not tradeable_stock_info[0]['tradeable']):
                 continue
             is_sudden_drop = sudden_drop(symbol, 10, 2) or sudden_drop(symbol, 15, 1)
-            cross = golden_cross(symbol, n1=20, n2=50, days=30, direction="below")
+            cross = golden_cross(symbol, n1=n1, n2=50, days=30, direction="below")
             if(cross[0] == -1 or is_sudden_drop):
                 open_stock_orders = rr.get_all_open_stock_orders()
                 # If there are any open stock orders then dont buy more.  This is to avoid 
