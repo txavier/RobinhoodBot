@@ -508,7 +508,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols):
         print("----- End market reports scan -----") 
 
 def sudden_drop(symbol, percent, hours_apart):
-    """ Return true if the price drops more than the percent argument in the span of two hours.
+    """ Return true if the price drops more than the percent argument in the span of hours_apart.
 
     Args:
         symbol(str): The symbol of the stock.
@@ -522,7 +522,7 @@ def sudden_drop(symbol, percent, hours_apart):
     if len(historicals) == 0:
         return False
 
-    if len(historicals) - 1 - hours_apart < 0:
+    if (len(historicals) - 1 - hours_apart) < 0:
         return False
         
     percentage = (percent/100) * float(historicals[len(historicals) - 1 - hours_apart]['close_price'])
@@ -530,6 +530,35 @@ def sudden_drop(symbol, percent, hours_apart):
 
     if float(historicals[len(historicals) - 1]['close_price']) <= target_price:
         message = "The " + symbol + " has dropped from " + str(float(historicals[len(historicals) - 1 - hours_apart]['close_price'])) + " to " + str(float(historicals[len(historicals) - 1]['close_price'])) + " which is more than " + str(percent) + "% (" + str(target_price) + ") in the span of " + str(hours_apart) + " hour(s)."
+        print(message)
+        send_text(message)
+        return True
+    
+    return False
+
+def sudden_increase(symbol, percent, hours_apart):
+    """ Return true if the price increases more than the percent argument in the span of two hours_apart.
+
+    Args:
+        symbol(str): The symbol of the stock.
+        percent(float): The amount of percentage drop from the previous close price.
+        hours_apart(float): Number of hours away from the current to check.
+
+    Returns:
+        True if there is a sudden drop.
+    """
+    historicals = rr.get_stock_historicals(symbol, interval='hour', span='month')
+    if len(historicals) == 0:
+        return False
+
+    if (len(historicals) - 1 - hours_apart) < 0:
+        return False
+        
+    percentage = (percent/100) * float(historicals[len(historicals) - 1 - hours_apart]['close_price'])
+    target_price = float(historicals[len(historicals) - 1 - hours_apart]['close_price']) + percentage
+
+    if float(historicals[len(historicals) - 1]['close_price']) >= target_price:
+        message = "The " + symbol + " has increased from " + str(float(historicals[len(historicals) - 1 - hours_apart]['close_price'])) + " to " + str(float(historicals[len(historicals) - 1]['close_price'])) + " which is more than " + str(percent) + "% (" + str(target_price) + ") in the span of " + str(hours_apart) + " hour(s)."
         print(message)
         send_text(message)
         return True
@@ -830,20 +859,28 @@ def scan_stocks():
         print("Current Watchlist: " + str(watchlist_symbols) + "\n")
         print("----- Scanning portfolio for stocks to sell -----\n")
         market_uptrend = is_market_in_uptrend()
-        # If we are not in a market uptrend, tighten the belt and set the 
-        # short term SMA to 18 instead of the default 20.
-        n1 = 20
         if(not market_uptrend):
-            print("The market(s) in general are in a downtrend.  Setting the sell day period to 18 days.")
-            n1 = 18
+                print("The market(s) in general are in a downtrend.  Setting the sell day period to 14 days.")
+                n1 = 14
         open_stock_orders = []
         for symbol in portfolio_symbols:
+            n1 = 20
+            n2 = 50
+            # If we are not in a market uptrend, tighten the belt and set the 
+            # short term SMA to 18 instead of the default 20.
+            if(not market_uptrend):
+                n1 = 14
             tradeable_stock_info = rr.get_instruments_by_symbols(symbol)
             if (len(tradeable_stock_info) == 0 or not tradeable_stock_info[0]['tradeable']):
                 continue
             # sudden_increase an increase of 10% or more over the course of 2 hours then drops by at least 5% in an hour then set the short term to 5 and the long term to 7.
+            is_sudden_increase = sudden_increase(symbol, 10, 2) or sudden_increase(symbol, 15, 1)
+            if(is_sudden_increase):
+                n1 = 5
+                n2 = 7
+                print("For " + symbol + " setting the short term period to " + str(n1) + " and setting the long term period to " + str(n2) + ".")
             is_sudden_drop = sudden_drop(symbol, 10, 2) or sudden_drop(symbol, 15, 1)
-            cross = golden_cross(symbol, n1=n1, n2=50, days=10, direction="below")
+            cross = golden_cross(symbol, n1=n1, n2=n2, days=10, direction="below")
             if(cross[0] == -1 or is_sudden_drop):
                 open_stock_orders = rr.get_all_open_stock_orders()
                 # If there are any open stock orders then dont buy more.  This is to avoid 
