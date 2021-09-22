@@ -905,7 +905,7 @@ def scan_stocks():
         print("\n----- Scanning watchlist for stocks to buy -----\n")
         for symbol in ordered_watchlist_symbols:
             if(symbol not in portfolio_symbols):
-                cross = golden_cross(symbol, n1=20, n2=50, days=2, direction="above")
+                cross = golden_cross(symbol, n1=20, n2=50, days=3, direction="above")
                 if(cross[0] == 1):
                     open_stock_orders = rr.get_all_open_stock_orders()
                     # If there are any open stock orders then dont buy more.  This is to avoid 
