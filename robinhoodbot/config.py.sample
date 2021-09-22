@@ -12,24 +12,24 @@ debug=True
 # beware, if plot is set to true it will stop execution
 # of this program until the plot diagram window is closed.
 plot=False
-verbose=False
+verbose=True
 rh_email="email@emailprovider.com"
 rh_mail_password="my password"
 rh_phone="7777777777"
 rh_company_url="phone company email address url i.e. for Verizon this will be 'vtext.com'"
-trade_history_file_name="tradehistory.txt"
+trade_history_file_name="tradehistory-real.txt"
 watch_list_name="My First Watchlist"
 # caution here, if the market tag returns too much data this
 # will crash.
-market_tag_for_report="top-movers,most-popular-under-25,blank-check,100-most-popular"
+market_tag_for_report="top-movers,most-popular-under-25,blank-check,100-most-popular,technology,etf,media,telecommunications"
 market_report_auto_invest=True
 use_exclusion_watchlist=True
 auto_invest_exclusion_watchlist="Exclusion"
 use_price_cap=True
-price_cap=15
+price_cap=21
 # The minimum amount of volume of shares a stock needs to be considered.
 min_volume=1000000
 # The minimum amount of market cap a stock needs to be considered.
 min_market_cap=400000
 # Reset the watchlist every week.  Useful for keeping the number of api requests low.
-reset_watchlist=False
+reset_watchlist=True
