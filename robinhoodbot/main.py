@@ -536,7 +536,7 @@ def sudden_drop(symbol, percent, hours_apart):
     
     return False
 
-def sudden_increase(symbol, percent, hours_apart):
+def sudden_increase(symbol, percent, minutes_apart):
     """ Return true if the price increases more than the percent argument in the span of two hours_apart.
 
     Args:
@@ -547,20 +547,20 @@ def sudden_increase(symbol, percent, hours_apart):
     Returns:
         True if there is a sudden drop.
     """
-    historicals = rr.get_stock_historicals(symbol, interval='hour', span='month')
+    minutes_apart_5_min = int(minutes_apart/5)
+    historicals = rr.get_stock_historicals(symbol, interval='5minute', span='day')
     if len(historicals) == 0:
         return False
 
-    if (len(historicals) - 1 - hours_apart) < 0:
+    if (len(historicals) - 1 - minutes_apart_5_min) < 0:
         return False
         
-    percentage = (percent/100) * float(historicals[len(historicals) - 1 - hours_apart]['close_price'])
-    target_price = float(historicals[len(historicals) - 1 - hours_apart]['close_price']) + percentage
+    percentage = (percent/100) * float(historicals[len(historicals) - 1 - minutes_apart_5_min]['close_price'])
+    target_price = float(historicals[len(historicals) - 1 - minutes_apart_5_min]['close_price']) + percentage
 
     if float(historicals[len(historicals) - 1]['close_price']) >= target_price:
-        message = "The " + symbol + " has increased from " + str(float(historicals[len(historicals) - 1 - hours_apart]['close_price'])) + " to " + str(float(historicals[len(historicals) - 1]['close_price'])) + " which is more than " + str(percent) + "% (" + str(target_price) + ") in the span of " + str(hours_apart) + " hour(s)."
+        message = "The " + symbol + " has increased from " + str(float(historicals[len(historicals) - 1 - minutes_apart_5_min]['close_price'])) + " to " + str(float(historicals[len(historicals) - 1]['close_price'])) + " which is more than " + str(percent) + "% (" + str(target_price) + ") in the span of " + str(minutes_apart) + " minute(s)."
         print(message)
-        send_text(message)
         return True
     
     return False
@@ -874,29 +874,41 @@ def scan_stocks():
             if (len(tradeable_stock_info) == 0 or not tradeable_stock_info[0]['tradeable']):
                 continue
             # sudden_increase an increase of 10% or more over the course of 2 hours then drops by at least 5% in an hour then set the short term to 5 and the long term to 7.
-            is_sudden_increase = sudden_increase(symbol, 10, 2) or sudden_increase(symbol, 15, 1)
-            if(is_sudden_increase):
+            # is_sudden_increase = sudden_increase(symbol, 10, 2) or sudden_increase(symbol, 15, 1)
+            # if(is_sudden_increase):
+            #     n1 = 5
+            #     n2 = 7
+            #     print("For " + symbol + " setting the short term period to " + str(n1) + " and setting the long term period to " + str(n2) + ".")
+            is_traded_today = traded_today(symbol)
+            is_take_profit = take_profit(symbol, holdings_data, 2.15)
+            # If we have surpassed the take profit threshold and the stock was traded today
+            # make it less likely to sell by simply changing the periods and not immediately 
+            # selling in order to try our best not to hit our day trade limit.
+            if(is_take_profit and is_traded_today):
                 n1 = 5
                 n2 = 7
+                is_take_profit = False
                 print("For " + symbol + " setting the short term period to " + str(n1) + " and setting the long term period to " + str(n2) + ".")
             is_sudden_drop = sudden_drop(symbol, 10, 2) or sudden_drop(symbol, 15, 1)
             cross = golden_cross(symbol, n1=n1, n2=n2, days=10, direction="below")
-            if(cross[0] == -1 or is_sudden_drop):
+            if(cross[0] == -1 or is_sudden_drop or is_take_profit):
+                day_trades = rr.get_day_trades()['equity_day_trades']
                 open_stock_orders = rr.get_all_open_stock_orders()
                 # If there are any open stock orders then dont buy more.  This is to avoid 
                 # entering multiple orders of the same stock if the order has not yet between
                 # filled.
                 if(len(open_stock_orders) == 0):
-                    day_trades = rr.get_day_trades()['equity_day_trades']
-                    if (len(day_trades) <= 1 or not traded_today(symbol)):
+                    if ((len(day_trades) <= 1) or (not is_traded_today)):
                         if (not isInExclusionList(symbol)):
-                            send_text("Attempting to sell " + symbol)
+                            print("Day trades currently: " + str(len(day_trades)))
+                            print("Traded today: " + str(is_traded_today))
+                            # send_text("Attempting to sell " + symbol)
                             sell_holdings(symbol, holdings_data)
                             sells.append(symbol)
                         else:
                             print("Unable to sell " + symbol + " is in the exclusion list.")
                     else:
-                        print("Unable to sell " + symbol + " because there are " + str(len(day_trades)) + " day trades.")
+                        print("Unable to sell " + symbol + " because there are " + str(len(day_trades)) + " day trades and/or this stock wsa traded today.")
                 else:
                     print("Unable to sell " + symbol + " because there are open stock orders.")
         profile_data_with_dividend_total = rr.build_user_profile()
@@ -969,20 +981,45 @@ def scan_stocks():
         raise
 
 def traded_today(stock):
-    
     stock_list = rr.get_open_stock_positions()
     for stock_item in stock_list:
         instrument = rr.get_instrument_by_url(stock_item['instrument'])
-        stock_item_creation_date = stock_item['created_at']
+        stock_item_creation_date = stock_item['updated_at']
         stock_item_symbol = instrument['symbol']
         # If the stock was traded already and the date it was traded on was today then return true
         if (stock_item_symbol == stock):
+            # Or maybe use the intraday properties which may be a better way to tell if a stock was traded
+            # in the same day?
             if (stock_item_creation_date.split('T')[0] == datetime.datetime.today().strftime('%Y-%m-%d')):
                 print(stock_item_symbol + " was already traded today " + stock_item_creation_date)
                 return True
 
     return False
 
+def take_profit(stock, holdings_data, percentage_limit):
+    hours_apart = (datetime.datetime.now() - datetime.datetime.today().replace(hour = 10)).seconds//60//60
+
+    if hours_apart >= 23:
+        hours_apart = 1
+
+    minutes_apart = hours_apart * 60
+
+    # Perhaps use average buy price and price in holdings_data?
+    # If this stock was traded today use the intraday percent change.
+    if float(holdings_data[stock]['intraday_percent_change']) > 0.0:
+        percent_change = float(holdings_data[stock]['intraday_percent_change'])
+        if(percent_change >= percentage_limit):
+            message = "Changing the period. " + stock + " has achieved the " + str(percentage_limit) + "% take profit limit at the next possible opportunity."
+            print(message)
+            return True
+    if float(holdings_data[stock]['intraday_percent_change']) < 0.0:
+        return False
+    # If this stock was traded on another day use the time from this morning.
+    elif(sudden_increase(stock, percentage_limit, minutes_apart)):
+        message = "Changing the period. " + stock + " has achieved the " + str(percentage_limit) + "% take profit limit at the next possible opportunity."
+        print(message)
+        return True
+    return False
 
 # execute the scan
 scan_stocks()
