@@ -36,6 +36,7 @@ def login_to_sms():
 
 
 def send_text(message):
+    login_to_sms()
     msg = MIMEMultipart()
     msg['From'] = rh_email
     msg['To'] = sms_gateway
@@ -565,6 +566,26 @@ def sudden_increase(symbol, percent, minutes_apart):
     
     return False
 
+def percent_increase(symbol, percent, buy_price, current_price):
+    """ Return true if the price increases more than the percent argument in the span of two hours_apart.
+
+    Args:
+        symbol(str): The symbol of the stock.
+        percent(float): The amount of percentage increase from the previous close price.
+
+    Returns:
+        True if there is a sudden increase.
+    """        
+    percentage = (percent/100) * buy_price
+    target_price = buy_price + percentage
+
+    if current_price >= target_price:
+        message = "The " + symbol + " has increased from " + str(buy_price) + " to " + str(current_price) + " which is more than " + str(percent) + "% (" + str(target_price) + ")."
+        print(message)
+        return True
+    
+    return False
+
 def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
     try:
         invest = True
@@ -615,7 +636,7 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
                         print(stock + " removed from auto-invest because RobinHood has marked this stock as untradeable.")
             fundamentals = rr.get_fundamentals(stock)
             if (not removed):
-                average_volume = float(fundamentals[0]['average_volume'])
+                average_volume = float(fundamentals[0]['average_volume'] or 0)
                 if(average_volume < min_volume):
                     if stock in stock_array_copy:
                         stock_array_copy.remove(stock)
@@ -678,7 +699,7 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
 
         login_to_sms()
         send_text("Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.format_exc())
-        # send_text("Unexpected error could not generate interesting stocks report:" + str(e))
+        print(traceback.format_exc())
 
 def find_symbol_with_greatest_slope(stock_array):
     linregressResults = []
@@ -1003,6 +1024,9 @@ def take_profit(stock, holdings_data, percentage_limit):
         hours_apart = 1
 
     minutes_apart = hours_apart * 60
+    
+    average_buy_price = float(holdings_data[stock]['average_buy_price'])
+    price = float(holdings_data[stock]['price'])
 
     # Perhaps use average buy price and price in holdings_data?
     # If this stock was traded today use the intraday percent change.
@@ -1014,8 +1038,7 @@ def take_profit(stock, holdings_data, percentage_limit):
             return True
     if float(holdings_data[stock]['intraday_percent_change']) < 0.0:
         return False
-    # If this stock was traded on another day use the time from this morning.
-    elif(sudden_increase(stock, percentage_limit, minutes_apart)):
+    elif(percent_increase(stock, percentage_limit, average_buy_price, price)):
         message = "Changing the period. " + stock + " has achieved the " + str(percentage_limit) + "% take profit limit at the next possible opportunity."
         print(message)
         return True
