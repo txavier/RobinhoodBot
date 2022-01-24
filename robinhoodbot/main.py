@@ -359,6 +359,41 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
                 message = message +  ". The result is " + result['detail']
         send_text(message)
 
+def is_market_in_major_downtrend():
+    stockTickerNdaq = 'NDAQ'
+    stockTickerDow = 'DIA'
+    stockTickerSP = 'SPY'
+    downtrendNdaq = False
+    downtrendDow = False
+    downtrendSp = False
+    # Nasdaq
+    # Using NasDaq as the market downtrend indicator which does not have extended trading hours.
+    today_history = rr.get_stock_historicals(stockTickerNdaq, interval='5minute', span='day', bounds='regular') 
+    week_history = rr.get_stock_historicals(stockTickerNdaq, interval='day', span='week', bounds='regular')   
+    if(float(week_history[0]['open_price']) > float(today_history[len(today_history) - 1]['close_price'])):
+        downtrendNdaq = True
+
+    # DOW
+    # Using Dow as the market downtrend indicator.
+    today_history = rr.get_stock_historicals(stockTickerDow, interval='5minute', span='day', bounds='regular')  
+    week_history = rr.get_stock_historicals(stockTickerDow, interval='day', span='week', bounds='regular')   
+    if(float(week_history[0]['open_price']) > float(today_history[len(today_history) - 1]['close_price'])):
+        downtrendDow = True
+
+    # S&P Index
+    # Using S&P as the market downtrend indicator.
+    # day_trades = rr.get_day_trades()
+    today_history = rr.get_stock_historicals(stockTickerSP, interval='5minute', span='day', bounds='regular')    
+    week_history = rr.get_stock_historicals(stockTickerSP, interval='day', span='week', bounds='regular')   
+    if(float(week_history[0]['open_price']) > float(today_history[len(today_history) - 1]['close_price'])):
+        downtrendSp = True
+    
+    # If there are atleast two markets in a major downtrend over the past week report return true.
+    result = (downtrendNdaq + downtrendDow + downtrendSp) >= 2
+    if(result):
+        print("The markets are in a major downtrend.")
+    return result
+
 def is_market_in_uptrend():
     stockTickerNdaq = 'NDAQ'
     stockTickerDow = 'DIA'
@@ -386,7 +421,7 @@ def is_market_in_uptrend():
     result = (uptrendNdaq + uptrendDow + uptrendSp) >= 2
     return result
 
-def get_accurate_gains(portfolio_symbols, watchlist_symbols):
+def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
     '''
     Robinhood includes dividends as part of your net gain. This script removes
     dividends from net gain to figure out how much your stocks/options have paid
@@ -395,7 +430,6 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols):
     Print profileData and see what other values you can play around with.
     '''
 
-    profileData = rr.load_portfolio_profile()
     allTransactions = rr.get_bank_transfers()
     cardTransactions= rr.get_card_transactions()
 
@@ -874,22 +908,49 @@ def scan_stocks():
         watchlist_symbols = get_watchlist_symbols()
         portfolio_symbols = get_portfolio_symbols()
         holdings_data = get_modified_holdings()
+        profileData = rr.load_portfolio_profile()
         potential_buys = []
         sells = []
         print("Current Portfolio: " + str(portfolio_symbols) + "\n")
         print("Current Watchlist: " + str(watchlist_symbols) + "\n")
         print("----- Scanning portfolio for stocks to sell -----\n")
-        market_uptrend = is_market_in_uptrend()
-        if(not market_uptrend):
+        market_uptrend = is_market_in_uptrend()        
+        market_in_major_downtrend = is_market_in_major_downtrend()
+        
+        if(not market_uptrend or market_in_major_downtrend):
                 print("The market(s) in general are in a downtrend.  Setting the sell day period to 14 days.")
                 n1 = 14
-        open_stock_orders = []
+        open_stock_orders = rr.get_all_open_stock_orders()
+
         for symbol in portfolio_symbols:
+            # If the market is open and there are open stock orders still pending
+            # 5 at least minutes after the opening bell, cancel them.  This is meant to remove orders
+            # that are still pending because the buy price has gone far higher
+            # than what the price was when the order was originally when the markets 
+            # were closed.
+            continue_outer_loop = False
+            if(len(open_stock_orders) > 0):
+                for open_stock_order in open_stock_orders:
+                    instrument = rr.get_instrument_by_url(open_stock_order['instrument'])
+                    if(instrument['symbol'] == symbol):
+                        is_market_open = rr.get_market_today_hours('XNAS')['is_open']
+                        five_minutes_after_market_open_hours = datetime.datetime.now().hour >= 9 and datetime.datetime.now().minute > 35
+                        if(is_market_open and five_minutes_after_market_open_hours):
+                            rr.cancel_stock_order(open_stock_order['id'])
+                        else:
+                            # If the markets are closed then continue to the next symbol
+                            # as this pending market action for this symbol should be 
+                            # allowed to proceed.
+                            continue_outer_loop = True
+            if(continue_outer_loop):
+                print("Skipping " + symbol + " because there is a order currently pending for this symbol.")
+                continue
+
             n1 = 20
             n2 = 50
             # If we are not in a market uptrend, tighten the belt and set the 
             # short term SMA to 18 instead of the default 20.
-            if(not market_uptrend):
+            if((not market_uptrend) or market_in_major_downtrend):
                 n1 = 14
             tradeable_stock_info = rr.get_instruments_by_symbols(symbol)
             if (len(tradeable_stock_info) == 0 or not tradeable_stock_info[0]['tradeable']):
@@ -914,24 +975,16 @@ def scan_stocks():
             cross = golden_cross(symbol, n1=n1, n2=n2, days=10, direction="below")
             if(cross[0] == -1 or is_sudden_drop or is_take_profit):
                 day_trades = get_day_trades(profileData)
-                # open_stock_orders = rr.get_all_open_stock_orders()
-                # If there are any open stock orders then dont buy more.  This is to avoid 
-                # entering multiple orders of the same stock if the order has not yet between
-                # filled.
-                # if(len(open_stock_orders) == 0):
                 if ((day_trades <= 1) or (not is_traded_today)):
-                        if (not isInExclusionList(symbol)):
+                    if (not isInExclusionList(symbol)):
                         print("Day trades currently: " + str(day_trades))
-                            print("Traded today: " + str(is_traded_today))
-                            # send_text("Attempting to sell " + symbol)
-                            sell_holdings(symbol, holdings_data)
-                            sells.append(symbol)
-                        else:
-                            print("Unable to sell " + symbol + " is in the exclusion list.")
+                        print("Traded today: " + str(is_traded_today))
+                        sell_holdings(symbol, holdings_data)
+                        sells.append(symbol)
                     else:
-                        print("Unable to sell " + symbol + " because there are " + str(len(day_trades)) + " day trades and/or this stock wsa traded today.")
+                        print("Unable to sell " + symbol + " is in the exclusion list.")
                 else:
-                    print("Unable to sell " + symbol + " because there are open stock orders.")
+                    print("Unable to sell " + symbol + " because there are " + str(day_trades) + " day trades and/or this stock was traded today.")
         profile_data_with_dividend_total = rr.build_user_profile()
         profile_data = build_pheonix_profile_data(profile_data_with_dividend_total)
         ordered_watchlist_symbols = order_symbols_by_slope(watchlist_symbols)
@@ -940,34 +993,26 @@ def scan_stocks():
             if(symbol not in portfolio_symbols):
                 cross = golden_cross(symbol, n1=20, n2=50, days=3, direction="above")
                 if(cross[0] == 1):
-                    open_stock_orders = rr.get_all_open_stock_orders()
-                    # If there are any open stock orders then dont buy more.  This is to avoid 
-                    # entering multiple orders of the same stock if the order has not yet between
-                    # filled.
-                    if(len(open_stock_orders) == 0):
                         # If the current price is greater than the price at cross,
                         # meaning that the price is still rising then buy.
-                        if(float(cross[2]) > float(cross[1])):
-                            # If the current price is greater than the price 5 hours ago,
-                            # meaning we have less of a chance of the stock showing a 
-                            # death cross soon then buy.
-                            if(float(cross[2]) > float(cross[3])):
-                                if(market_uptrend):
-                                    day_trades = rr.get_day_trades()['equity_day_trades']
-                                    if len(day_trades) <= 1 or not traded_today(symbol):
-                                        potential_buys.append(symbol)
-                                    else:
-                                    print("Unable to buy " + symbol + " because there are " + str(day_trades) + " day trades.")
+                    if(float(cross[2]) > float(cross[1])):
+                        # If the current price is greater than the price 5 hours ago,
+                        # meaning we have less of a chance of the stock showing a 
+                        # death cross soon then buy.
+                        if(float(cross[2]) > float(cross[3])):
+                            if(market_uptrend or market_in_major_downtrend):
+                                day_trades = get_day_trades(profileData)
+                                if day_trades <= 1 or not traded_today(symbol):
+                                    potential_buys.append(symbol)
                                 else:
-                                    print("But the markets on average are not in an uptrend.")
+                                    print("Unable to buy " + symbol + " because there are " + str(day_trades) + " day trades.")
                             else:
-                                print("But the price is lower than it was 5 hours ago.")
+                                print("But the markets on average are not in an uptrend.")
                         else:
-                            print("But the price is lower than it was when the golden cross formed " + str(cross[2]) + " < " + str(cross[1]))
+                            print("But the price is lower than it was 5 hours ago.")
                     else:
-                        pending_order_message = "But there are " + str(len(open_stock_orders)) + " current pending orders."
-                        print(pending_order_message)
-                        # send_text("Wanted to buy " + symbol + ". " + pending_order_message)
+                        print("But the price is lower than it was when the golden cross formed " + str(cross[2]) + " < " + str(cross[1]))
+                    
         if(len(potential_buys) > 0):
             buy_holdings_succeeded = buy_holdings(potential_buys, profile_data, holdings_data)
         if(len(sells) > 0):
@@ -977,7 +1022,7 @@ def scan_stocks():
             update_trade_history(sells, holdings_data, file_name)
 
         # Get the metrics report.
-        get_accurate_gains(portfolio_symbols, watchlist_symbols)
+        get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData)
 
         # Remove all from watchlist_symbols if Friday evening.
         if(reset_watchlist):
