@@ -913,15 +913,15 @@ def scan_stocks():
             is_sudden_drop = sudden_drop(symbol, 10, 2) or sudden_drop(symbol, 15, 1)
             cross = golden_cross(symbol, n1=n1, n2=n2, days=10, direction="below")
             if(cross[0] == -1 or is_sudden_drop or is_take_profit):
-                day_trades = rr.get_day_trades()['equity_day_trades']
-                open_stock_orders = rr.get_all_open_stock_orders()
+                day_trades = get_day_trades(profileData)
+                # open_stock_orders = rr.get_all_open_stock_orders()
                 # If there are any open stock orders then dont buy more.  This is to avoid 
                 # entering multiple orders of the same stock if the order has not yet between
                 # filled.
-                if(len(open_stock_orders) == 0):
-                    if ((len(day_trades) <= 1) or (not is_traded_today)):
+                # if(len(open_stock_orders) == 0):
+                if ((day_trades <= 1) or (not is_traded_today)):
                         if (not isInExclusionList(symbol)):
-                            print("Day trades currently: " + str(len(day_trades)))
+                        print("Day trades currently: " + str(day_trades))
                             print("Traded today: " + str(is_traded_today))
                             # send_text("Attempting to sell " + symbol)
                             sell_holdings(symbol, holdings_data)
@@ -957,7 +957,7 @@ def scan_stocks():
                                     if len(day_trades) <= 1 or not traded_today(symbol):
                                         potential_buys.append(symbol)
                                     else:
-                                        print("Unable to buy " + symbol + " because there are " + str(len(day_trades)) + " day trades.")
+                                    print("Unable to buy " + symbol + " because there are " + str(day_trades) + " day trades.")
                                 else:
                                     print("But the markets on average are not in an uptrend.")
                             else:
@@ -1043,6 +1043,19 @@ def take_profit(stock, holdings_data, percentage_limit):
         print(message)
         return True
     return False
+
+def get_day_trades(profileData):
+    """Gets the day trades that count towards a day trading violation
+
+    :returns: Returns the number of day trades that count towards a day trading violation.  If the user has over $25,000 this method
+              returns 0.
+
+    """
+    if(float(profileData['equity']) > 25000):
+        return 0
+    else:
+        day_trades = rr.get_day_trades()['equity_day_trades']
+        return len(day_trades)
 
 # execute the scan
 scan_stocks()
