@@ -966,7 +966,7 @@ def scan_stocks():
             #     n1 = 5
             #     n2 = 7
             #     print("For " + symbol + " setting the short term period to " + str(n1) + " and setting the long term period to " + str(n2) + ".")
-            is_traded_today = traded_today(symbol)
+            is_traded_today = traded_today(symbol, profileData)
             is_take_profit = take_profit(symbol, holdings_data, 2.15)
             # If we have surpassed the take profit threshold and the stock was traded today
             # make it less likely to sell by simply changing the periods and not immediately 
@@ -1007,7 +1007,7 @@ def scan_stocks():
                         if(float(cross[2]) > float(cross[3])):
                             if(market_uptrend or market_in_major_downtrend):
                                 day_trades = get_day_trades(profileData)
-                                if day_trades <= 1 or not traded_today(symbol):
+                                if day_trades <= 1 or not traded_today(symbol, profileData):
                                     potential_buys.append(symbol)
                                 else:
                                     print("Unable to buy " + symbol + " because there are " + str(day_trades) + " day trades.")
@@ -1051,7 +1051,12 @@ def scan_stocks():
         send_text("Unexpected error:" + str(e))
         raise
 
-def traded_today(stock):
+def traded_today(stock, profileData):
+    # If the equity in the account is above the day trading violation
+    # rules then return false to disable day trading violation protection.
+    if(disable_day_trading_violation_prevention(profileData)):
+        return False
+
     stock_list = rr.get_open_stock_positions()
     for stock_item in stock_list:
         instrument = rr.get_instrument_by_url(stock_item['instrument'])
@@ -1101,11 +1106,17 @@ def get_day_trades(profileData):
               returns 0.
 
     """
-    if(float(profileData['equity']) > 25000):
+    if(disable_day_trading_violation_prevention(profileData)):
         return 0
     else:
         day_trades = rr.get_day_trades()['equity_day_trades']
         return len(day_trades)
+
+def disable_day_trading_violation_prevention(profileData):
+    if(float(profileData['equity']) > 25000):
+        return True
+    else:
+        return False
 
 # execute the scan
 scan_stocks()
