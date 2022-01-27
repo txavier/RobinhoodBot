@@ -1005,7 +1005,7 @@ def scan_stocks():
                         # meaning we have less of a chance of the stock showing a 
                         # death cross soon then buy.
                         if(float(cross[2]) > float(cross[3])):
-                            if(market_uptrend or market_in_major_downtrend):
+                            if(market_uptrend and not market_in_major_downtrend):
                                 day_trades = get_day_trades(profileData)
                                 if day_trades <= 1 or not traded_today(symbol, profileData):
                                     potential_buys.append(symbol)
