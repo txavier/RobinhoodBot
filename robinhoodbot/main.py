@@ -481,6 +481,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
     timenow = datetime.datetime.now().time()
 
     if(timenow >= begin_time and timenow < end_time):
+        if(timenow >= begin_time and timenow < datetime.time(9, 00)):
         print("Sending morning report.")
         send_text(bankTransfered + "\n" + withdrawable_amount)
         time.sleep(2)
@@ -491,7 +492,6 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
         market_tag_report = get_market_tag_stocks_report()
         if market_tag_report[0] != '':
             # If the market tag report has some stock values...
-            send_text(market_tag_report[0])
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
 
@@ -500,6 +500,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
     end_time = datetime.time(18, 30)
 
     if(timenow >= begin_time and timenow < end_time):
+        if(timenow >= begin_time and timenow < datetime.time(18, 00)):
         print("Sending evening report.")
         send_text(bankTransfered + "\n" + withdrawable_amount)
         time.sleep(2)
@@ -510,7 +511,6 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
         market_tag_report = get_market_tag_stocks_report()
         if market_tag_report[0] != '':
             # If the market tag report has some stock values...
-            send_text(market_tag_report[0])
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
 
