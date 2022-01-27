@@ -917,9 +917,14 @@ def scan_stocks():
         market_uptrend = is_market_in_uptrend()        
         market_in_major_downtrend = is_market_in_major_downtrend()
         
-        if(not market_uptrend or market_in_major_downtrend):
+        if(not market_uptrend):
                 print("The market(s) in general are in a downtrend.  Setting the sell day period to 14 days.")
                 n1 = 14
+
+        if(market_in_major_downtrend):
+                print("The market(s) are in a major downtrend.  Setting the sell day period to 14 days.")
+                n1 = 14
+
         open_stock_orders = rr.get_all_open_stock_orders()
 
         for symbol in portfolio_symbols:
