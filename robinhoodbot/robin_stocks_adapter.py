@@ -31,6 +31,16 @@ class rsa:
         return result
 
     @cache
+    def get_instrument_by_url(url, info=None):
+        result = retry_call(rsa.try_get_instrument_by_url, fargs=[url], fkwargs={"info": info}, tries=3, backoff=5, delay=5)
+        return result
+
+    def try_get_instrument_by_url(url, info=None):
+        result = rr.get_instrument_by_url(url, info=info)
+        test = len(result)
+        return result
+
+    @cache
     def get_watchlist_by_name(name):
         result = retry_call(rsa.try_get_watchlist_by_name, fargs=[name], tries=3, backoff=5, delay=5)
         return result
