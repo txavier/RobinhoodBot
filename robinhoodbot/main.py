@@ -8,6 +8,8 @@ import sys
 import datetime
 import traceback
 import time
+from retry.api import retry_call
+from functools import cache
 from pandas.plotting import register_matplotlib_converters
 from misc import *
 from tradingstats import *
@@ -16,10 +18,11 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from scipy.stats import linregress
 from pyotp import TOTP as otp
+from robin_stocks_adapter import rsa
+
+# robin_stocks stocks.py has been enhanced with the changes suggested from here https://github.com/jmfernandes/robin_stocks/pull/337/files
 
 # Safe divide by zero division function
-
-
 def safe_division(n, d):
     return n / d if d else 0
 
@@ -54,7 +57,7 @@ def isInExclusionList(symbol):
     """
     result = False
     if use_exclusion_watchlist:
-        exclusion_list = rr.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
+        exclusion_list = rsa.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
     for exclusion_item in exclusion_list['results']:
             if exclusion_item['symbol'] == symbol:
                 result = True
@@ -68,10 +71,10 @@ def get_watchlist_symbols():
     """
     exclusion_list = []
     symbols = []
-    list = rr.get_watchlist_by_name(name=watch_list_name)
+    list = rsa.get_watchlist_by_name(name=watch_list_name)
     # Remove any exclusions.
     if use_exclusion_watchlist:
-        exclusion_list = rr.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
+        exclusion_list = rsa.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
     skip = False
     for item in list['results']:
         for exclusion_item in exclusion_list['results']:
@@ -97,7 +100,7 @@ def get_portfolio_symbols():
     for item in holdings_data:
         if not item:
             continue
-        instrument_data = rr.get_instrument_by_url(item.get('instrument'))
+        instrument_data = rsa.get_instrument_by_url(item.get('instrument'))
         symbol = instrument_data['symbol']
         symbols.append(symbol)
     return symbols
@@ -132,7 +135,7 @@ def get_position_creation_date(symbol, holdings_data):
     Returns:
         A string containing the date and time the stock was bought, or "Not found" otherwise
     """
-    instrument = rr.get_instruments_by_symbols(symbol)
+    instrument = rsa.get_instruments_by_symbols(symbol)
     url = instrument[0].get('url')
     for dict in holdings_data:
         if(dict.get('instrument') == url):
@@ -213,7 +216,9 @@ def five_year_check(stockTicker):
         True if the stock's current price is higher than it was five years ago, or the stock IPO'd within the last five years
         False otherwise
     """
-    instrument = rr.get_instruments_by_symbols(stockTicker)
+    instrument = rsa.get_instruments_by_symbols(stockTicker)
+    # instrument = retry_call(rsa.get_instruments_by_symbols, fargs=[stockTicker], tries=3, backoff=5, delay=5)
+
     if(len(instrument) == 0):
         return False
 
@@ -224,8 +229,9 @@ def five_year_check(stockTicker):
         return True
     if ((pd.Timestamp("now") - pd.to_datetime(list_date)) < pd.Timedelta(str(365*5) + " days")):
         return True
-    fiveyear = rr.get_stock_historicals(
-        stockTicker, interval='day', span='5year', bounds='regular')
+    fiveyear = rsa.get_stock_historicals(stockTicker, interval='day', span='5year', bounds='regular')
+    # fiveyear = retry_call(rr.get_stock_historicals, fargs=[stockTicker], fkwargs={"interval": "day","span": "5year","bounds": "regular"}, tries=3, backoff=5, delay=5)
+
     closingPrices = []
     for item in fiveyear:
         closingPrices.append(float(item['close_price']))
@@ -258,12 +264,16 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
     """
     """ Apparently 5 year historicals are no longer available with hourly intervals.  Only with day intervals now.
     """
-    yearCheck = five_year_check(stockTicker)
+    # yearCheck = five_year_check(stockTicker)
+    yearCheck = retry_call(five_year_check, fargs=[stockTicker], tries=3, backoff=5, delay=5)
 
     if(direction == "above" and not yearCheck):
         return False,0,0
 
-    history = rr.get_stock_historicals(stockTicker, interval='hour', span='3month', bounds='regular')
+    # print('About to try ' + stockTicker)
+    history = rsa.get_stock_historicals(stockTicker, interval='hour', span='3month', bounds='regular')
+    # history = retry_call(rsa.get_stock_historicals, fargs=[stockTicker], fkwargs={"interval": "hour","span": "3month","bounds": "regular"}, tries=3, backoff=5, delay=5)
+    
     closingPrices = []
     dates = []
     for history_item in history:
@@ -368,23 +378,23 @@ def is_market_in_major_downtrend():
     downtrendSp = False
     # Nasdaq
     # Using NasDaq as the market downtrend indicator which does not have extended trading hours.
-    today_history = rr.get_stock_historicals(stockTickerNdaq, interval='5minute', span='day', bounds='regular') 
-    week_history = rr.get_stock_historicals(stockTickerNdaq, interval='day', span='week', bounds='regular')   
+    today_history = rsa.get_stock_historicals(stockTickerNdaq, interval='5minute', span='day', bounds='regular') 
+    week_history = rsa.get_stock_historicals(stockTickerNdaq, interval='day', span='week', bounds='regular')   
     if(float(week_history[0]['open_price']) > float(today_history[len(today_history) - 1]['close_price'])):
         downtrendNdaq = True
 
     # DOW
     # Using Dow as the market downtrend indicator.
-    today_history = rr.get_stock_historicals(stockTickerDow, interval='5minute', span='day', bounds='regular')  
-    week_history = rr.get_stock_historicals(stockTickerDow, interval='day', span='week', bounds='regular')   
+    today_history = rsa.get_stock_historicals(stockTickerDow, interval='5minute', span='day', bounds='regular')  
+    week_history = rsa.get_stock_historicals(stockTickerDow, interval='day', span='week', bounds='regular')   
     if(float(week_history[0]['open_price']) > float(today_history[len(today_history) - 1]['close_price'])):
         downtrendDow = True
 
     # S&P Index
     # Using S&P as the market downtrend indicator.
     # day_trades = rr.get_day_trades()
-    today_history = rr.get_stock_historicals(stockTickerSP, interval='5minute', span='day', bounds='regular')    
-    week_history = rr.get_stock_historicals(stockTickerSP, interval='day', span='week', bounds='regular')   
+    today_history = rsa.get_stock_historicals(stockTickerSP, interval='5minute', span='day', bounds='regular')    
+    week_history = rsa.get_stock_historicals(stockTickerSP, interval='day', span='week', bounds='regular')   
     if(float(week_history[0]['open_price']) > float(today_history[len(today_history) - 1]['close_price'])):
         downtrendSp = True
     
@@ -403,18 +413,18 @@ def is_market_in_uptrend():
     uptrendSp = False
     # Nasdaq
     # Using NasDaq as the market uptrend indicator which does not have extended trading hours.
-    today_history = rr.get_stock_historicals(stockTickerNdaq, interval='5minute', span='day', bounds='regular')    
+    today_history = rsa.get_stock_historicals(stockTickerNdaq, interval='5minute', span='day', bounds='regular')    
     if(float(today_history[0]['open_price']) < float(today_history[len(today_history) - 1]['close_price'])):
         uptrendNdaq = True
     # DOW
     # Using Dow as the market uptrend indicator.
-    today_history = rr.get_stock_historicals(stockTickerDow, interval='5minute', span='day', bounds='regular')    
+    today_history = rsa.get_stock_historicals(stockTickerDow, interval='5minute', span='day', bounds='regular')    
     if(float(today_history[0]['open_price']) < float(today_history[len(today_history) - 1]['close_price'])):
         uptrendDow = True
     # S&P Index
     # Using S&P as the market uptrend indicator.
     # day_trades = rr.get_day_trades()
-    today_history = rr.get_stock_historicals(stockTickerSP, interval='5minute', span='day', bounds='regular')    
+    today_history = rsa.get_stock_historicals(stockTickerSP, interval='5minute', span='day', bounds='regular')    
     if(float(today_history[0]['open_price']) < float(today_history[len(today_history) - 1]['close_price'])):
         uptrendSp = True
     
@@ -482,12 +492,12 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
 
     if(timenow >= begin_time and timenow < end_time):
         if(timenow >= begin_time and timenow < datetime.time(9, 00)):
-        print("Sending morning report.")
-        send_text(bankTransfered + "\n" + withdrawable_amount)
-        time.sleep(2)
-        send_text(equity)      
-        time.sleep(2)
-        send_text(equityAndWithdrawable + "\n" + gainIncrease)
+            print("Sending morning report.")
+            send_text(bankTransfered + "\n" + withdrawable_amount)
+            time.sleep(2)
+            send_text(equity)      
+            time.sleep(2)
+            send_text(equityAndWithdrawable + "\n" + gainIncrease)
         # Get interesting stocks report.
         market_tag_report = get_market_tag_stocks_report()
         if market_tag_report[0] != '':
@@ -501,12 +511,12 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
 
     if(timenow >= begin_time and timenow < end_time):
         if(timenow >= begin_time and timenow < datetime.time(18, 00)):
-        print("Sending evening report.")
-        send_text(bankTransfered + "\n" + withdrawable_amount)
-        time.sleep(2)
-        send_text(equity)      
-        time.sleep(2)
-        send_text(equityAndWithdrawable + "\n" + gainIncrease)
+            print("Sending evening report.")
+            send_text(bankTransfered + "\n" + withdrawable_amount)
+            time.sleep(2)
+            send_text(equity)      
+            time.sleep(2)
+            send_text(equityAndWithdrawable + "\n" + gainIncrease)
         # Get interesting stocks report.
         market_tag_report = get_market_tag_stocks_report()
         if market_tag_report[0] != '':
@@ -553,7 +563,7 @@ def sudden_drop(symbol, percent, hours_apart):
     Returns:
         True if there is a sudden drop.
     """
-    historicals = rr.get_stock_historicals(symbol, interval='hour', span='month')
+    historicals = rsa.get_stock_historicals(symbol, interval='hour', span='month')
     if len(historicals) == 0:
         return False
 
@@ -583,7 +593,7 @@ def sudden_increase(symbol, percent, minutes_apart):
         True if there is a sudden drop.
     """
     minutes_apart_5_min = int(minutes_apart/5)
-    historicals = rr.get_stock_historicals(symbol, interval='5minute', span='day')
+    historicals = rsa.get_stock_historicals(symbol, interval='5minute', span='day')
     if len(historicals) == 0:
         return False
 
@@ -629,7 +639,7 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
         # then dont auto invest any other stocks for now to prevent just adding
         # all stocks to the investment pool thus diluting the investment potential
         # in the previous stock that has been autoinvested.
-        exclusion_list = rr.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
+        exclusion_list = rsa.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
         stock_array_numpy = np.array(stock_array)
         stock_array = np.unique(stock_array_numpy).tolist()
         stock_array_copy = stock_array.copy()
@@ -662,13 +672,13 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
             if (not removed):
                 # If this stock is untradeable on the robin hood platform
                 # take it out of the list of stocks under consideration.
-                stock_info = rr.get_instruments_by_symbols(stock, info='tradeable')
+                stock_info = rsa.get_instruments_by_symbols(stock, info='tradeable')
                 if (len(stock_info) == 0 or not stock_info[0]):
                     if stock in stock_array_copy:
                         stock_array_copy.remove(stock)
                         removed = True
                         print(stock + " removed from auto-invest because RobinHood has marked this stock as untradeable.")
-            fundamentals = rr.get_fundamentals(stock)
+            fundamentals = rsa.get_fundamentals(stock)
             if (not removed):
                 average_volume = float(fundamentals[0]['average_volume'] or 0)
                 if(average_volume < min_volume):
@@ -687,7 +697,7 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
                 # If a price cap has been set remove any stocks
                 # that go above the cap or if the stock does not have
                 # any history for today.
-                history = rr.get_stock_historicals(stock, interval='day')
+                history = rsa.get_stock_historicals(stock, interval='day')
                 if (len(history) == 0 or float(history[len(history) - 1]['close_price']) > price_cap):
                     if stock in stock_array_copy:
                         stock_array_copy.remove(stock)
@@ -739,7 +749,7 @@ def find_symbol_with_greatest_slope(stock_array):
     linregressResults = []
     for stockTicker in stock_array:
         # Load stock numbers.
-        history = rr.get_stock_historicals(stockTicker, interval='5minute', span='day', bounds='regular')
+        history = rsa.get_stock_historicals(stockTicker, interval='5minute', span='day', bounds='regular')
         closingPrices = []
         dates = []
         i = 0
@@ -763,7 +773,7 @@ def find_symbol_with_greatest_slope(stock_array):
 def find_symbol_with_highest_volume(stock_array):
     volume_array = []
     for stock in stock_array:
-        volumes = rr.get_stock_historicals(stock, interval='day', span='week', bounds='regular', info='volume')
+        volumes = rsa.get_stock_historicals(stock, interval='day', span='week', bounds='regular', info='volume')
         if len(volumes) == 0:
             continue
         volume_array.append(volumes[len(volumes) - 1])
@@ -798,7 +808,8 @@ def get_market_tag_stocks_report():
             all_market_tag_stocks = rr.get_all_stocks_from_market_tag(market_tag_for_report_item, info = 'symbol')
             print(market_tag_for_report_item + " " + str(len(all_market_tag_stocks)) + " items.")
             for market_tag_stock in all_market_tag_stocks:
-                cross = golden_cross(market_tag_stock, n1=20, n2=50, days=5, direction="above")
+                # cross = golden_cross(market_tag_stock, n1=20, n2=50, days=5, direction="above")
+                cross = retry_call(golden_cross, fargs=[market_tag_stock], fkwargs={"n1": 20,"n2": 50,"days": 5, "direction": "above"}, tries=3, backoff=5, delay=2)
                 if(cross[0] == 1):
                     report_string = report_string + "\n" + market_tag_stock + "{:.2f}".format(cross[2])
                     stock_array.append(market_tag_stock)
@@ -827,7 +838,7 @@ def order_symbols_by_slope(portfolio_symbols):
         Matrix = [[0 for x in range(w)] for y in range(h)] 
         for stockTicker in portfolio_symbols:
             # Load stock numbers.
-            history = rr.get_stock_historicals(stockTicker, interval='5minute', span='day', bounds='regular')
+            history = rsa.get_stock_historicals(stockTicker, interval='5minute', span='day', bounds='regular')
             closingPrices = []
             dates = []
             i = 0
@@ -925,7 +936,8 @@ def scan_stocks():
                 print("The market(s) are in a major downtrend.  Setting the sell day period to 14 days.")
                 n1 = 14
 
-        open_stock_orders = rr.get_all_open_stock_orders()
+        open_stock_orders = rsa.get_all_open_stock_orders()
+        is_market_open = rr.get_market_today_hours('XNAS')['is_open']
 
         for symbol in portfolio_symbols:
             # If the market is open and there are open stock orders still pending
@@ -936,9 +948,8 @@ def scan_stocks():
             continue_outer_loop = False
             if(len(open_stock_orders) > 0):
                 for open_stock_order in open_stock_orders:
-                    instrument = rr.get_instrument_by_url(open_stock_order['instrument'])
+                    instrument = rsa.get_instrument_by_url(open_stock_order['instrument'])
                     if(instrument['symbol'] == symbol):
-                        is_market_open = rr.get_market_today_hours('XNAS')['is_open']
                         five_minutes_after_market_open_hours = datetime.datetime.now().hour >= 9 and datetime.datetime.now().minute > 35
                         if(is_market_open and five_minutes_after_market_open_hours):
                             rr.cancel_stock_order(open_stock_order['id'])
@@ -957,7 +968,7 @@ def scan_stocks():
             # short term SMA to 18 instead of the default 20.
             if((not market_uptrend) or market_in_major_downtrend):
                 n1 = 14
-            tradeable_stock_info = rr.get_instruments_by_symbols(symbol)
+            tradeable_stock_info = rsa.get_instruments_by_symbols(symbol)
             if (len(tradeable_stock_info) == 0 or not tradeable_stock_info[0]['tradeable']):
                 continue
             # sudden_increase an increase of 10% or more over the course of 2 hours then drops by at least 5% in an hour then set the short term to 5 and the long term to 7.
@@ -1059,7 +1070,7 @@ def traded_today(stock, profileData):
 
     stock_list = rr.get_open_stock_positions()
     for stock_item in stock_list:
-        instrument = rr.get_instrument_by_url(stock_item['instrument'])
+        instrument = rsa.get_instrument_by_url(stock_item['instrument'])
         stock_item_creation_date = stock_item['updated_at']
         stock_item_symbol = instrument['symbol']
         # If the stock was traded already and the date it was traded on was today then return true
