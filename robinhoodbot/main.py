@@ -1037,6 +1037,8 @@ def scan_stocks():
                 file_name = "robinhoodbot/tradehistory-debug.txt"
             update_trade_history(sells, holdings_data, file_name)
 
+        print("----- Scanning metric updates and stocks to add to watch list -----\n")
+
         # Get the metrics report.
         get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData)
 
