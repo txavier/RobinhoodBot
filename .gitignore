@@ -121,6 +121,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# environmental ignore
 robinhoodbot/tradehistory-real.txt
 robinhoodbot/tradehistory-debug.txt
 .vscode/
+robinhoodbot/deploy.ps1
