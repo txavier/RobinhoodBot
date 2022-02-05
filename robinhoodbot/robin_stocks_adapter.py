@@ -11,7 +11,7 @@ class rsa:
     @cache
     def get_stock_historicals(stockTicker, interval='hour', span='week', bounds='regular', info=None):
         # print('Cache not found for ' + stockTicker)
-        result = retry_call(rsa.try_get_stock_historicals, fargs=[stockTicker, interval, span, bounds, info], tries=3, backoff=5, delay=5)
+        result = retry_call(rsa.try_get_stock_historicals, fargs=[stockTicker, interval, span, bounds, info], tries=5, backoff=5, delay=5)
         return result
 
     def try_get_stock_historicals(stockTicker, interval, span, bounds, info):
