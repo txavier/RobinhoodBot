@@ -950,7 +950,7 @@ def scan_stocks():
                 for open_stock_order in open_stock_orders:
                     instrument = rsa.get_instrument_by_url(open_stock_order['instrument'])
                     if(instrument['symbol'] == symbol):
-                        five_minutes_after_market_open_hours = datetime.datetime.now().hour >= 9 and datetime.datetime.now().minute > 35
+                        five_minutes_after_market_open_hours = datetime.datetime.now().hour >= 9 and datetime.datetime.now().minute > 35 and datetime.datetime.now().hour < 11
                         if(is_market_open and five_minutes_after_market_open_hours):
                             rr.cancel_stock_order(open_stock_order['id'])
                         else:
