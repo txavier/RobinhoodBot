@@ -65,20 +65,21 @@ def isInExclusionList(symbol):
     return result
 
 
-def get_watchlist_symbols():
+def get_watchlist_symbols(exclude_from_exclusion_list):
     """
+    Args: get_watchlist_symbols(exclude_from_exclusionlist): True to exclude symbols from a specified exclusion list watchlist.
     Returns: the symbol for each stock in your watchlist as a list of strings
     """
     exclusion_list = []
     symbols = []
     list = rsa.get_watchlist_by_name(name=watch_list_name)
     # Remove any exclusions.
-    if use_exclusion_watchlist:
+    if exclude_from_exclusion_list:
         exclusion_list = rsa.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
     skip = False
     for item in list['results']:
-        for exclusion_item in exclusion_list['results']:
-                if exclusion_item['symbol'] == item['symbol']:
+        for exclusion_item in exclusion_list:
+                if exclusion_item['results']['symbol'] == item['symbol']:
                     skip = True
         if skip:
             skip = False
@@ -916,7 +917,7 @@ def scan_stocks():
 
         print("----- Starting scan... -----\n")
         register_matplotlib_converters()
-        watchlist_symbols = get_watchlist_symbols()
+        watchlist_symbols = get_watchlist_symbols(False)
         portfolio_symbols = get_portfolio_symbols()
         holdings_data = get_modified_holdings()
         profileData = rr.load_portfolio_profile()
