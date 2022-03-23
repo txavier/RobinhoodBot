@@ -1044,8 +1044,10 @@ def scan_stocks():
         get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData)
 
         # Remove all from watchlist_symbols if Friday evening.
+        # Dont remove watchlist symbols that are in the exclusion list.
         if(reset_watchlist):
-            remove_watchlist_symbols(watchlist_symbols)
+            watchlist_symbols_to_remove = get_watchlist_symbols(True)
+            remove_watchlist_symbols(watchlist_symbols_to_remove)
         
         print("----- Scan over -----\n")
 
