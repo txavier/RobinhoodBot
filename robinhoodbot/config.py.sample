@@ -23,6 +23,8 @@ watch_list_name="My First Watchlist"
 # will crash.
 market_tag_for_report="top-movers,most-popular-under-25,blank-check,100-most-popular,technology,etf,media,telecommunications"
 market_report_auto_invest=True
+# If you decide to not allow specific symbols from being automatically added to the watchlist then set the below value use_exclusion_watchlist
+# to true and include the name of your exclusion watchlist here auto_invest_exclusion_watchlist.
 use_exclusion_watchlist=True
 auto_invest_exclusion_watchlist="Exclusion"
 use_price_cap=True
