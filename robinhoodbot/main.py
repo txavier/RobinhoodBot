@@ -78,9 +78,10 @@ def get_watchlist_symbols(exclude_from_exclusion_list):
         exclusion_list = rsa.get_watchlist_by_name(name=auto_invest_exclusion_watchlist)
     skip = False
     for item in list['results']:
-        for exclusion_item in exclusion_list:
-                if exclusion_item['results']['symbol'] == item['symbol']:
-                    skip = True
+        if exclude_from_exclusion_list:
+            for exclusion_item in exclusion_list['results']:
+                    if exclusion_item['symbol'] == item['symbol']:
+                        skip = True
         if skip:
             skip = False
             continue
