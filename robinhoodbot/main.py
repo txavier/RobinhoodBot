@@ -993,13 +993,10 @@ def scan_stocks():
             if(cross[0] == -1 or is_sudden_drop or is_take_profit):
                 day_trades = get_day_trades(profileData)
                 if ((day_trades <= 1) or (not is_traded_today)):
-                    if (not isInExclusionList(symbol)):
-                        print("Day trades currently: " + str(day_trades))
-                        print("Traded today: " + str(is_traded_today))
-                        sell_holdings(symbol, holdings_data)
-                        sells.append(symbol)
-                    else:
-                        print("Unable to sell " + symbol + " is in the exclusion list.")
+                    print("Day trades currently: " + str(day_trades))
+                    print("Traded today: " + str(is_traded_today))
+                    sell_holdings(symbol, holdings_data)
+                    sells.append(symbol)
                 else:
                     print("Unable to sell " + symbol + " because there are " + str(day_trades) + " day trades and/or this stock was traded today.")
         profile_data_with_dividend_total = rr.build_user_profile()
