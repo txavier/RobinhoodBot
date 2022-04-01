@@ -6,6 +6,8 @@ rh_username="Username"
 # https://robinhood.com/us/en/support/articles/twofactor-authentication/
 # RH_DEVICE_TOKEN explanation: https://github.com/jmfernandes/robin_stocks/issues/296#issuecomment-872740673
 RH_DEVICE_TOKEN="Your authenticator token"
+# If you dont have a premium account then setting this to false will disable buying during the offhours.
+premium_account=False
 # change to false to run in debug mode.
 debug=True
 # set to show plot; if set to false plot will not show
