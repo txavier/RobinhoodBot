@@ -1018,7 +1018,10 @@ def scan_stocks():
                             if(market_uptrend and not market_in_major_downtrend):
                                 day_trades = get_day_trades(profileData)
                                 if day_trades <= 1 or not traded_today(symbol, profileData):
-                                    potential_buys.append(symbol)
+                                    if is_market_open or premium_account:
+                                        potential_buys.append(symbol)
+                                    else:
+                                        print("If the market is closed and you do not have a premium account then buying is paused until market open.")
                                 else:
                                     print("Unable to buy " + symbol + " because there are " + str(day_trades) + " day trades.")
                             else:
