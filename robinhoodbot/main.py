@@ -316,7 +316,7 @@ def sell_holdings(symbol, holdings_data):
           " shares of " + symbol + " #######")
     send_text("SELL: \nSelling " + str(shares_owned) + " shares of " + symbol)
 
-def buy_holdings(potential_buys, profile_data, holdings_data):
+def buy_holdings(potential_buys, cash, equity, holdings_data_length):
     """ Places orders to buy holdings of stocks. This method will try to order
         an appropriate amount of shares such that your holdings of the stock will
         roughly match the average for the rest of your portfoilio. If the share
@@ -324,12 +324,14 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
         buying power in your account, it will not order any shares.
     Args:
         potential_buys(list): List of strings, the strings are the symbols of stocks we want to buy
-        symbol(str): Symbol of the stock we want to sell
-        holdings_data(dict): dict obtained from rr.build_holdings() or get_modified_holdings() method
+        cash(str): The amount of cash available to buy stock
+        equity(str): Entire amount of invested and uninvested funds
+        holdings_data_length(dict): The length of the dict obtained from rr.build_holdings() or get_modified_holdings() method
     """
-    cash = float(profile_data.get('cash'))
-    portfolio_value = float(profile_data.get('equity')) - cash
-    ideal_position_size = (safe_division(portfolio_value, len(holdings_data))+cash/len(potential_buys))/(2 * len(potential_buys))
+    cash = float(cash)
+    equity = float(equity)
+    portfolio_value = equity - cash
+    ideal_position_size = (safe_division(portfolio_value, holdings_data_length)+cash/len(potential_buys))/(2 * len(potential_buys))
     prices = rr.get_latest_price(potential_buys)
     for i in range(0, len(potential_buys)):
         stock_price = float(prices[i])
@@ -338,14 +340,14 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
             output = "Tried buying " + str(num_shares) + " shares of " + potential_buys[i] + " at " + str(stock_price) + " costing ${:.2f}".format(stock_price * num_shares) + " but with only ${:.2f}".format(cash) + " in cash not enough to make this purchase."
             print(output)
             if (len(potential_buys) > 1):
-                ideal_position_size = (safe_division(portfolio_value, len(holdings_data))+cash/(len(potential_buys)-1))/(2 * (len(potential_buys)-1))
+                ideal_position_size = (safe_division(portfolio_value, holdings_data_length)+cash/(len(potential_buys)-1))/(2 * (len(potential_buys)-1))
             continue
         elif ((stock_price * int(ideal_position_size*1.5/stock_price)) > cash):
             num_shares = int(ideal_position_size*1.5/stock_price)
             output = "Tried buying " + str(num_shares) + " shares of " + potential_buys[i] + " at " + str(stock_price) + " costing ${:.2f}".format(stock_price * num_shares) + " but with only ${:.2f}".format(cash) + " in cash not enough to make this purchase."
             print(output)
             if (len(potential_buys) > 1):
-                ideal_position_size = (safe_division(portfolio_value, len(holdings_data))+cash/(len(potential_buys)-1))/(2 * (len(potential_buys)-1))
+                ideal_position_size = (safe_division(portfolio_value, holdings_data_length)+cash/(len(potential_buys)-1))/(2 * (len(potential_buys)-1))
             continue
         elif(ideal_position_size < stock_price < ideal_position_size*1.5):
             num_shares = int(ideal_position_size*1.5/stock_price)
@@ -356,8 +358,11 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
             output = "####### Tried buying " + str(int(ideal_position_size/stock_price)) + " or more shares of " + potential_buys[i] + " at ${:.2f}".format(stock_price) + " costing ${:.2f}".format(stock_price * num_shares) + " however your account balance of ${:.2f}".format(cash) + " is not enough buying power to purchase at the ideal buying position size. #######"
             print(output)
             if (len(potential_buys) > 1):
-                ideal_position_size = (safe_division(portfolio_value, len(holdings_data))+cash/(len(potential_buys)-1))/(2 * (len(potential_buys)-1))
+                ideal_position_size = (safe_division(portfolio_value, holdings_data_length)+cash/(len(potential_buys)-1))/(2 * (len(potential_buys)-1))
             continue
+
+        # Limit the amount of shares if the purchase price is above the limit set in the config file.
+        num_shares = purchase_limiter(num_shares, stock_price, equity)
 
         print("####### Buying " + str(num_shares) +
                 " shares of " + potential_buys[i] + " at " + str(stock_price) + " costing ${:.2f}".format(stock_price * num_shares) +  " with ${:.2f}".format(cash) + " in cash. #######")
@@ -370,6 +375,18 @@ def buy_holdings(potential_buys, profile_data, holdings_data):
                 print(result['detail'])
                 message = message +  ". The result is " + result['detail']
         send_text(message)
+
+def purchase_limiter(num_shares, stock_price, equity):
+    result = num_shares
+    if use_purchase_limit_percentage:
+        purchase = num_shares * stock_price
+        limit = equity/purchase_limit_percentage
+
+        if purchase > limit:
+            result = int(limit/stock_price)
+            print("Purchase limited: purchase was " + str(num_shares) + " shares at " + str(stock_price) + " coming to " + str((num_shares * stock_price)) + ". Now the purchase is " + str(result) + " shares coming to " + str((result * stock_price))) 
+
+    return result
 
 def is_market_in_major_downtrend():
     stockTickerNdaq = 'NDAQ'
@@ -1032,7 +1049,10 @@ def scan_stocks():
                         print("But the price is lower than it was when the golden cross formed " + str(cross[2]) + " < " + str(cross[1]))
                     
         if(len(potential_buys) > 0):
-            buy_holdings_succeeded = buy_holdings(potential_buys, profile_data, holdings_data)
+            equity = profile_data.get('equity')
+            cash = profile_data.get('cash')
+            holdings_data_length = len(holdings_data)
+            buy_holdings_succeeded = buy_holdings(potential_buys, cash, equity, holdings_data_length)
         if(len(sells) > 0):
             file_name = trade_history_file_name
             if debug:
