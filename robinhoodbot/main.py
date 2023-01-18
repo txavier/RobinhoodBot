@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import ta as t
 import smtplib
+import ssl
 import sys
 import datetime
 import traceback
@@ -26,15 +27,19 @@ from robin_stocks_adapter import rsa
 def safe_division(n, d):
     return n / d if d else 0
 
-
+# https://stackoverflow.com/questions/19390267/python-3-smtplib-exception-ssl-wrong-version-number-logging-in-to-outlook
 def login_to_sms():
     global sms_gateway
     global server
     
     # Log in to Robinhood
     sms_gateway = rh_phone + '@' + rh_company_url  # Phone number to send SMS
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS)
     server = smtplib.SMTP("smtp.gmail.com", 587)  # Gmail SMTP server
-    server.starttls()
+    # server.starttls()
+    server.ehlo()
+    server.starttls(context=context)
+    server.ehlo()
     server.login(rh_email, rh_mail_password)
 
 
