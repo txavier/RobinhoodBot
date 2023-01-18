@@ -571,6 +571,19 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
         print("----- End market reports scan -----") 
 
+def is_market_open_now():
+    begin_time = datetime.time(9, 30)
+    end_time = datetime.time(16, 00)
+    timenow = datetime.datetime.now().time()
+
+    # If the weekday is less than five then it was some day less than Saturday...
+    if(datetime.datetime.now().weekday() < 5):
+        if(timenow >= begin_time and timenow < end_time):
+            return True
+
+    return False
+        
+
 def sudden_drop(symbol, percent, hours_apart):
     """ Return true if the price drops more than the percent argument in the span of hours_apart.
 
@@ -956,7 +969,7 @@ def scan_stocks():
                 n1 = 14
 
         open_stock_orders = rsa.get_all_open_stock_orders()
-        is_market_open = rr.get_market_today_hours('XNAS')['is_open']
+        is_market_open = is_market_open_now()
 
         for symbol in portfolio_symbols:
             # If the market is open and there are open stock orders still pending
