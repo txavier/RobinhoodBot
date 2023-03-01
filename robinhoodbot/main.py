@@ -951,6 +951,9 @@ def scan_stocks():
         if debug:
             print("----- DEBUG MODE -----\n")
 
+        version = "0.9"
+        print("----- Version " + version + " -----\n")
+
         print("----- Starting scan... -----\n")
         register_matplotlib_converters()
         watchlist_symbols = get_watchlist_symbols(False)
@@ -1033,6 +1036,7 @@ def scan_stocks():
                     print("Traded today: " + str(is_traded_today))
                     sell_holdings(symbol, holdings_data)
                     sells.append(symbol)
+                    genetic_generation_add(symbol, is_take_profit)
                 else:
                     print("Unable to sell " + symbol + " because there are " + str(day_trades) + " day trades and/or this stock was traded today.")
         profile_data_with_dividend_total = rr.build_user_profile()
@@ -1088,6 +1092,8 @@ def scan_stocks():
             watchlist_symbols_to_remove = get_watchlist_symbols(True)
             remove_watchlist_symbols(watchlist_symbols_to_remove)
         
+        print("----- Version " + version + " -----\n")
+
         print("----- Scan over -----\n")
 
         # Sign out of the email server.
@@ -1169,6 +1175,17 @@ def get_day_trades(profileData):
 
 def disable_day_trading_violation_prevention(profileData):
     if(float(profileData['equity']) > 25000):
+        return True
+    else:
+        return False
+
+def genetic_generation_add(symbol, is_take_profit):
+    if(is_take_profit):
+        if not debug:
+            rr.post_symbols_to_watchlist(symbol, watch_list_name)
+        message = symbol + " has survived the take profit limit and has been added to the current genetic generation."
+        print(message)
+        send_text(message)
         return True
     else:
         return False
