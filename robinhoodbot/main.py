@@ -951,7 +951,7 @@ def scan_stocks():
         if debug:
             print("----- DEBUG MODE -----\n")
 
-        version = "0.9"
+        version = "0.9.1"
         print("----- Version " + version + " -----\n")
 
         print("----- Starting scan... -----\n")
@@ -979,6 +979,7 @@ def scan_stocks():
         open_stock_orders = rsa.get_all_open_stock_orders()
         is_market_open = is_market_open_now()
 
+        day_trade_message = ""
         for symbol in portfolio_symbols:
             # If the market is open and there are open stock orders still pending
             # 5 at least minutes after the opening bell, cancel them.  This is meant to remove orders
@@ -1038,7 +1039,9 @@ def scan_stocks():
                     sells.append(symbol)
                     genetic_generation_add(symbol, is_take_profit)
                 else:
-                    print("Unable to sell " + symbol + " because there are " + str(day_trades) + " day trades and/or this stock was traded today.")
+                    day_trade_message = "Unable to sell " + symbol + " because there are " + str(day_trades) + " day trades and/or this stock was traded today."
+                    print(day_trade_message)
+                    send_text(day_trade_message)
         profile_data_with_dividend_total = rr.build_user_profile()
         profile_data = build_pheonix_profile_data(profile_data_with_dividend_total)
         ordered_watchlist_symbols = order_symbols_by_slope(watchlist_symbols)
