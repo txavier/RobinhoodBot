@@ -1065,7 +1065,9 @@ def scan_stocks():
                                     else:
                                         print("If the market is closed and you do not have a premium account then buying is paused until market open.")
                                 else:
-                                    print("Unable to buy " + symbol + " because there are " + str(day_trades) + " day trades.")
+                                    day_trade_message = "Unable to buy " + symbol + " because there are " + str(day_trades) + " day trades."
+                                    print(day_trade_message)
+                                    send_text(day_trade_message)
                             else:
                                 print("But the markets on average are not in an uptrend.")
                         else:
