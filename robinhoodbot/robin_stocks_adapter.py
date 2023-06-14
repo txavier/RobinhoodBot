@@ -66,7 +66,32 @@ class rsa:
     def try_get_all_open_stock_orders():
         result = rr.get_all_open_stock_orders()
         return result
+    
+    @cache
+    def get_name_by_symbol(symbol):
+        result = retry_call(rsa.try_get_name_by_symbol(symbol))
+        return result
 
-
+    def try_get_name_by_symbol(symbol):
+        result = rr.get_name_by_symbol(symbol)
+        return result
+    
+    @cache
+    def get_name_by_url(url):
+        result = retry_call(rsa.try_get_name_by_url(url))
+        return result
+    
+    def try_get_name_by_url(url):
+        result = rr.get_name_by_url(url)
+        return result
+    
+    @cache
+    def get_symbol_by_url(url):
+        result = retry_call(rsa.try_get_symbol_by_url(url))
+        return result
+    
+    def try_get_symbol_by_url(url):
+        result = retry_call(rr.get_symbol_by_url(url))
+        return result
     
 
