@@ -35,3 +35,9 @@ To loop: 1 once an hour
 cd RobinboodBot/robinhoodbot (If outside of root directory)
 ./run.sh # uses bash
 ```
+
+# Changes to robin_stocks library
+ - Added @cache to def get_name_by_symbol(symbol):
+ - Added @cache to def get_name_by_url(url):
+ - Added @cache to def get_symbol_by_url(url):
+
