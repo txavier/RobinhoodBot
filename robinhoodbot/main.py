@@ -951,7 +951,7 @@ def scan_stocks():
         if debug:
             print("----- DEBUG MODE -----\n")
 
-        version = "0.9.1"
+        version = "0.9.2"
         print("----- Version " + version + " -----\n")
 
         print("----- Starting scan... -----\n")
