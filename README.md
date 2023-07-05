@@ -40,4 +40,5 @@ cd RobinboodBot/robinhoodbot (If outside of root directory)
  - Added @cache to def get_name_by_symbol(symbol):
  - Added @cache to def get_name_by_url(url):
  - Added @cache to def get_symbol_by_url(url):
-
+ - Added None Parameter to order
+Afterwards, be sure to run /> pip install . 

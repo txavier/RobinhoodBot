@@ -316,7 +316,7 @@ def sell_holdings(symbol, holdings_data):
     """
     shares_owned = int(float(holdings_data[symbol].get("quantity")))
     if not debug:
-        rr.order_sell_market(symbol, shares_owned)
+        rr.order_sell_market(symbol, shares_owned,None, 'gfd')
     print("####### Selling " + str(shares_owned) +
           " shares of " + symbol + " #######")
     send_text("SELL: \nSelling " + str(shares_owned) + " shares of " + symbol)
@@ -951,7 +951,7 @@ def scan_stocks():
         if debug:
             print("----- DEBUG MODE -----\n")
 
-        version = "0.9.2"
+        version = "0.9.4"
         print("----- Version " + version + " -----\n")
 
         print("----- Starting scan... -----\n")
@@ -967,7 +967,7 @@ def scan_stocks():
         print("----- Scanning portfolio for stocks to sell -----\n")
         market_uptrend = is_market_in_uptrend()        
         market_in_major_downtrend = is_market_in_major_downtrend()
-        
+
         if(not market_uptrend):
                 print("The market(s) in general are in a downtrend.  Setting the sell day period to 14 days.")
                 n1 = 14
