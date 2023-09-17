@@ -588,6 +588,34 @@ def is_market_open_now():
 
     return False
         
+def profit_before_eod(stock, holdings_data):
+    """ Return true if there is a profit before the close of the day.
+    Args:
+        symbol(str): The symbol of the stock.
+    """    
+    begin_time = datetime.time(14, 00)
+    end_time = datetime.time(16,00)
+    
+    timenow = datetime.datetime.now().time()
+    
+    # If it is after the begin time and before the end time then check to see if there is a profit available.
+    if(timenow >= begin_time and timenow < end_time and datetime.datetime.today().weekday() <= 4):
+        average_buy_price = float(holdings_data[stock]['average_buy_price'])
+        price = float(holdings_data[stock]['price'])
+
+        # Perhaps use average buy price and price in holdings_data?
+        # If this stock was traded today use the intraday percent change.
+        percent_change = float(holdings_data[stock]['intraday_percent_change'])
+        if(percent_change > 0):
+            message = "The price of " + stock + " after " + str(end_time) + " has increased " + str(percent_change) + "%."
+            print(message)
+            return True
+        elif (price > average_buy_price):
+            message = "The price of " + stock + " after " + str(end_time) + " ($" + str(price) + ") is greater than it was purchased at ($" + str(average_buy_price) + ")."
+            print(message)
+            return True
+    return False
+
 
 def sudden_drop(symbol, percent, hours_apart):
     """ Return true if the price drops more than the percent argument in the span of hours_apart.
@@ -951,7 +979,7 @@ def scan_stocks():
         if debug:
             print("----- DEBUG MODE -----\n")
 
-        version = "0.9.4"
+        version = "0.9.5"
         print("----- Version " + version + " -----\n")
 
         print("----- Starting scan... -----\n")
@@ -1029,8 +1057,10 @@ def scan_stocks():
                 is_take_profit = False
                 print("For " + symbol + " setting the short term period to " + str(n1) + " and setting the long term period to " + str(n2) + ".")
             is_sudden_drop = sudden_drop(symbol, 10, 2) or sudden_drop(symbol, 15, 1)
+            # If there is a profit before the end of day then sell because there is usually an inflection point after 2pm.
+            is_profit_before_eod = profit_before_eod(symbol, holdings_data)
             cross = golden_cross(symbol, n1=n1, n2=n2, days=10, direction="below")
-            if(cross[0] == -1 or is_sudden_drop or is_take_profit):
+            if(cross[0] == -1 or is_sudden_drop or is_take_profit or is_profit_before_eod):
                 day_trades = get_day_trades(profileData)
                 if ((day_trades <= 1) or (not is_traded_today)):
                     print("Day trades currently: " + str(day_trades))
