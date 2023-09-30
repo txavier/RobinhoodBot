@@ -593,7 +593,7 @@ def profit_before_eod(stock, holdings_data):
     Args:
         symbol(str): The symbol of the stock.
     """    
-    begin_time = datetime.time(14, 00)
+    begin_time = datetime.time(13, 30)
     end_time = datetime.time(16,00)
     
     timenow = datetime.datetime.now().time()
