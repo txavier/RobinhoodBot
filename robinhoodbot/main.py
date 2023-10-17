@@ -593,13 +593,11 @@ def profit_before_eod(stock, holdings_data):
     Args:
         symbol(str): The symbol of the stock.
     """    
-    begin_time = datetime.time(13, 30)
     end_time = datetime.time(16,00)
-    
-    timenow = datetime.datetime.now().time()
+    eod = is_eod()
     
     # If it is after the begin time and before the end time then check to see if there is a profit available.
-    if(timenow >= begin_time and timenow < end_time and datetime.datetime.today().weekday() <= 4):
+    if(eod):
         average_buy_price = float(holdings_data[stock]['average_buy_price'])
         price = float(holdings_data[stock]['price'])
 
@@ -615,6 +613,15 @@ def profit_before_eod(stock, holdings_data):
             print(message)
             return True
     return False
+
+def is_eod():
+    begin_time = datetime.time(13, 30)
+    end_time = datetime.time(16,00)
+    
+    timenow = datetime.datetime.now().time()
+
+    eod = timenow >= begin_time and timenow < end_time and datetime.datetime.today().weekday() <= 4
+    return eod
 
 
 def sudden_drop(symbol, percent, hours_apart):
@@ -1091,7 +1098,14 @@ def scan_stocks():
                                 day_trades = get_day_trades(profileData)
                                 if day_trades <= 1 or not traded_today(symbol, profileData):
                                     if is_market_open or premium_account:
-                                        potential_buys.append(symbol)
+                                        eod = is_eod()
+                                        # If it is not after 2:30pm then we can buy.
+                                        # Buying after 2:30pm may not be a good ideas as 
+                                        # inflection in the price usually occurs at the 
+                                        # end of the day.  Possibly day traders start
+                                        # exiting their positions.
+                                        if (not is_eod):
+                                            potential_buys.append(symbol)
                                     else:
                                         print("If the market is closed and you do not have a premium account then buying is paused until market open.")
                                 else:
