@@ -615,6 +615,7 @@ def profit_before_eod(stock, holdings_data):
     return False
 
 def is_eod():
+    """ Return true if the time of the day is after 1:30pm. After this time the price is subject to inflection probability increases significantly. """
     begin_time = datetime.time(13, 30)
     end_time = datetime.time(16,00)
     
