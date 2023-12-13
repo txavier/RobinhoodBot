@@ -987,9 +987,9 @@ def scan_stocks():
         if debug:
             print("----- DEBUG MODE -----\n")
 
-        version = "0.9.5"
+        version = "0.9.5.1"
         print("----- Version " + version + " -----\n")
-
+        
         print("----- Starting scan... -----\n")
         register_matplotlib_converters()
         watchlist_symbols = get_watchlist_symbols(False)
@@ -1105,8 +1105,12 @@ def scan_stocks():
                                         # inflection in the price usually occurs at the 
                                         # end of the day.  Possibly day traders start
                                         # exiting their positions.
-                                        if (not is_eod):
+                                        if (not eod):
                                             potential_buys.append(symbol)
+                                        else:
+                                            eod_message = symbol + ": It is after 1:30pm EST and as such trading has ended for today as the probability for inflection change usually occurs after this time of day up to and including market close."
+                                            print(eod_message)
+                                            send_text(eod_message)
                                     else:
                                         print("If the market is closed and you do not have a premium account then buying is paused until market open.")
                                 else:
