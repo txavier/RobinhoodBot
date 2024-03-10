@@ -42,3 +42,6 @@ reset_watchlist=True
 # then no one stock purchase can exceed $700.
 use_purchase_limit_percentage=True
 purchase_limit_percentage=10
+# The below line would be the big "Investing" number on the home view of Robinhood.
+# Use this if this app is calculating the wrong initial investment number for you.
+# investing=20000
