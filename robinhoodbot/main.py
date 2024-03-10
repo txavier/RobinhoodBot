@@ -472,7 +472,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
     debits = sum(float(x['amount']['amount']) for x in cardTransactions if (x['direction'] == 'debit' and (x['transaction_type'] == 'settled')))
     reversal_fees = sum(float(x['fees']) for x in allTransactions if (x['direction'] == 'deposit') and (x['state'] == 'reversed'))
 
-    money_invested = deposits + reversal_fees - (withdrawals - debits)
+    money_invested = investing or (deposits + reversal_fees - (withdrawals - debits))
     dividends = rr.get_total_dividends()
     percentDividend = 0
     if not money_invested == 0:
