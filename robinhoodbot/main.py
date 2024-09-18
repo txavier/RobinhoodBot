@@ -488,8 +488,9 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
     withdrawable_amount = "The buying power is ${:.2f}".format(buying_power)
     equityAndWithdrawable = "The total account value of ${:.2f}".format(float(equity_amount))
     dividendIncrease = "The net worth has increased {:0.3f}% due to dividends that amount to ${:0.2f}".format(percentDividend, dividends)
-    gainIncrease = "The net worth has increased {:0.3f}% due to other gains that amount to ${:0.2f}".format(percentGain, totalGainMinusDividends)
+    gainIncrease = "The net worth has increased {:0.3f}% due to other gains that amount to ${:0.2f}\n".format(percentGain, totalGainMinusDividends)
 
+    print("For accurate numbers the [investing] value in the config should be set to the initial Investing number on Robinhoods main graph.\n")
     print(bankTransfered)
     print(equity)
     print(withdrawable_amount)
@@ -987,7 +988,7 @@ def scan_stocks():
         if debug:
             print("----- DEBUG MODE -----\n")
 
-        version = "0.9.5.1"
+        version = "0.9.5.2"
         print("----- Version " + version + " -----\n")
         
         print("----- Starting scan... -----\n")
