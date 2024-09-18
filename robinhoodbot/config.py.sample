@@ -9,7 +9,7 @@ premium_account=False
 # RH_DEVICE_TOKEN explanation: https://github.com/jmfernandes/robin_stocks/issues/296#issuecomment-872740673
 RH_DEVICE_TOKEN="Your authenticator token"
 # change to false to run in debug mode.
-debug=True
+debug=False
 # set to show plot; if set to false plot will not show
 # beware, if plot is set to true it will stop execution
 # of this program until the plot diagram window is closed.
