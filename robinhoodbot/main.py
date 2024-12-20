@@ -718,6 +718,8 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
         stock_array = np.unique(stock_array_numpy).tolist()
         stock_array_copy = stock_array.copy()
         for stock in stock_array:
+            now = datetime.datetime.now()
+            print(now)
             removed = False
             if (stock in portfolio_symbols):
                 # The code below was meant to prevent too many purchases of stock in the hopes
