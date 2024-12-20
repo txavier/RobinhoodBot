@@ -9,6 +9,7 @@ import sys
 import datetime
 import traceback
 import time
+import os
 from retry.api import retry_call
 from functools import cache
 from pandas.plotting import register_matplotlib_converters
@@ -984,6 +985,7 @@ def scan_stocks():
         # Log in to Robinhood
         # Put your username and password in a config.py file in the same directory (see sample file)
         totp = otp(RH_DEVICE_TOKEN).now()
+        rh_password = os.environ.get("rh_password")
         login = rr.authentication.login(username=rh_username,password=rh_password, mfa_code=totp)
         login_to_sms()
 
