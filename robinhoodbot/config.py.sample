@@ -1,5 +1,5 @@
 #Enter your robinhood username and password here, then save this file in the same directory as a regular python file
-rh_password="Your Password"
+# rh_password=<Set this in your os environment variable>
 rh_username="Username"
 # If you dont have a premium account then setting this to false will disable buying during the offhours.
 premium_account=False
