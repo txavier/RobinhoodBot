@@ -1,4 +1,3 @@
-import robin_stocks as r
 import robin_stocks.robinhood as rr
 import pandas as pd
 import numpy as np
