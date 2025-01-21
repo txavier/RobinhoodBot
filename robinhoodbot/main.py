@@ -21,8 +21,6 @@ from scipy.stats import linregress
 from pyotp import TOTP as otp
 from robin_stocks_adapter import rsa
 
-# robin_stocks stocks.py has been enhanced with the changes suggested from here https://github.com/jmfernandes/robin_stocks/pull/337/files
-
 # Safe divide by zero division function
 def safe_division(n, d):
     return n / d if d else 0
