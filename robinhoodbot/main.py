@@ -1168,7 +1168,7 @@ def scan_stocks():
         print("Unexpected error:", str(e))
 
         login_to_sms()
-        send_text("Unexpected error:" + str(e))
+        send_text("Unexpected error:" + str(traceback.format_exc()))
         raise
 
 def traded_today(stock, profileData):
