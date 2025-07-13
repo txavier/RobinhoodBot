@@ -980,10 +980,9 @@ def scan_stocks():
     try:
 
         # Log in to Robinhood
-        # Put your username and password in a config.py file in the same directory (see sample file)
-        totp = otp(RH_DEVICE_TOKEN).now()
+        # Put your username in the config file and password in an environment variable with the name 'rh_password'
         rh_password = os.environ.get("rh_password")
-        login = rr.authentication.login(username=rh_username,password=rh_password, mfa_code=totp)
+        login = rr.authentication.login(username=rh_username,password=rh_password)
         login_to_sms()
 
         if debug:
