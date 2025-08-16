@@ -42,3 +42,10 @@ cd RobinboodBot/robinhoodbot (If outside of root directory)
  - Added @cache to def get_symbol_by_url(url):
  - Added None Parameter to order
 Afterwards, be sure to run /> pip install . 
+
+# VENV
+## In the event you want to use Venv instead of anaconda, activate it with the follwing command.
+venv:
+/home/theo/dev/.venv/bin/activate
+~/> source dev/.venv/bin/activate
+
