@@ -981,8 +981,8 @@ def scan_stocks():
 
         # Log in to Robinhood
         # Put your username in the config file and password in an environment variable with the name 'rh_password'
-        rh_password = os.environ.get("rh_password")
-        login = rr.authentication.login(username=rh_username,password=rh_password)
+        rh = os.environ.get("rh")
+        login = rr.authentication.login(username=rh_username,password=rh)
         login_to_sms()
 
         if debug:
