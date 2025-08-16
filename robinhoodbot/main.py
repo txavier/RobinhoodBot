@@ -4,6 +4,7 @@ import numpy as np
 import ta as t
 import smtplib
 import ssl
+import certifi
 import sys
 import datetime
 import traceback
@@ -30,11 +31,10 @@ def login_to_sms():
     global sms_gateway
     global server
     
-    # Log in to Robinhood
+    # Log in to gmail.
     sms_gateway = rh_phone + '@' + rh_company_url  # Phone number to send SMS
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+    context = ssl.create_default_context(cafile=certifi.where())
     server = smtplib.SMTP("smtp.gmail.com", 587)  # Gmail SMTP server
-    # server.starttls()
     server.ehlo()
     server.starttls(context=context)
     server.ehlo()
@@ -956,10 +956,10 @@ def build_pheonix_profile_data(profile_data_with_dividend):
 
     pheonix_account = rr.load_phoenix_account()
 
-    profile_data['equity'] = pheonix_account['total_equity']['amount']
-    if (pheonix_account['total_extended_hours_equity']):
-        profile_data['extended_hours_equity'] = pheonix_account['total_extended_hours_equity']['amount']
-    profile_data['cash'] = pheonix_account['uninvested_cash']['amount']
+    profile_data['equity'] = pheonix_account['results'][0]['total_equity']['amount']
+    if (pheonix_account['results'][0]['total_extended_hours_equity']):
+        profile_data['extended_hours_equity'] = pheonix_account['results'][0]['total_extended_hours_equity']['amount']
+    profile_data['cash'] = pheonix_account['results'][0]['uninvested_cash']['amount']
 
     profile_data['dividend_total'] = profile_data_with_dividend['dividend_total']
 
