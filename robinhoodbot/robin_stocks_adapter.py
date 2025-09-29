@@ -17,6 +17,11 @@ class rsa:
     def try_get_stock_historicals(stockTicker, interval, span, bounds, info):
         # print('Trying ' + stockTicker)
         result = rr.get_stock_historicals(stockTicker, interval=interval, span=span, bounds=bounds, info=None)
+
+        # If the result is None or an empty list, return an empty list to represent no historicals for this stock.
+        if (result is None) or (len(result) == 0):
+            return []
+        
         test_value = result[0]['close_price']
         return result
 

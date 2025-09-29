@@ -235,17 +235,19 @@ def five_year_check(stockTicker):
     if ((pd.Timestamp("now") - pd.to_datetime(list_date)) < pd.Timedelta(str(365*5) + " days")):
         return True
     fiveyear = rsa.get_stock_historicals(stockTicker, interval='day', span='5year', bounds='regular')
-    # fiveyear = retry_call(rr.get_stock_historicals, fargs=[stockTicker], fkwargs={"interval": "day","span": "5year","bounds": "regular"}, tries=3, backoff=5, delay=5)
 
     closingPrices = []
     for item in fiveyear:
         closingPrices.append(float(item['close_price']))
+
+    # If fiveyear returns an empty list then the stock is either new or has no data.
+    # Either way it should fail the five year check.
+    if(len(closingPrices) == 0):
+        return False
+    
     recent_price = closingPrices[len(closingPrices) - 1]
     oldest_price = closingPrices[0]
-    # if(recent_price <= oldest_price and verbose == True):
-    #     print("The stock " + stockTicker + " IPO'd, more than 5 years ago, on " + list_date +
-    #           " with a price 5 years ago of " + str(oldest_price) +
-    #           " and a current price of " + str(recent_price) + "\n")
+
     return (recent_price > oldest_price)
 
 
@@ -502,7 +504,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
         print("----- Scanning market reports to add stocks to watchlist -----")
         market_tag_report = get_market_tag_stocks_report()
         # If the market tag report has some stock values...
-        if market_tag_report[0] != '':
+        if len(market_tag_report) > 0 and market_tag_report[0] != '':
             send_text(market_tag_report[0])
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
@@ -523,7 +525,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
             send_text(equityAndWithdrawable + "\n" + gainIncrease)
         # Get interesting stocks report.
         market_tag_report = get_market_tag_stocks_report()
-        if market_tag_report[0] != '':
+        if len(market_tag_report) > 0 and market_tag_report[0] != '':
             # If the market tag report has some stock values...
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
@@ -542,7 +544,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
             send_text(equityAndWithdrawable + "\n" + gainIncrease)
         # Get interesting stocks report.
         market_tag_report = get_market_tag_stocks_report()
-        if market_tag_report[0] != '':
+        if len(market_tag_report) > 0 and market_tag_report[0] != '':
             # If the market tag report has some stock values...
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
@@ -556,7 +558,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
         print("----- Scanning market reports to add stocks to watchlist -----")
         market_tag_report = get_market_tag_stocks_report()
         # If the market tag report has some stock values...
-        if market_tag_report[0] != '':
+        if len(market_tag_report) > 0 and market_tag_report[0] != '':
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
         print("----- End market reports scan -----")    
@@ -570,7 +572,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
         print("----- Scanning market reports to add stocks to watchlist -----")
         market_tag_report = get_market_tag_stocks_report()
         # If the market tag report has some stock values...
-        if market_tag_report[0] != '':
+        if len(market_tag_report) > 0 and market_tag_report[0] != '':
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
         print("----- End market reports scan -----") 
@@ -988,7 +990,7 @@ def scan_stocks():
         if debug:
             print("----- DEBUG MODE -----\n")
 
-        version = "0.9.5.2"
+        version = "0.9.5.4"
         print("----- Version " + version + " -----\n")
         
         print("----- Starting scan... -----\n")
