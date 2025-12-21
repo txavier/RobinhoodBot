@@ -125,4 +125,4 @@ dmypy.json
 # environmental ignore
 .vscode/
 robinhoodbot/deploy.ps1
-robinhoodbot/tradehistory-real.txt
+robinhoodbot/tradehistory-real.json

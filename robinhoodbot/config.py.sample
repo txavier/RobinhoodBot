@@ -19,7 +19,7 @@ rh_email="email@emailprovider.com"
 rh_mail_password="my password"
 rh_phone="7777777777"
 rh_company_url="phone company email address url i.e. for Verizon this will be 'vtext.com'"
-trade_history_file_name="tradehistory-real.txt"
+trade_history_file_name="tradehistory-real.json"
 watch_list_name="My First Watchlist"
 # caution here, if the market tag returns too much data this
 # will crash.
