@@ -249,7 +249,6 @@ class BacktestEngine:
             return {}
         
         equity_df = pd.DataFrame(self.portfolio.equity_curve)
-        trades_df = pd.DataFrame(self.portfolio.trade_history)
         
         # Basic metrics
         initial_value = self.portfolio.initial_cash
@@ -257,13 +256,23 @@ class BacktestEngine:
         total_return = ((final_value - initial_value) / initial_value) * 100
         
         # Trade metrics
-        sell_trades = trades_df[trades_df['type'] == 'SELL']
-        winning_trades = sell_trades[sell_trades['profit'] > 0]
-        losing_trades = sell_trades[sell_trades['profit'] < 0]
-        
-        win_rate = len(winning_trades) / len(sell_trades) * 100 if len(sell_trades) > 0 else 0
-        avg_win = winning_trades['profit'].mean() if len(winning_trades) > 0 else 0
-        avg_loss = losing_trades['profit'].mean() if len(losing_trades) > 0 else 0
+        if self.portfolio.trade_history:
+            trades_df = pd.DataFrame(self.portfolio.trade_history)
+            sell_trades = trades_df[trades_df['type'] == 'SELL']
+            winning_trades = sell_trades[sell_trades['profit'] > 0]
+            losing_trades = sell_trades[sell_trades['profit'] < 0]
+            
+            win_rate = len(winning_trades) / len(sell_trades) * 100 if len(sell_trades) > 0 else 0
+            avg_win = winning_trades['profit'].mean() if len(winning_trades) > 0 else 0
+            avg_loss = losing_trades['profit'].mean() if len(losing_trades) > 0 else 0
+        else:
+            trades_df = pd.DataFrame()
+            sell_trades = pd.DataFrame()
+            winning_trades = pd.DataFrame()
+            losing_trades = pd.DataFrame()
+            win_rate = 0
+            avg_win = 0
+            avg_loss = 0
         
         # Drawdown
         equity_df['peak'] = equity_df['value'].cummax()
@@ -280,7 +289,7 @@ class BacktestEngine:
             'total_return_pct': total_return,
             'total_return_dollar': final_value - initial_value,
             'total_trades': len(trades_df),
-            'buy_trades': len(trades_df[trades_df['type'] == 'BUY']),
+            'buy_trades': len(trades_df[trades_df['type'] == 'BUY']) if len(trades_df) > 0 else 0,
             'sell_trades': len(sell_trades),
             'winning_trades': len(winning_trades),
             'losing_trades': len(losing_trades),

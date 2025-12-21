@@ -3,19 +3,32 @@ Backtest Runner for RobinhoodBot
 
 This script runs backtests using the existing trading strategy logic
 against historical data.
+
+IMPORTANT LIMITATIONS:
+- The live bot runs every 15 minutes (see run.sh)
+- This backtest uses DAILY closing prices and executes once per day
+- Real bot may execute trades at different intraday prices
+- Intraday signals (sudden_drop, profit_before_eod) are simplified/omitted
+- Use for strategy validation and parameter tuning, not exact timing prediction
 """
 
 import sys
 import pandas as pd
 from datetime import datetime, timedelta
 from backtest import BacktestEngine
-from main import golden_cross, sudden_drop, take_profit, profit_before_eod
+from main import golden_cross, sudden_drop, take_profit, profit_before_eod, purchase_limiter
 from config import *
 import robin_stocks.robinhood as rr
 
 
 class StrategyBacktest:
-    """Backtesting runner that uses the actual trading strategy from main.py"""
+    """
+    Backtesting runner that uses the actual trading strategy from main.py
+    
+    Note: Simulates using daily candles, while live bot runs every 15 minutes.
+    Golden cross signals are based on daily SMAs so this is reasonably accurate,
+    but trade execution timing may differ from live trading.
+    """
     
     def __init__(self, symbols, start_date, end_date, initial_cash=10000.0):
         """
@@ -39,6 +52,12 @@ class StrategyBacktest:
         self.n2_sell = 50  # Long-term SMA for selling
         self.take_profit_threshold = 2.15  # % profit threshold
         
+        # Config parameters
+        self.use_price_cap = use_price_cap
+        self.price_cap = price_cap
+        self.use_purchase_limit_percentage = use_purchase_limit_percentage
+        self.purchase_limit_percentage = purchase_limit_percentage
+        
     def run(self):
         """Execute the backtest"""
         print("=" * 80)
@@ -47,6 +66,10 @@ class StrategyBacktest:
         print(f"Symbols:       {', '.join(self.symbols)}")
         print(f"Date Range:    {self.start_date} to {self.end_date}")
         print(f"Initial Cash:  ${self.engine.portfolio.initial_cash:,.2f}")
+        print("=" * 80)
+        print("Config Parameters:")
+        print(f"  Price Cap:          ${self.price_cap if self.use_price_cap else 'None'}")
+        print(f"  Purchase Limit:     {self.purchase_limit_percentage}% of equity" if self.use_purchase_limit_percentage else "  Purchase Limit:     None")
         print("=" * 80)
         
         # Load historical data
@@ -151,20 +174,30 @@ class StrategyBacktest:
             available_symbols = [s for s in self.symbols if s in current_prices and s not in portfolio_symbols]
             
             for symbol in available_symbols:
+                current_price = current_prices[symbol]
+                
+                # Apply price cap filter
+                if self.use_price_cap and current_price > self.price_cap:
+                    continue
+                
                 try:
                     # Golden cross check
                     cross = golden_cross(symbol, n1=self.n1_buy, n2=self.n2_buy, days=3, direction="above")
                     
                     if cross[0] == 1:
                         # Additional filters from main.py
-                        if float(cross[2]) > float(cross[1]):  # Price still rising
-                            if float(cross[2]) > float(cross[3]):  # Price > 5 hours ago
-                                potential_buys.append(symbol)
-                                buy_reasons[symbol] = "golden_cross"
+                        # Note: cross[3] (5-hour-ago price) may not be meaningful with daily data
+                        # We simplify to just check if price is rising from cross point
+                        if float(cross[2]) > float(cross[1]):  # Current price > price at cross
+                            potential_buys.append(symbol)
+                            buy_reasons[symbol] = "golden_cross"
+                            if verbose and date_idx % 30 == 0:  # Log occasionally
+                                print(f"    Golden cross detected for {symbol} at ${cross[2]}")
                 
                 except Exception as e:
                     # Skip if error calculating indicators
-                    pass
+                    if verbose and "list index out of range" not in str(e):
+                        pass  # Silently skip common errors
             
             # Execute buys
             if potential_buys:
@@ -180,11 +213,17 @@ class StrategyBacktest:
                     position_size = cash / (len(potential_buys) + num_positions + 1)
                     shares = int(position_size / price)
                     
+                    # Apply purchase limit from config
+                    if self.use_purchase_limit_percentage:
+                        shares = purchase_limiter(shares, price, equity)
+                    
                     if shares > 0:
                         reason = buy_reasons.get(symbol, "golden_cross")
                         success, msg = self.engine.portfolio.buy(symbol, shares, price, current_date, reason)
                         if success:
                             portfolio_symbols.append(symbol)
+                            # Update cash after successful buy
+                            cash = self.engine.portfolio.cash
             
             # Progress update
             if (date_idx + 1) % 30 == 0 or date_idx == len(test_dates) - 1:
@@ -193,7 +232,7 @@ class StrategyBacktest:
                 print(f"  Progress: {progress:5.1f}% | Date: {current_date} | Portfolio: ${value:,.2f} | Positions: {len(portfolio_symbols)}")
 
 
-def run_simple_backtest(symbols=None, start_date=None, end_date=None, initial_cash=10000.0):
+def run_simple_backtest(symbols=None, start_date=None, end_date=None, initial_cash=None):
     """
     Run a simple backtest with default parameters
     
@@ -201,8 +240,12 @@ def run_simple_backtest(symbols=None, start_date=None, end_date=None, initial_ca
         symbols: List of symbols (default: common stocks)
         start_date: Start date YYYY-MM-DD (default: 1 year ago)
         end_date: End date YYYY-MM-DD (default: today)
-        initial_cash: Starting capital (default: $10,000)
+        initial_cash: Starting capital (default: uses 'investing' from config.py)
     """
+    # Use investing amount from config if not specified
+    if initial_cash is None:
+        initial_cash = investing
+    
     # Default symbols if none provided
     if symbols is None:
         symbols = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA', 'META', 'AMD', 'NFLX', 'DIS']

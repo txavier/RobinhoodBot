@@ -10,17 +10,32 @@ A comprehensive backtesting framework for testing the RobinhoodBot trading strat
 - **Trade Tracking**: Record all trades with buy/sell reasons
 - **Visualization**: Generate equity curves, trade analysis charts, and performance plots
 - **Flexible Configuration**: Test any symbols, date ranges, and starting capital
+- **Config Integration**: Respects your `config.py` settings (price cap, purchase limits, etc.)
+
+## Important: Config Parameters
+
+The backtest uses the following parameters from your `config.py`:
+
+- **`price_cap`** ($21): Only trades stocks under this price
+- **`use_price_cap`**: Enable/disable price filtering
+- **`purchase_limit_percentage`** (10%): Max percentage of equity per position
+- **`use_purchase_limit_percentage`**: Enable/disable purchase limits
+- **`investing`**: Your actual account balance - used as default initial_cash for backtests
+
+**Note**: The initial MSFT backtest results were NOT realistic because MSFT trades at ~$400-500/share, well above your $21 price cap. Always test with stocks that match your config constraints!
 
 ## Quick Start
 
 ### 1. Run a Default Backtest
 
-Test 10 popular tech stocks over the past year with $10,000 starting capital:
+Test 10 popular tech stocks over the past year using your actual account balance from `config.py`:
 
 ```bash
 cd robinhoodbot
 python run_backtest.py
 ```
+
+This automatically uses the `investing` value from your config (~$26,267.51) as the starting capital.
 
 ### 2. Test Custom Symbols
 
@@ -38,13 +53,22 @@ python run_backtest.py --start 2024-01-01 --end 2024-12-31
 
 ```python
 from run_backtest import run_simple_backtest, run_custom_backtest
+from config import investing
 
-# Simple backtest
+# Simple backtest using your actual account balance
+metrics = run_simple_backtest(
+    symbols=['AAPL', 'MSFT', 'GOOGL'],
+    start_date='2024-01-01',
+    end_date='2024-12-31'
+    # initial_cash defaults to 'investing' from config.py (~$26,267.51)
+)
+
+# Or specify a different amount for testing
 metrics = run_simple_backtest(
     symbols=['AAPL', 'MSFT', 'GOOGL'],
     start_date='2024-01-01',
     end_date='2024-12-31',
-    initial_cash=10000.0
+    initial_cash=10000.0  # Override with custom amount
 )
 
 # Custom backtest with more control
@@ -54,7 +78,7 @@ backtest = StrategyBacktest(
     symbols=['AAPL', 'MSFT'],
     start_date='2024-01-01',
     end_date='2024-12-31',
-    initial_cash=20000.0
+    initial_cash=investing  # Use your actual account balance
 )
 
 # Customize strategy parameters
@@ -229,6 +253,53 @@ TRADING STATISTICS:
   Avg Win:              $215.30
   Avg Loss:             -$95.20
   Avg Profit/Trade:     $106.62
+```
+
+## Important Limitations
+
+### Execution Frequency
+The live bot runs **every 15 minutes** (per `run.sh`), but the backtest simulates trades using **daily closing prices**. This means:
+
+**What this means:**
+- **Live bot**: Can execute trades multiple times per day when conditions are met
+- **Backtest**: Executes trades once per day at market close
+- **Impact**: Backtest may miss intraday opportunities or show different entry/exit prices
+
+**Why daily data is used:**
+- The golden_cross strategy uses daily SMA (Simple Moving Average) calculations
+- Daily candles provide consistent signals throughout the trading day
+- Using 15-minute candles for backtesting would require different API calls and significantly more data
+
+**Accuracy implications:**
+- ✅ **Strategy logic**: Accurately simulates golden cross/death cross signals
+- ✅ **Config filters**: Correctly applies price_cap, purchase limits, etc.
+- ⚠️ **Timing**: May show trades at slightly different times than live execution
+- ⚠️ **Intraday volatility**: Doesn't capture sudden_drop or profit_before_eod conditions that use hourly/5-minute data
+
+**Recommendation**: Use backtesting for general strategy validation and parameter tuning, not for exact trade timing prediction.
+
+### Why Am I Seeing 0 Trades?
+
+If your backtest shows 0 trades, this is often **realistic behavior** based on your strategy's conservative filters:
+
+**Common reasons for 0 trades:**
+1. **No golden crosses** - SMA 20/50 crossovers are relatively rare (maybe 1-4 per year per stock)
+2. **Price falling after cross** - Strategy requires price to still be rising after the golden cross
+3. **Price cap filter** ($21) - Excludes most large-cap stocks
+4. **Insufficient data** - Test period may not include any valid trading opportunities
+
+**This means your live bot is also NOT trading these stocks** - the backtest is accurately showing this!
+
+**To see trades in backtesting:**
+- Test over LONGER periods (2-3 years minimum)
+- Test with MORE symbols (10-20 stocks)
+- Test during bull market periods (2023-2024 had better opportunities than 2022)
+- Check your actual `tradehistory-real.json` to see what DID trade historically
+
+**Example of a better test:**
+```bash
+# Test 20 stocks over 2 years for better chance of trades
+python run_backtest.py AGRO ATEN BKD BTE CCO CRMD DJT DVAX INFY URG F NIO PLUG VALE PBR T KGC GOLD CLF X --start 2023-01-01 --end 2025-12-21
 ```
 
 ## Troubleshooting

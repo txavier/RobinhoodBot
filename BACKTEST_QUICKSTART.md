@@ -1,5 +1,14 @@
 # Backtesting Quick Start Guide
 
+## ⚠️ Important Note
+
+The backtest uses **daily closing prices** while your live bot runs **every 15 minutes**. This means:
+- Strategy signals (golden cross) are accurately simulated
+- Trade execution timing may differ from live trading
+- Intraday price movements are not captured
+
+Use for strategy validation, not exact timing prediction. See [BACKTESTING.md](BACKTESTING.md) for details.
+
 ## Installation
 
 No additional installation needed! The backtesting system uses the same dependencies as RobinhoodBot.
@@ -13,7 +22,7 @@ cd robinhoodbot
 python run_backtest.py
 ```
 
-This tests 10 popular tech stocks over the past year with $10,000 starting capital.
+This tests 10 popular tech stocks over the past year using your actual account balance from `config.py` (~$26,267.51) as starting capital.
 
 ### 2. View Results
 
