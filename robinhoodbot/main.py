@@ -10,6 +10,7 @@ import datetime
 import traceback
 import time
 import os
+import json
 from retry.api import retry_call
 from functools import cache
 from pandas.plotting import register_matplotlib_converters
@@ -148,6 +149,49 @@ def get_position_creation_date(symbol, holdings_data):
     return "Not found"
 
 
+def save_buy_reason(symbol, reason):
+    """ Saves the reason why a stock was bought to a JSON file.
+    
+    Args:
+        symbol(str): Symbol of the stock
+        reason(str): Reason for buying the stock
+    """
+    buy_reasons_file = "robinhoodbot/buy_reasons.json"
+    try:
+        with open(buy_reasons_file, 'r') as f:
+            buy_reasons_data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        buy_reasons_data = {}
+    
+    buy_reasons_data[symbol] = {
+        'reason': reason,
+        'timestamp': str(pd.Timestamp("now"))
+    }
+    
+    with open(buy_reasons_file, 'w') as f:
+        json.dump(buy_reasons_data, f, indent=4)
+
+
+def get_buy_reason(symbol):
+    """ Retrieves the reason why a stock was bought.
+    
+    Args:
+        symbol(str): Symbol of the stock
+        
+    Returns:
+        str: The buy reason, or None if not found
+    """
+    buy_reasons_file = "robinhoodbot/buy_reasons.json"
+    try:
+        with open(buy_reasons_file, 'r') as f:
+            buy_reasons_data = json.load(f)
+        if symbol in buy_reasons_data:
+            return buy_reasons_data[symbol].get('reason')
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    return None
+
+
 def get_modified_holdings():
     """ Retrieves the same dictionary as rr.build_holdings, but includes data about
         when the stock was purchased, which is useful for the read_trade_history() method
@@ -163,6 +207,10 @@ def get_modified_holdings():
         bought_at = get_position_creation_date(symbol, holdings_data)
         bought_at = str(pd.to_datetime(bought_at))
         holdings[symbol].update({'bought_at': bought_at})
+        # Add buy reason if available
+        buy_reason = get_buy_reason(symbol)
+        if buy_reason:
+            holdings[symbol].update({'buy_reason': buy_reason})
     return holdings
 
 
@@ -321,7 +369,7 @@ def sell_holdings(symbol, holdings_data):
           " shares of " + symbol + " #######")
     send_text("SELL: \nSelling " + str(shares_owned) + " shares of " + symbol)
 
-def buy_holdings(potential_buys, cash, equity, holdings_data_length):
+def buy_holdings(potential_buys, cash, equity, holdings_data_length, buy_reasons=None):
     """ Places orders to buy holdings of stocks. This method will try to order
         an appropriate amount of shares such that your holdings of the stock will
         roughly match the average for the rest of your portfoilio. If the share
@@ -332,6 +380,7 @@ def buy_holdings(potential_buys, cash, equity, holdings_data_length):
         cash(str): The amount of cash available to buy stock
         equity(str): Entire amount of invested and uninvested funds
         holdings_data_length(dict): The length of the dict obtained from rr.build_holdings() or get_modified_holdings() method
+        buy_reasons(dict): Optional dictionary mapping symbols to their buy reasons (e.g., {"AAPL": "golden_cross"})
     """
     cash = float(cash)
     equity = float(equity)
@@ -379,6 +428,10 @@ def buy_holdings(potential_buys, cash, equity, holdings_data_length):
             if 'detail' in result:
                 print(result['detail'])
                 message = message +  ". The result is " + result['detail']
+            else:
+                # Save buy reason if provided
+                if buy_reasons and potential_buys[i] in buy_reasons:
+                    save_buy_reason(potential_buys[i], buy_reasons[potential_buys[i]])
         send_text(message)
 
 def purchase_limiter(num_shares, stock_price, equity):
@@ -990,7 +1043,7 @@ def scan_stocks():
         if debug:
             print("----- DEBUG MODE -----\n")
 
-        version = "0.9.5.4"
+        version = "0.9.5.5"
         print("----- Version " + version + " -----\n")
         
         print("----- Starting scan... -----\n")
@@ -1000,7 +1053,9 @@ def scan_stocks():
         holdings_data = get_modified_holdings()
         profileData = rr.load_portfolio_profile()
         potential_buys = []
+        buy_reasons = {}  # Track reasons for buying each stock
         sells = []
+        sell_reasons = {}  # Track reasons for selling each stock
         print("Current Portfolio: " + str(portfolio_symbols) + "\n")
         print("Current Watchlist: " + str(watchlist_symbols) + "\n")
         print("----- Scanning portfolio for stocks to sell -----\n")
@@ -1071,6 +1126,18 @@ def scan_stocks():
             # If there is a profit before the end of day then sell because there is usually an inflection point after 2pm.
             is_profit_before_eod = profit_before_eod(symbol, holdings_data)
             cross = golden_cross(symbol, n1=n1, n2=n2, days=10, direction="below")
+            
+            # Determine sell reason
+            sell_reason = None
+            if cross[0] == -1:
+                sell_reason = "death_cross"
+            elif is_sudden_drop:
+                sell_reason = "sudden_drop"
+            elif is_take_profit:
+                sell_reason = "take_profit"
+            elif is_profit_before_eod:
+                sell_reason = "profit_before_eod"
+            
             if(cross[0] == -1 or is_sudden_drop or is_take_profit or is_profit_before_eod):
                 day_trades = get_day_trades(profileData)
                 if ((day_trades <= 1) or (not is_traded_today)):
@@ -1078,6 +1145,7 @@ def scan_stocks():
                     print("Traded today: " + str(is_traded_today))
                     sell_holdings(symbol, holdings_data)
                     sells.append(symbol)
+                    sell_reasons[symbol] = sell_reason
                     genetic_generation_add(symbol, is_take_profit)
                 else:
                     day_trade_message = "Unable to sell " + symbol + " because there are " + str(day_trades) + " day trades and/or this stock was traded today."
@@ -1110,6 +1178,7 @@ def scan_stocks():
                                         # exiting their positions.
                                         if (not eod):
                                             potential_buys.append(symbol)
+                                            buy_reasons[symbol] = "golden_cross"
                                         else:
                                             eod_message = symbol + ": It is after 1:30pm EST and as such trading has ended for today as the probability for inflection change usually occurs after this time of day up to and including market close."
                                             print(eod_message)
@@ -1131,12 +1200,12 @@ def scan_stocks():
             equity = profile_data.get('equity')
             cash = profile_data.get('cash')
             holdings_data_length = len(holdings_data)
-            buy_holdings_succeeded = buy_holdings(potential_buys, cash, equity, holdings_data_length)
+            buy_holdings_succeeded = buy_holdings(potential_buys, cash, equity, holdings_data_length, buy_reasons)
         if(len(sells) > 0):
             file_name = trade_history_file_name
             if debug:
                 file_name = "robinhoodbot/tradehistory-debug.json"
-            update_trade_history(sells, holdings_data, file_name)
+            update_trade_history(sells, holdings_data, file_name, sell_reasons)
 
         print("----- Scanning metric updates and stocks to add to watch list -----\n")
 

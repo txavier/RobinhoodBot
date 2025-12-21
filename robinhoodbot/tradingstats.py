@@ -3,24 +3,30 @@ import robin_stocks.robinhood as rr
 import pandas as pd
 import json
 
-def update_trade_history(symbols, holdings_data, file_name):
+def update_trade_history(symbols, holdings_data, file_name, sell_reasons=None):
     """ Writes data about a trade to a JSON file, containing the sell date, buy date,
         price at which the stock was bought and sold at, etc.
 
     Args:
         symbols(list): List of strings, strings are the symbols of the stocks we've just sold and want to write data for.
         holdings_data(dict): dict obtained from get_modified_holdings() method. We need this method rather than rr.build_holdings() to get a stock's buying date
-        file_name(str): name of the file we are writing the data to. Should be "tradehistory.txt" if this method is normally called by scan_stocks().
+        file_name(str): name of the file we are writing the data to. Should be "tradehistory.json" if this method is normally called by scan_stocks().
                         If you want to write to another file, create a new text file with two empty brackets with an empty line between them, to meet JSON formatting standards.
+        sell_reasons(dict): Optional dictionary mapping symbols to their sell reasons (e.g., {"AAPL": "death_cross", "TSLA": "take_profit"})
     """
     with open(file_name) as json_file:
         data = json.load(json_file)
     current_time = str(pd.Timestamp("now"))
     data[current_time] = ({})
     for symbol in symbols:
-        data[current_time].update({symbol: holdings_data[symbol]})
+        stock_data = holdings_data[symbol].copy()
+        # Add sell reason if provided
+        if sell_reasons and symbol in sell_reasons:
+            stock_data['sell_reason'] = sell_reasons[symbol]
+        stock_data['sold_at'] = current_time
+        data[current_time].update({symbol: stock_data})
     with open(file_name, 'w') as outfile:
-        json.dump(data, outfile)
+        json.dump(data, outfile, indent=4)
 
 def read_trade_history(file_name):
     """ Reads data about previous trades from JSON file and prints it out

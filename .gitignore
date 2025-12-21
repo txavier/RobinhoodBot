@@ -126,3 +126,4 @@ dmypy.json
 .vscode/
 robinhoodbot/deploy.ps1
 robinhoodbot/tradehistory-real.json
+robinhoodbot/buy_reasons.json
