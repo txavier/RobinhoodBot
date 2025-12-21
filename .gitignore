@@ -127,3 +127,9 @@ dmypy.json
 robinhoodbot/deploy.ps1
 robinhoodbot/tradehistory-real.json
 robinhoodbot/buy_reasons.json
+
+# backtesting output
+robinhoodbot/backtest_*.csv
+robinhoodbot/backtest_*.txt
+robinhoodbot/backtest_cache.json
+robinhoodbot/*.png
