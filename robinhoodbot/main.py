@@ -21,7 +21,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from scipy.stats import linregress
 from pyotp import TOTP as otp
-from robin_stocks_adapter import rsa
+from robin_stocks_adapter import rsa, api_tracker
 
 # Safe divide by zero division function
 def safe_division(n, d):
@@ -149,46 +149,107 @@ def get_position_creation_date(symbol, holdings_data):
     return "Not found"
 
 
-def save_buy_reason(symbol, reason):
-    """ Saves the reason why a stock was bought to a JSON file.
+def save_trade_reason(symbol, reason, action="buy", holdings_data=None, price=None, quantity=None, equity=None):
+    """ Saves the reason why a stock was bought or sold to a JSON file.
     
     Args:
         symbol(str): Symbol of the stock
-        reason(str): Reason for buying the stock
+        reason(str): Reason for the trade
+        action(str): Either "buy" or "sell"
+        holdings_data(dict): Optional holdings data dict for sells (from get_modified_holdings())
+        price(float): Optional price for buys
+        quantity(int): Optional quantity for buys
+        equity(float): Optional total equity for buys
     """
-    buy_reasons_file = "robinhoodbot/buy_reasons.json"
+    buy_reasons_file = "buy_reasons.json"
     try:
         with open(buy_reasons_file, 'r') as f:
             buy_reasons_data = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         buy_reasons_data = {}
     
-    buy_reasons_data[symbol] = {
+    trade_entry = {
         'reason': reason,
-        'timestamp': str(pd.Timestamp("now"))
+        'action': action,
+        'timestamp': str(pd.Timestamp("now")),
+        'version': version,
+        'config': {
+            'debug': debug,
+            'price_cap': price_cap,
+            'use_price_cap': use_price_cap,
+            'min_volume': min_volume,
+            'min_market_cap': min_market_cap,
+            'purchase_limit_percentage': purchase_limit_percentage,
+            'use_purchase_limit_percentage': use_purchase_limit_percentage,
+            'investing': investing,
+            'premium_account': premium_account,
+            'market_tag_for_report': market_tag_for_report
+        }
     }
+    
+    # Add holdings data for sells
+    if holdings_data and symbol in holdings_data:
+        stock_data = holdings_data[symbol]
+        trade_entry['price'] = stock_data.get('price')
+        trade_entry['quantity'] = stock_data.get('quantity')
+        trade_entry['average_buy_price'] = stock_data.get('average_buy_price')
+        trade_entry['equity'] = stock_data.get('equity')
+        trade_entry['percent_change'] = stock_data.get('percent_change')
+        trade_entry['intraday_percent_change'] = stock_data.get('intraday_percent_change')
+        trade_entry['equity_change'] = stock_data.get('equity_change')
+        trade_entry['type'] = stock_data.get('type')
+        trade_entry['name'] = stock_data.get('name')
+        trade_entry['id'] = stock_data.get('id')
+        trade_entry['pe_ratio'] = stock_data.get('pe_ratio')
+        trade_entry['percentage'] = stock_data.get('percentage')
+        trade_entry['bought_at'] = stock_data.get('bought_at')
+    # Add buy data
+    elif action == "buy":
+        if price is not None:
+            trade_entry['price'] = str(price)
+        if quantity is not None:
+            trade_entry['quantity'] = str(quantity)
+        if equity is not None:
+            trade_entry['equity'] = str(equity)
+    
+    buy_reasons_data[symbol] = trade_entry
     
     with open(buy_reasons_file, 'w') as f:
         json.dump(buy_reasons_data, f, indent=4)
 
 
-def get_buy_reason(symbol):
-    """ Retrieves the reason why a stock was bought.
+# Keep backward compatibility
+def save_buy_reason(symbol, reason, price=None, quantity=None, equity=None):
+    """ Legacy function - calls save_trade_reason with action='buy' """
+    save_trade_reason(symbol, reason, action="buy", price=price, quantity=quantity, equity=equity)
+
+
+def get_trade_reason(symbol):
+    """ Retrieves the full trade data for a stock.
     
     Args:
         symbol(str): Symbol of the stock
         
     Returns:
-        str: The buy reason, or None if not found
+        dict: The trade data including reason, action, timestamp, version, or None if not found
     """
-    buy_reasons_file = "robinhoodbot/buy_reasons.json"
+    buy_reasons_file = "buy_reasons.json"
     try:
         with open(buy_reasons_file, 'r') as f:
             buy_reasons_data = json.load(f)
         if symbol in buy_reasons_data:
-            return buy_reasons_data[symbol].get('reason')
+            return buy_reasons_data[symbol]
     except (FileNotFoundError, json.JSONDecodeError):
         pass
+    return None
+
+
+# Keep backward compatibility
+def get_buy_reason(symbol):
+    """ Legacy function - returns just the reason string """
+    trade_data = get_trade_reason(symbol)
+    if trade_data:
+        return trade_data.get('reason')
     return None
 
 
@@ -431,7 +492,7 @@ def buy_holdings(potential_buys, cash, equity, holdings_data_length, buy_reasons
             else:
                 # Save buy reason if provided
                 if buy_reasons and potential_buys[i] in buy_reasons:
-                    save_buy_reason(potential_buys[i], buy_reasons[potential_buys[i]])
+                    save_buy_reason(potential_buys[i], buy_reasons[potential_buys[i]], price=stock_price, quantity=num_shares, equity=equity)
         send_text(message)
 
 def purchase_limiter(num_shares, stock_price, equity):
@@ -1043,7 +1104,6 @@ def scan_stocks():
         if debug:
             print("----- DEBUG MODE -----\n")
 
-        version = "0.9.5.5"
         print("----- Version " + version + " -----\n")
         
         print("----- Starting scan... -----\n")
@@ -1127,16 +1187,19 @@ def scan_stocks():
             is_profit_before_eod = profit_before_eod(symbol, holdings_data)
             cross = golden_cross(symbol, n1=n1, n2=n2, days=10, direction="below")
             
-            # Determine sell reason
-            sell_reason = None
+            # Determine sell reasons - track all that apply
+            sell_reasons_list = []
             if cross[0] == -1:
-                sell_reason = "death_cross"
-            elif is_sudden_drop:
-                sell_reason = "sudden_drop"
-            elif is_take_profit:
-                sell_reason = "take_profit"
-            elif is_profit_before_eod:
-                sell_reason = "profit_before_eod"
+                sell_reasons_list.append("death_cross")
+            if is_sudden_drop:
+                sell_reasons_list.append("sudden_drop")
+            if is_take_profit:
+                sell_reasons_list.append("take_profit")
+            if is_profit_before_eod:
+                sell_reasons_list.append("profit_before_eod")
+            
+            # Join all reasons or use None if empty
+            sell_reason = ",".join(sell_reasons_list) if sell_reasons_list else None
             
             if(cross[0] == -1 or is_sudden_drop or is_take_profit or is_profit_before_eod):
                 day_trades = get_day_trades(profileData)
@@ -1146,6 +1209,7 @@ def scan_stocks():
                     sell_holdings(symbol, holdings_data)
                     sells.append(symbol)
                     sell_reasons[symbol] = sell_reason
+                    save_trade_reason(symbol, sell_reason, action="sell", holdings_data=holdings_data)
                     genetic_generation_add(symbol, is_take_profit)
                 else:
                     day_trade_message = "Unable to sell " + symbol + " because there are " + str(day_trades) + " day trades and/or this stock was traded today."
@@ -1219,6 +1283,9 @@ def scan_stocks():
             remove_watchlist_symbols(watchlist_symbols_to_remove)
         
         print("----- Version " + version + " -----\n")
+
+        # Print API request stats
+        api_tracker.print_stats()
 
         print("----- Scan over -----\n")
 

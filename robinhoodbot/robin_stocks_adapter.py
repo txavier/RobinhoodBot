@@ -1,10 +1,77 @@
 import robin_stocks.robinhood as rr
 from functools import cache
 from retry.api import retry_call
+from datetime import datetime, timedelta
+from collections import deque
+import threading
+
+class APITracker:
+    """Tracks API requests per minute"""
+    def __init__(self):
+        self.requests = deque()  # Store timestamps of requests
+        self.lock = threading.Lock()
+        self.total_requests = 0
+    
+    def record_request(self, endpoint=""):
+        """Record an API request"""
+        with self.lock:
+            now = datetime.now()
+            self.requests.append((now, endpoint))
+            self.total_requests += 1
+            # Clean up old requests (older than 1 minute)
+            cutoff = now - timedelta(minutes=1)
+            while self.requests and self.requests[0][0] < cutoff:
+                self.requests.popleft()
+    
+    def get_requests_per_minute(self):
+        """Get the number of requests in the last minute"""
+        with self.lock:
+            now = datetime.now()
+            cutoff = now - timedelta(minutes=1)
+            # Clean up old requests
+            while self.requests and self.requests[0][0] < cutoff:
+                self.requests.popleft()
+            return len(self.requests)
+    
+    def get_stats(self):
+        """Get detailed stats about API usage"""
+        with self.lock:
+            now = datetime.now()
+            cutoff = now - timedelta(minutes=1)
+            # Clean up old requests
+            while self.requests and self.requests[0][0] < cutoff:
+                self.requests.popleft()
+            
+            # Count requests by endpoint in last minute
+            endpoint_counts = {}
+            for timestamp, endpoint in self.requests:
+                endpoint_counts[endpoint] = endpoint_counts.get(endpoint, 0) + 1
+            
+            return {
+                'requests_last_minute': len(self.requests),
+                'total_requests': self.total_requests,
+                'by_endpoint': endpoint_counts
+            }
+    
+    def print_stats(self):
+        """Print API usage stats"""
+        stats = self.get_stats()
+        print(f"\n----- API Request Stats -----")
+        print(f"Requests in last minute: {stats['requests_last_minute']}")
+        print(f"Total requests this session: {stats['total_requests']}")
+        if stats['by_endpoint']:
+            print("By endpoint (last minute):")
+            for endpoint, count in sorted(stats['by_endpoint'].items(), key=lambda x: -x[1]):
+                print(f"  {endpoint}: {count}")
+        print("-----------------------------\n")
+
+# Global API tracker instance
+api_tracker = APITracker()
 
 class rsa:
     @cache
     def get_fundamentals(stock):
+        api_tracker.record_request("get_fundamentals")
         result = rr.get_fundamentals(stock)
         return result
 
@@ -16,6 +83,7 @@ class rsa:
 
     def try_get_stock_historicals(stockTicker, interval, span, bounds, info):
         # print('Trying ' + stockTicker)
+        api_tracker.record_request("get_stock_historicals")
         result = rr.get_stock_historicals(stockTicker, interval=interval, span=span, bounds=bounds, info=None)
 
         # If the result is None or an empty list, return an empty list to represent no historicals for this stock.
@@ -31,6 +99,7 @@ class rsa:
         return result
 
     def try_get_instruments_by_symbols(stockTicker, info=None):
+        api_tracker.record_request("get_instruments_by_symbols")
         result = rr.get_instruments_by_symbols(stockTicker, info=info)
         test = len(result)
         return result
@@ -41,6 +110,7 @@ class rsa:
         return result
 
     def try_get_instrument_by_url(url, info=None):
+        api_tracker.record_request("get_instrument_by_url")
         result = rr.get_instrument_by_url(url, info=info)
         test = len(result)
         return result
@@ -51,6 +121,7 @@ class rsa:
         return result
         
     def try_get_watchlist_by_name(name):
+        api_tracker.record_request("get_watchlist_by_name")
         result = rr.get_watchlist_by_name(name=name)
         return result
 
@@ -60,6 +131,7 @@ class rsa:
         return result
         
     def try_get_all_open_stock_orders(url):
+        api_tracker.record_request("get_all_open_stock_orders")
         result = rr.get_all_open_stock_orders(url)
         return result
 
@@ -69,6 +141,7 @@ class rsa:
         return result
 
     def try_get_all_open_stock_orders():
+        api_tracker.record_request("get_all_open_stock_orders")
         result = rr.get_all_open_stock_orders()
         return result
     
@@ -78,6 +151,7 @@ class rsa:
         return result
 
     def try_get_name_by_symbol(symbol):
+        api_tracker.record_request("get_name_by_symbol")
         result = rr.get_name_by_symbol(symbol)
         return result
     
@@ -87,6 +161,7 @@ class rsa:
         return result
     
     def try_get_name_by_url(url):
+        api_tracker.record_request("get_name_by_url")
         result = rr.get_name_by_url(url)
         return result
     
@@ -96,6 +171,7 @@ class rsa:
         return result
     
     def try_get_symbol_by_url(url):
+        api_tracker.record_request("get_symbol_by_url")
         result = retry_call(rr.get_symbol_by_url(url))
         return result
     
