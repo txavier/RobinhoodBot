@@ -4,16 +4,51 @@ from retry.api import retry_call
 from datetime import datetime, timedelta
 from collections import deque
 import threading
+import time
+
+# Rate limit configuration (requests per minute)
+API_RATE_LIMIT = 100
 
 class APITracker:
-    """Tracks API requests per minute"""
-    def __init__(self):
+    """Tracks API requests per minute and enforces rate limiting"""
+    def __init__(self, rate_limit=API_RATE_LIMIT):
         self.requests = deque()  # Store timestamps of requests
         self.lock = threading.Lock()
         self.total_requests = 0
+        self.rate_limit = rate_limit
+        self.rate_limit_waits = 0  # Track how many times we had to wait
+    
+    def wait_if_needed(self):
+        """Wait if we're at the rate limit"""
+        with self.lock:
+            now = datetime.now()
+            cutoff = now - timedelta(minutes=1)
+            # Clean up old requests
+            while self.requests and self.requests[0][0] < cutoff:
+                self.requests.popleft()
+            
+            # If at or over limit, wait until oldest request expires
+            if len(self.requests) >= self.rate_limit:
+                oldest = self.requests[0][0]
+                wait_time = (oldest + timedelta(minutes=1) - now).total_seconds()
+                if wait_time > 0:
+                    self.rate_limit_waits += 1
+                    print(f"⏳ Rate limit reached ({self.rate_limit}/min). Waiting {wait_time:.1f}s...")
+                    # Release lock while waiting
+                    self.lock.release()
+                    try:
+                        time.sleep(wait_time + 0.1)  # Add small buffer
+                    finally:
+                        self.lock.acquire()
+                    # Clean up again after waiting
+                    now = datetime.now()
+                    cutoff = now - timedelta(minutes=1)
+                    while self.requests and self.requests[0][0] < cutoff:
+                        self.requests.popleft()
     
     def record_request(self, endpoint=""):
-        """Record an API request"""
+        """Record an API request (with rate limiting)"""
+        self.wait_if_needed()
         with self.lock:
             now = datetime.now()
             self.requests.append((now, endpoint))
@@ -50,6 +85,8 @@ class APITracker:
             return {
                 'requests_last_minute': len(self.requests),
                 'total_requests': self.total_requests,
+                'rate_limit': self.rate_limit,
+                'rate_limit_waits': self.rate_limit_waits,
                 'by_endpoint': endpoint_counts
             }
     
@@ -57,8 +94,10 @@ class APITracker:
         """Print API usage stats"""
         stats = self.get_stats()
         print(f"\n----- API Request Stats -----")
+        print(f"Rate limit: {stats['rate_limit']}/min")
         print(f"Requests in last minute: {stats['requests_last_minute']}")
         print(f"Total requests this session: {stats['total_requests']}")
+        print(f"Rate limit waits: {stats['rate_limit_waits']}")
         if stats['by_endpoint']:
             print("By endpoint (last minute):")
             for endpoint, count in sorted(stats['by_endpoint'].items(), key=lambda x: -x[1]):
@@ -66,7 +105,7 @@ class APITracker:
         print("-----------------------------\n")
 
 # Global API tracker instance
-api_tracker = APITracker()
+api_tracker = APITracker(rate_limit=API_RATE_LIMIT)
 
 class rsa:
     @cache
