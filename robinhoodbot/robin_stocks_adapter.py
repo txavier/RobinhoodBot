@@ -5,13 +5,11 @@ from datetime import datetime, timedelta
 from collections import deque
 import threading
 import time
-
-# Rate limit configuration (requests per minute)
-API_RATE_LIMIT = 100
+from config import api_rate_limit, use_api_rate_limit
 
 class APITracker:
     """Tracks API requests per minute and enforces rate limiting"""
-    def __init__(self, rate_limit=API_RATE_LIMIT):
+    def __init__(self, rate_limit=api_rate_limit):
         self.requests = deque()  # Store timestamps of requests
         self.lock = threading.Lock()
         self.total_requests = 0
@@ -19,7 +17,10 @@ class APITracker:
         self.rate_limit_waits = 0  # Track how many times we had to wait
     
     def wait_if_needed(self):
-        """Wait if we're at the rate limit"""
+        """Wait if we're at the rate limit (only if rate limiting is enabled)"""
+        if not use_api_rate_limit:
+            return
+        
         with self.lock:
             now = datetime.now()
             cutoff = now - timedelta(minutes=1)
@@ -47,7 +48,7 @@ class APITracker:
                         self.requests.popleft()
     
     def record_request(self, endpoint=""):
-        """Record an API request (with rate limiting)"""
+        """Record an API request (with rate limiting if enabled)"""
         self.wait_if_needed()
         with self.lock:
             now = datetime.now()
@@ -105,7 +106,7 @@ class APITracker:
         print("-----------------------------\n")
 
 # Global API tracker instance
-api_tracker = APITracker(rate_limit=API_RATE_LIMIT)
+api_tracker = APITracker(rate_limit=api_rate_limit)
 
 class rsa:
     @cache
