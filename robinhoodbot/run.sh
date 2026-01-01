@@ -8,5 +8,5 @@ while true; do
    pkill -f main.py
    python3 main.py
    echo $(date)
-   sleep $[60 * 15] # 15 minutes
+   sleep $[60 * 7] # 15 minutes
 done
