@@ -1215,6 +1215,23 @@ def scan_stocks():
                     day_trade_message = "Unable to sell " + symbol + " because there are " + str(day_trades) + " day trades and/or this stock was traded today."
                     print(day_trade_message)
                     send_text(day_trade_message)
+            else:
+                # Log why this stock is NOT being sold
+                hold_reasons = []
+                if cross[0] != -1:
+                    hold_reasons.append("no death_cross")
+                if not is_sudden_drop:
+                    hold_reasons.append("no sudden_drop")
+                if not is_take_profit:
+                    # Show take_profit metrics: current price, buy price, percent change, and the 2.15% threshold
+                    avg_buy_price = float(holdings_data[symbol]['average_buy_price'])
+                    current_price = float(holdings_data[symbol]['price'])
+                    intraday_pct = float(holdings_data[symbol]['intraday_percent_change'])
+                    total_pct = ((current_price - avg_buy_price) / avg_buy_price) * 100 if avg_buy_price > 0 else 0
+                    hold_reasons.append(f"no take_profit (buy=${avg_buy_price:.2f}, now=${current_price:.2f}, intraday={intraday_pct:.2f}%, total={total_pct:.2f}%, need=2.15%)")
+                if not is_profit_before_eod:
+                    hold_reasons.append("no profit_before_eod")
+                print(f"HOLD {symbol}: {', '.join(hold_reasons)}")
         profile_data_with_dividend_total = rr.build_user_profile()
         profile_data = build_pheonix_profile_data(profile_data_with_dividend_total)
         ordered_watchlist_symbols = order_symbols_by_slope(watchlist_symbols)
