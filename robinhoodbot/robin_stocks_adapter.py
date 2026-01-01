@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from collections import deque
 import threading
 import time
-from config import api_rate_limit, use_api_rate_limit
+from config import api_rate_limit, use_api_rate_limit, use_caching
 
 # Cache TTL in seconds (5 minutes)
 CACHE_TTL = 300
@@ -30,6 +30,7 @@ class CacheStats:
             total = self.hits + self.misses
             hit_rate = (self.hits / total * 100) if total > 0 else 0
             return {
+                'caching_enabled': use_caching,
                 'hits': self.hits,
                 'misses': self.misses,
                 'total': total,
@@ -43,7 +44,9 @@ class CacheStats:
     
     def print_stats(self):
         stats = self.get_stats()
+        caching_status = "ON" if use_caching else "OFF"
         print(f"\n----- Cache Stats -----")
+        print(f"Caching: {caching_status}")
         print(f"Hits: {stats['hits']}")
         print(f"Misses: {stats['misses']}")
         print(f"Hit rate: {stats['hit_rate']:.1f}%")
@@ -60,6 +63,10 @@ class TimedCache:
         self.lock = threading.Lock()
     
     def get(self, key):
+        # If caching is disabled, always return cache miss
+        if not use_caching:
+            return None, False
+        
         with self.lock:
             if key in self.cache:
                 value, timestamp = self.cache[key]
@@ -73,6 +80,10 @@ class TimedCache:
             return None, False
     
     def set(self, key, value):
+        # Don't store in cache if caching is disabled
+        if not use_caching:
+            return
+        
         with self.lock:
             self.cache[key] = (value, datetime.now())
     
@@ -181,6 +192,7 @@ class APITracker:
                 'requests_last_minute': len(self.requests),
                 'total_requests': self.total_requests,
                 'rate_limit': self.rate_limit,
+                'rate_limit_enabled': use_api_rate_limit,
                 'rate_limit_waits': self.rate_limit_waits,
                 'by_endpoint': endpoint_counts
             }
@@ -188,8 +200,9 @@ class APITracker:
     def print_stats(self):
         """Print API usage stats"""
         stats = self.get_stats()
+        rate_limit_status = "ON" if stats['rate_limit_enabled'] else "OFF"
         print(f"\n----- API Request Stats -----")
-        print(f"Rate limit: {stats['rate_limit']}/min")
+        print(f"Rate limiting: {rate_limit_status} ({stats['rate_limit']}/min)")
         print(f"Requests in last minute: {stats['requests_last_minute']}")
         print(f"Total requests this session: {stats['total_requests']}")
         print(f"Rate limit waits: {stats['rate_limit_waits']}")
