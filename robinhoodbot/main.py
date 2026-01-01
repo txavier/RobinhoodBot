@@ -1322,7 +1322,23 @@ def scan_stocks():
                         "threshold": 2.15
                     }
                 if not is_profit_before_eod:
-                    hold_reasons.append("no profit_before_eod")
+                    # Show profit_before_eod metrics: is it EOD time, current price, buy price, intraday percent change
+                    is_eod_time = is_eod()
+                    avg_buy_price_eod = float(holdings_data[symbol]['average_buy_price'])
+                    current_price_eod = float(holdings_data[symbol]['price'])
+                    intraday_pct_eod = float(holdings_data[symbol]['intraday_percent_change'])
+                    current_time = datetime.datetime.now().strftime("%H:%M")
+                    hold_reasons.append(f"no profit_before_eod (is_eod={is_eod_time}, time={current_time}, buy=${avg_buy_price_eod:.2f}, now=${current_price_eod:.2f}, intraday={intraday_pct_eod:.2f}%, need=is_eod+profit)")
+                    hold_data["profit_before_eod_metrics"] = {
+                        "is_eod": is_eod_time,
+                        "current_time": current_time,
+                        "eod_window": "13:30-16:00",
+                        "avg_buy_price": avg_buy_price_eod,
+                        "current_price": current_price_eod,
+                        "intraday_pct": intraday_pct_eod,
+                        "has_profit": intraday_pct_eod > 0 or current_price_eod > avg_buy_price_eod,
+                        "need": "is_eod=True AND (intraday>0% OR price>buy_price)"
+                    }
                 hold_data["reasons"] = hold_reasons
                 print(f"HOLD {symbol}: {', '.join(hold_reasons)}")
                 json_logger.log("hold", f"Holding {symbol}", hold_data)
