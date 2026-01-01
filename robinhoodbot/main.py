@@ -21,7 +21,54 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from scipy.stats import linregress
 from pyotp import TOTP as otp
-from robin_stocks_adapter import rsa, api_tracker
+from robin_stocks_adapter import rsa, api_tracker, clear_all_caches, cache_stats
+
+# JSON Logger for monitor output
+class JSONLogger:
+    def __init__(self, log_file="log.json"):
+        self.log_file = log_file
+        self.session_id = str(pd.Timestamp("now"))
+        self.logs = []
+    
+    def log(self, event_type, message, data=None):
+        """Log an event to the JSON log file"""
+        entry = {
+            "timestamp": str(pd.Timestamp("now")),
+            "session_id": self.session_id,
+            "event_type": event_type,
+            "message": message
+        }
+        if data:
+            entry["data"] = data
+        
+        self.logs.append(entry)
+        self._write_to_file(entry)
+    
+    def _write_to_file(self, entry):
+        """Append entry to the log file"""
+        try:
+            # Read existing logs
+            try:
+                with open(self.log_file, 'r') as f:
+                    all_logs = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError):
+                all_logs = []
+            
+            # Append new entry
+            all_logs.append(entry)
+            
+            # Keep only last 10000 entries to prevent file from growing too large
+            if len(all_logs) > 10000:
+                all_logs = all_logs[-10000:]
+            
+            # Write back
+            with open(self.log_file, 'w') as f:
+                json.dump(all_logs, f, indent=2)
+        except Exception as e:
+            print(f"Warning: Could not write to log file: {e}")
+
+# Global logger instance
+json_logger = JSONLogger()
 
 # Safe divide by zero division function
 def safe_division(n, d):
@@ -489,10 +536,24 @@ def buy_holdings(potential_buys, cash, equity, holdings_data_length, buy_reasons
             if 'detail' in result:
                 print(result['detail'])
                 message = message +  ". The result is " + result['detail']
+                json_logger.log("buy_failed", f"Buy failed for {potential_buys[i]}", {
+                    "symbol": potential_buys[i],
+                    "num_shares": num_shares,
+                    "stock_price": stock_price,
+                    "detail": result['detail']
+                })
             else:
                 # Save buy reason if provided
                 if buy_reasons and potential_buys[i] in buy_reasons:
                     save_buy_reason(potential_buys[i], buy_reasons[potential_buys[i]], price=stock_price, quantity=num_shares, equity=equity)
+                json_logger.log("buy", f"Buying {potential_buys[i]}", {
+                    "symbol": potential_buys[i],
+                    "num_shares": num_shares,
+                    "stock_price": stock_price,
+                    "total_cost": stock_price * num_shares,
+                    "cash_available": cash,
+                    "reason": buy_reasons.get(potential_buys[i]) if buy_reasons else None
+                })
         send_text(message)
 
 def purchase_limiter(num_shares, stock_price, equity):
@@ -1101,16 +1162,27 @@ def scan_stocks():
         login = rr.authentication.login(username=rh_username,password=rh)
         login_to_sms()
 
+        # Clear caches at the start of each scan to get fresh data
+        clear_all_caches()
+
         if debug:
             print("----- DEBUG MODE -----\n")
 
         print("----- Version " + version + " -----\n")
+        json_logger.log("scan_start", f"Starting scan - Version {version}", {"version": version, "debug": debug})
         
         print("----- Starting scan... -----\n")
         register_matplotlib_converters()
         watchlist_symbols = get_watchlist_symbols(False)
         portfolio_symbols = get_portfolio_symbols()
         holdings_data = get_modified_holdings()
+        
+        json_logger.log("portfolio_status", "Portfolio and watchlist loaded", {
+            "portfolio_symbols": portfolio_symbols,
+            "watchlist_symbols": watchlist_symbols,
+            "portfolio_count": len(portfolio_symbols),
+            "watchlist_count": len(watchlist_symbols)
+        })
         profileData = rr.load_portfolio_profile()
         potential_buys = []
         buy_reasons = {}  # Track reasons for buying each stock
@@ -1210,14 +1282,27 @@ def scan_stocks():
                     sells.append(symbol)
                     sell_reasons[symbol] = sell_reason
                     save_trade_reason(symbol, sell_reason, action="sell", holdings_data=holdings_data)
+                    json_logger.log("sell", f"Selling {symbol}", {
+                        "symbol": symbol,
+                        "reason": sell_reason,
+                        "day_trades": day_trades,
+                        "holdings_data": holdings_data.get(symbol, {})
+                    })
                     genetic_generation_add(symbol, is_take_profit)
                 else:
                     day_trade_message = "Unable to sell " + symbol + " because there are " + str(day_trades) + " day trades and/or this stock was traded today."
                     print(day_trade_message)
                     send_text(day_trade_message)
+                    json_logger.log("sell_blocked", f"Cannot sell {symbol} - day trade limit", {
+                        "symbol": symbol,
+                        "reason": sell_reason,
+                        "day_trades": day_trades,
+                        "traded_today": is_traded_today
+                    })
             else:
                 # Log why this stock is NOT being sold
                 hold_reasons = []
+                hold_data = {"symbol": symbol}
                 if cross[0] != -1:
                     hold_reasons.append("no death_cross")
                 if not is_sudden_drop:
@@ -1229,9 +1314,18 @@ def scan_stocks():
                     intraday_pct = float(holdings_data[symbol]['intraday_percent_change'])
                     total_pct = ((current_price - avg_buy_price) / avg_buy_price) * 100 if avg_buy_price > 0 else 0
                     hold_reasons.append(f"no take_profit (buy=${avg_buy_price:.2f}, now=${current_price:.2f}, intraday={intraday_pct:.2f}%, total={total_pct:.2f}%, need=2.15%)")
+                    hold_data["take_profit_metrics"] = {
+                        "avg_buy_price": avg_buy_price,
+                        "current_price": current_price,
+                        "intraday_pct": intraday_pct,
+                        "total_pct": total_pct,
+                        "threshold": 2.15
+                    }
                 if not is_profit_before_eod:
                     hold_reasons.append("no profit_before_eod")
+                hold_data["reasons"] = hold_reasons
                 print(f"HOLD {symbol}: {', '.join(hold_reasons)}")
+                json_logger.log("hold", f"Holding {symbol}", hold_data)
         profile_data_with_dividend_total = rr.build_user_profile()
         profile_data = build_pheonix_profile_data(profile_data_with_dividend_total)
         ordered_watchlist_symbols = order_symbols_by_slope(watchlist_symbols)
@@ -1303,6 +1397,22 @@ def scan_stocks():
 
         # Print API request stats
         api_tracker.print_stats()
+        
+        # Print cache stats
+        cache_stats.print_stats()
+        
+        # Log scan completion with API stats
+        api_stats = api_tracker.get_stats()
+        cache_stats_data = cache_stats.get_stats()
+        json_logger.log("scan_complete", f"Scan completed - Version {version}", {
+            "version": version,
+            "sells_count": len(sells),
+            "sells": sells,
+            "potential_buys_count": len(potential_buys),
+            "potential_buys": potential_buys,
+            "api_stats": api_stats,
+            "cache_stats": cache_stats_data
+        })
 
         print("----- Scan over -----\n")
 
@@ -1315,8 +1425,10 @@ def scan_stocks():
     except IOError as e:
         print(e)
         print(sys.exc_info()[0])
+        json_logger.log("error", f"IOError: {str(e)}", {"error_type": "IOError", "details": str(sys.exc_info()[0])})
     except Exception as e:
         print("Unexpected error:", str(e))
+        json_logger.log("error", f"Unexpected error: {str(e)}", {"error_type": type(e).__name__, "traceback": traceback.format_exc()})
 
         login_to_sms()
         send_text("Unexpected error:" + str(traceback.format_exc()))
