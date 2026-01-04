@@ -23,6 +23,9 @@ from scipy.stats import linregress
 from pyotp import TOTP as otp
 from robin_stocks_adapter import rsa, api_tracker, clear_all_caches, cache_stats
 
+# SMS notification state
+sms_enabled = False
+
 # JSON Logger for monitor output
 class JSONLogger:
     def __init__(self, log_file="log.json"):
@@ -78,29 +81,45 @@ def safe_division(n, d):
 def login_to_sms():
     global sms_gateway
     global server
+    global sms_enabled
     
-    # Log in to gmail.
-    sms_gateway = rh_phone + '@' + rh_company_url  # Phone number to send SMS
-    context = ssl.create_default_context(cafile=certifi.where())
-    server = smtplib.SMTP("smtp.gmail.com", 587)  # Gmail SMTP server
-    server.ehlo()
-    server.starttls(context=context)
-    server.ehlo()
-    server.login(rh_email, rh_mail_password)
+    # Log in to gmail with timeout
+    SMS_TIMEOUT = 30  # seconds
+    try:
+        sms_gateway = rh_phone + '@' + rh_company_url  # Phone number to send SMS
+        context = ssl.create_default_context(cafile=certifi.where())
+        server = smtplib.SMTP("smtp.gmail.com", 587, timeout=SMS_TIMEOUT)  # Gmail SMTP server
+        server.ehlo()
+        server.starttls(context=context)
+        server.ehlo()
+        server.login(rh_email, rh_mail_password)
+        sms_enabled = True
+        print("SMS notifications enabled")
+    except Exception as e:
+        sms_enabled = False
+        print(f"⚠️  SMS login failed: {e}")
+        print("Continuing without SMS notifications...")
 
 
 def send_text(message):
-    login_to_sms()
-    msg = MIMEMultipart()
-    msg['From'] = rh_email
-    msg['To'] = sms_gateway
-    if debug:
-        msg['Subject'] = 'DEBUG Robinhood Stocks'
-    else:
-        msg['Subject'] = 'Robinhood Stocks'
-    msg.attach(MIMEText(message+'**', 'plain'))
-    sms = msg.as_string()
-    server.sendmail(rh_email, sms_gateway, sms)
+    global sms_enabled
+    if not sms_enabled:
+        print(f"SMS disabled - would have sent: {message[:50]}...")
+        return
+    try:
+        login_to_sms()
+        msg = MIMEMultipart()
+        msg['From'] = rh_email
+        msg['To'] = sms_gateway
+        if debug:
+            msg['Subject'] = 'DEBUG Robinhood Stocks'
+        else:
+            msg['Subject'] = 'Robinhood Stocks'
+        msg.attach(MIMEText(message+'**', 'plain'))
+        sms = msg.as_string()
+        server.sendmail(rh_email, sms_gateway, sms)
+    except Exception as e:
+        print(f"⚠️  SMS send failed: {e}")
 
 def isInExclusionList(symbol):
     """
