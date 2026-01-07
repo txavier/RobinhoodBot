@@ -60,7 +60,7 @@ purchase_limit_percentage=10
 
 # API rate limiting to avoid hitting Robinhood's rate limits
 # Set use_api_rate_limit to False to disable rate limiting
-use_api_rate_limit=False
+use_api_rate_limit=True
 # api_rate_limit: Maximum API requests per minute (Robinhood's limit is ~100/min)
 api_rate_limit=99
 
@@ -68,5 +68,12 @@ api_rate_limit=99
 # Set use_caching to False to disable caching
 use_caching=True
 
+# Stop-loss settings
+# Set use_stop_loss to True to enable selling when a stock drops below the stop_loss_percent
+# This protects against holding losing positions waiting for technical indicators
+use_stop_loss=True
+# stop_loss_percent: Sell if total loss from buy price exceeds this percentage (e.g., 5 = sell at -5%)
+stop_loss_percent=5
+
 # Version number for tracking
-version="0.9.8"
+version="0.9.9"

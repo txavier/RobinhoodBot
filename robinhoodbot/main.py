@@ -341,6 +341,43 @@ def get_modified_holdings():
     return holdings
 
 
+def get_sma_proximity(stockTicker, n1=20, n2=50):
+    """Get the proximity of the short-term SMA to the long-term SMA for death cross analysis.
+    
+    Args:
+        stockTicker(str): Symbol of the stock
+        n1(int): Short-term SMA period (default 20)
+        n2(int): Long-term SMA period (default 50)
+    
+    Returns:
+        dict with sma_short, sma_long, gap, gap_pct, and status
+    """
+    try:
+        history = rsa.get_stock_historicals(stockTicker, interval='hour', span='3month', bounds='regular')
+        if not history or len(history) < n2:
+            return None
+        
+        closingPrices = [float(h['close_price']) for h in history]
+        price = pd.Series(closingPrices)
+        sma_short = t.volatility.bollinger_mavg(price, n=int(n1), fillna=False)
+        sma_long = t.volatility.bollinger_mavg(price, n=int(n2), fillna=False)
+        
+        current_sma_short = sma_short.iloc[-1]
+        current_sma_long = sma_long.iloc[-1]
+        gap = current_sma_short - current_sma_long
+        gap_pct = (gap / current_sma_long) * 100 if current_sma_long > 0 else 0
+        
+        return {
+            'sma_short': round(current_sma_short, 2),
+            'sma_long': round(current_sma_long, 2),
+            'gap': round(gap, 2),
+            'gap_pct': round(gap_pct, 2),
+            'status': 'above' if gap > 0 else 'DEATH_CROSS'
+        }
+    except Exception as e:
+        return None
+
+
 def get_last_crossing(df, days, symbol="", direction=""):
     """Searches for a crossing between two indicators for a given stock
 
@@ -849,6 +886,44 @@ def sudden_drop(symbol, percent, hours_apart):
     
     return False
 
+
+def get_drop_percentages(symbol):
+    """Get the percentage drop over 1 hour and 2 hours for a stock.
+    
+    Args:
+        symbol(str): The symbol of the stock.
+    
+    Returns:
+        dict with drop_1hr and drop_2hr percentages (negative = drop, positive = gain)
+    """
+    try:
+        historicals = rsa.get_stock_historicals(symbol, interval='hour', span='month')
+        if len(historicals) < 3:
+            return None
+        
+        current_price = float(historicals[-1]['close_price'])
+        
+        # 1 hour ago
+        price_1hr_ago = float(historicals[-2]['close_price']) if len(historicals) >= 2 else current_price
+        drop_1hr = ((current_price - price_1hr_ago) / price_1hr_ago) * 100 if price_1hr_ago > 0 else 0
+        
+        # 2 hours ago
+        price_2hr_ago = float(historicals[-3]['close_price']) if len(historicals) >= 3 else current_price
+        drop_2hr = ((current_price - price_2hr_ago) / price_2hr_ago) * 100 if price_2hr_ago > 0 else 0
+        
+        return {
+            'price_1hr_ago': round(price_1hr_ago, 2),
+            'price_2hr_ago': round(price_2hr_ago, 2),
+            'current_price': round(current_price, 2),
+            'change_1hr': round(drop_1hr, 2),
+            'change_2hr': round(drop_2hr, 2),
+            'trigger_1hr': -15,  # 15% drop in 1 hour triggers sell
+            'trigger_2hr': -10   # 10% drop in 2 hours triggers sell
+        }
+    except Exception as e:
+        return None
+
+
 def sudden_increase(symbol, percent, minutes_apart):
     """ Return true if the price increases more than the percent argument in the span of two hours_apart.
 
@@ -1278,6 +1353,17 @@ def scan_stocks():
             is_profit_before_eod = profit_before_eod(symbol, holdings_data)
             cross = golden_cross(symbol, n1=n1, n2=n2, days=10, direction="below")
             
+            # Check stop-loss
+            is_stop_loss = False
+            stop_loss_pct = 0
+            if use_stop_loss:
+                avg_buy_price = float(holdings_data[symbol]['average_buy_price'])
+                current_price = float(holdings_data[symbol]['price'])
+                stop_loss_pct = ((current_price - avg_buy_price) / avg_buy_price) * 100 if avg_buy_price > 0 else 0
+                if stop_loss_pct <= -stop_loss_percent:
+                    is_stop_loss = True
+                    print(f"🛑 STOP-LOSS triggered for {symbol}: {stop_loss_pct:.2f}% (threshold: -{stop_loss_percent}%)")
+            
             # Determine sell reasons - track all that apply
             sell_reasons_list = []
             if cross[0] == -1:
@@ -1288,11 +1374,13 @@ def scan_stocks():
                 sell_reasons_list.append("take_profit")
             if is_profit_before_eod:
                 sell_reasons_list.append("profit_before_eod")
+            if is_stop_loss:
+                sell_reasons_list.append("stop_loss")
             
             # Join all reasons or use None if empty
             sell_reason = ",".join(sell_reasons_list) if sell_reasons_list else None
             
-            if(cross[0] == -1 or is_sudden_drop or is_take_profit or is_profit_before_eod):
+            if(cross[0] == -1 or is_sudden_drop or is_take_profit or is_profit_before_eod or is_stop_loss):
                 day_trades = get_day_trades(profileData)
                 if ((day_trades <= 1) or (not is_traded_today)):
                     print("Day trades currently: " + str(day_trades))
@@ -1322,10 +1410,35 @@ def scan_stocks():
                 # Log why this stock is NOT being sold
                 hold_reasons = []
                 hold_data = {"symbol": symbol}
+                
+                # Add market trend info
+                market_status = "uptrend" if market_uptrend else "downtrend"
+                if market_in_major_downtrend:
+                    market_status = "major_downtrend"
+                hold_data["market_trend"] = {
+                    "status": market_status,
+                    "uptrend": market_uptrend,
+                    "major_downtrend": market_in_major_downtrend,
+                    "sma_period_used": n1
+                }
+                
                 if cross[0] != -1:
-                    hold_reasons.append("no death_cross")
+                    # Show death_cross metrics: SMA values and gap
+                    sma_data = get_sma_proximity(symbol, n1, n2)
+                    if sma_data:
+                        sma_data["sma_period"] = n1
+                        hold_reasons.append(f"no death_cross (SMA{n1}=${sma_data['sma_short']}, SMA{n2}=${sma_data['sma_long']}, gap={sma_data['gap_pct']:.2f}%, market={market_status})")
+                        hold_data["death_cross_metrics"] = sma_data
+                    else:
+                        hold_reasons.append(f"no death_cross (market={market_status})")
                 if not is_sudden_drop:
-                    hold_reasons.append("no sudden_drop")
+                    # Show sudden_drop metrics: percentage change over 1hr and 2hr
+                    drop_data = get_drop_percentages(symbol)
+                    if drop_data:
+                        hold_reasons.append(f"no sudden_drop (1hr={drop_data['change_1hr']:.2f}% need<-15%, 2hr={drop_data['change_2hr']:.2f}% need<-10%)")
+                        hold_data["sudden_drop_metrics"] = drop_data
+                    else:
+                        hold_reasons.append("no sudden_drop")
                 if not is_take_profit:
                     # Show take_profit metrics: current price, buy price, percent change, and the 2.15% threshold
                     avg_buy_price = float(holdings_data[symbol]['average_buy_price'])
@@ -1357,6 +1470,16 @@ def scan_stocks():
                         "intraday_pct": intraday_pct_eod,
                         "has_profit": intraday_pct_eod > 0 or current_price_eod > avg_buy_price_eod,
                         "need": "is_eod=True AND (intraday>0% OR price>buy_price)"
+                    }
+                if not is_stop_loss:
+                    # Show stop-loss metrics
+                    sl_status = "enabled" if use_stop_loss else "disabled"
+                    hold_reasons.append(f"no stop_loss ({sl_status}, loss={stop_loss_pct:.2f}%, trigger=-{stop_loss_percent}%)")
+                    hold_data["stop_loss_metrics"] = {
+                        "enabled": use_stop_loss,
+                        "current_loss_pct": round(stop_loss_pct, 2),
+                        "trigger_pct": -stop_loss_percent,
+                        "would_trigger_at": round(float(holdings_data[symbol]['average_buy_price']) * (1 - stop_loss_percent/100), 2)
                     }
                 hold_data["reasons"] = hold_reasons
                 print(f"HOLD {symbol}: {', '.join(hold_reasons)}")
