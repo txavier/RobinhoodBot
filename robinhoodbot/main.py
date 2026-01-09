@@ -73,6 +73,63 @@ class JSONLogger:
 # Global logger instance
 json_logger = JSONLogger()
 
+
+# Console Logger - captures all print output to console_log.json
+class ConsoleLogger:
+    def __init__(self, log_file="console_log.json"):
+        self.log_file = log_file
+        self.session_id = str(pd.Timestamp("now"))
+        self.original_stdout = sys.stdout
+        self.buffer = ""
+    
+    def write(self, message):
+        """Capture print output and log to JSON"""
+        # Write to original stdout
+        self.original_stdout.write(message)
+        
+        # Skip empty or whitespace-only messages
+        if message.strip():
+            self._log_to_file(message.strip())
+    
+    def flush(self):
+        """Flush the output"""
+        self.original_stdout.flush()
+    
+    def _log_to_file(self, message):
+        """Append message to the console log file"""
+        try:
+            entry = {
+                "timestamp": str(pd.Timestamp("now")),
+                "session_id": self.session_id,
+                "message": message
+            }
+            
+            # Read existing logs
+            try:
+                with open(self.log_file, 'r') as f:
+                    all_logs = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError):
+                all_logs = []
+            
+            # Append new entry
+            all_logs.append(entry)
+            
+            # Keep only last 10000 entries to prevent file from growing too large
+            if len(all_logs) > 10000:
+                all_logs = all_logs[-10000:]
+            
+            # Write back
+            with open(self.log_file, 'w') as f:
+                json.dump(all_logs, f, indent=2)
+        except Exception as e:
+            # Use original stdout to avoid recursion
+            self.original_stdout.write(f"Warning: Could not write to console log file: {e}\n")
+
+# Redirect stdout to capture all print output
+console_logger = ConsoleLogger()
+sys.stdout = console_logger
+
+
 # Safe divide by zero division function
 def safe_division(n, d):
     return n / d if d else 0
