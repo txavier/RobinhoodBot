@@ -128,3 +128,8 @@ robinhoodbot/deploy.ps1
 robinhoodbot/tradehistory-real.json
 robinhoodbot/buy_reasons.json
 robinhoodbot/log.json
+robinhoodbot/ai_changelog.json
+
+# Log files
+robinhoodbot/console_log.json
+robinhoodbot/log.json

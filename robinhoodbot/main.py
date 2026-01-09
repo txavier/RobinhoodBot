@@ -1396,7 +1396,7 @@ def scan_stocks():
             #     n2 = 7
             #     print("For " + symbol + " setting the short term period to " + str(n1) + " and setting the long term period to " + str(n2) + ".")
             is_traded_today = traded_today(symbol, profileData)
-            is_take_profit = take_profit(symbol, holdings_data, 2.15)
+            is_take_profit = take_profit(symbol, holdings_data, take_profit_percent)
             # If we have surpassed the take profit threshold and the stock was traded today
             # make it less likely to sell by simply changing the periods and not immediately 
             # selling in order to try our best not to hit our day trade limit.
@@ -1497,18 +1497,18 @@ def scan_stocks():
                     else:
                         hold_reasons.append("no sudden_drop")
                 if not is_take_profit:
-                    # Show take_profit metrics: current price, buy price, percent change, and the 2.15% threshold
+                    # Show take_profit metrics: current price, buy price, percent change, and the threshold
                     avg_buy_price = float(holdings_data[symbol]['average_buy_price'])
                     current_price = float(holdings_data[symbol]['price'])
                     intraday_pct = float(holdings_data[symbol]['intraday_percent_change'])
                     total_pct = ((current_price - avg_buy_price) / avg_buy_price) * 100 if avg_buy_price > 0 else 0
-                    hold_reasons.append(f"no take_profit (buy=${avg_buy_price:.2f}, now=${current_price:.2f}, intraday={intraday_pct:.2f}%, total={total_pct:.2f}%, need=2.15%)")
+                    hold_reasons.append(f"no take_profit (buy=${avg_buy_price:.2f}, now=${current_price:.2f}, intraday={intraday_pct:.2f}%, total={total_pct:.2f}%, need={take_profit_percent}%)")
                     hold_data["take_profit_metrics"] = {
                         "avg_buy_price": avg_buy_price,
                         "current_price": current_price,
                         "intraday_pct": intraday_pct,
                         "total_pct": total_pct,
-                        "threshold": 2.15
+                        "threshold": take_profit_percent
                     }
                 if not is_profit_before_eod:
                     # Show profit_before_eod metrics: is it EOD time, current price, buy price, intraday percent change
@@ -1547,7 +1547,7 @@ def scan_stocks():
         print("\n----- Scanning watchlist for stocks to buy -----\n")
         for symbol in ordered_watchlist_symbols:
             if(symbol not in portfolio_symbols):
-                cross = golden_cross(symbol, n1=20, n2=50, days=3, direction="above")
+                cross = golden_cross(symbol, n1=20, n2=50, days=golden_cross_buy_days, direction="above")
                 if(cross[0] == 1):
                         # If the current price is greater than the price at cross,
                         # meaning that the price is still rising then buy.
