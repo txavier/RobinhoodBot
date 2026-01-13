@@ -294,6 +294,24 @@ python genetic_optimizer_intraday.py \
 
 # Quick test run
 python genetic_optimizer_intraday.py --symbols AAPL --generations 5 --population 10 --seed 42
+
+# Use parallel processing for faster optimization (auto-detects CPU cores)
+python genetic_optimizer_intraday.py --symbols AAPL,MSFT,GOOGL,NVDA,TSLA,META,AMZN -w 0
+```
+
+## Parallel Processing
+
+The optimizer supports multiprocessing to speed up fitness evaluation:
+
+| Option | Description |
+|--------|-------------|
+| `-w 0` or `--workers 0` | Auto-detect (uses cpu_count - 1 workers) |
+| `-w 1` or `--workers 1` | Sequential execution (no parallelism, useful for debugging) |
+| `-w N` or `--workers N` | Use exactly N parallel workers |
+
+Example with 8 workers:
+```bash
+python genetic_optimizer_intraday.py --symbols AAPL,MSFT,GOOGL -w 8
 ```
 
 ## Parameters Being Optimized

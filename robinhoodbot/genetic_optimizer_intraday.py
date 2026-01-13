@@ -25,6 +25,8 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field, asdict
 import numpy as np
+from multiprocessing import Pool, cpu_count
+from functools import partial
 
 from backtest_intraday import (
     IntradayBacktester, IntradayTradingStrategy,
@@ -117,6 +119,7 @@ class IntradayGeneticConfig:
     crossover_rate: float = 0.7
     elite_size: int = 3  # Top performers kept unchanged
     tournament_size: int = 5
+    num_workers: int = 0  # 0 = auto (cpu_count), 1 = no multiprocessing
     
     # Whether to optimize filter settings (True = can toggle filters on/off)
     optimize_filters: bool = False
@@ -143,6 +146,101 @@ class IntradayGeneticConfig:
         'max_drawdown_penalty': 0.10,  # 10% penalty for drawdown
         'trades_per_day_bonus': 0.05,  # 5% bonus for active trading
     })
+
+
+def _evaluate_gene_worker(args: Tuple) -> IntradayTradingGene:
+    """
+    Module-level function for parallel gene evaluation.
+    Must be at module level for multiprocessing to pickle it.
+    
+    Args is a tuple of (gene, symbols, days, initial_capital, fitness_weights, data_seed)
+    """
+    gene, symbols, days, initial_capital, fitness_weights, data_seed = args
+    
+    # Create strategy with gene parameters
+    strategy = IntradayTradingStrategy(
+        short_sma=gene.short_sma,
+        long_sma=gene.long_sma,
+        golden_cross_hours=gene.golden_cross_hours,
+        stop_loss_pct=gene.stop_loss_pct,
+        take_profit_pct=gene.take_profit_pct,
+        use_stop_loss=True,
+        use_market_filter=gene.use_market_filter,
+        use_eod_filter=gene.use_eod_filter,
+        use_profit_before_eod=gene.use_profit_before_eod,
+        use_price_5hr_check=gene.use_price_5hr_check,
+        use_dynamic_sma=gene.use_dynamic_sma,
+        use_slope_ordering=gene.use_slope_ordering,
+        use_price_cap=gene.use_price_cap,
+        price_cap_value=gene.price_cap_value,
+        slope_threshold=gene.slope_threshold,
+    )
+    
+    # Run backtest
+    backtester = IntradayBacktester(
+        initial_capital=initial_capital,
+        max_positions=5,
+        max_position_pct=gene.position_size_pct,
+        strategy=strategy
+    )
+    
+    result = backtester.run(
+        symbols=symbols,
+        days=days,
+        seed=data_seed,
+        verbose=False
+    )
+    
+    # Store results in gene
+    gene.total_return_pct = result.get('total_return_pct', 0)
+    gene.win_rate = result.get('win_rate', 0)
+    gene.sharpe_ratio = result.get('sharpe_ratio', 0)
+    gene.max_drawdown_pct = result.get('max_drawdown_pct', 0)
+    pf = result.get('profit_factor', 0)
+    gene.profit_factor = min(pf, 10.0) if pf != 'inf' and pf != float('inf') else 10.0
+    gene.total_trades = result.get('total_trades', 0)
+    gene.trades_per_day = result.get('trades_per_day', 0)
+    gene.avg_win = result.get('avg_win', 0)
+    gene.avg_loss = result.get('avg_loss', 0)
+    
+    # Calculate weighted fitness
+    fitness = 0.0
+    
+    # Return contribution (can be negative)
+    fitness += fitness_weights['total_return_pct'] * (gene.total_return_pct / 5.0)
+    
+    # Sharpe ratio contribution (typically -3 to +3)
+    fitness += fitness_weights['sharpe_ratio'] * (gene.sharpe_ratio / 2.0)
+    
+    # Win rate contribution (0-100, normalize to 0-1)
+    fitness += fitness_weights['win_rate'] * (gene.win_rate / 100.0)
+    
+    # Profit factor contribution (0-10, already capped)
+    fitness += fitness_weights['profit_factor'] * (gene.profit_factor / 5.0)
+    
+    # Drawdown penalty (higher drawdown = lower fitness)
+    fitness -= fitness_weights['max_drawdown_penalty'] * (gene.max_drawdown_pct / 5.0)
+    
+    # Trades per day bonus (reward active trading, but not too much)
+    optimal_trades_per_day = 1.0
+    trades_diff = abs(gene.trades_per_day - optimal_trades_per_day)
+    trades_bonus = max(0, 1.0 - trades_diff * 0.5)
+    fitness += fitness_weights['trades_per_day_bonus'] * trades_bonus
+    
+    # Penalties
+    if gene.total_trades == 0:
+        fitness -= 2.0
+    elif gene.total_trades < 5:
+        fitness -= 0.5
+    
+    # Bonus for good avg_win/avg_loss ratio
+    if gene.avg_loss > 0:
+        win_loss_ratio = gene.avg_win / gene.avg_loss
+        if win_loss_ratio > 1.0:
+            fitness += 0.1 * min(win_loss_ratio - 1.0, 1.0)
+    
+    gene.fitness = fitness
+    return gene
 
 
 class IntradayGeneticOptimizer:
@@ -337,14 +435,44 @@ class IntradayGeneticOptimizer:
         return fitness
     
     def evaluate_population(self, population: List[IntradayTradingGene], generation: int) -> List[IntradayTradingGene]:
-        """Evaluate fitness for entire population"""
+        """Evaluate fitness for entire population (optionally in parallel)"""
         # Use consistent seed for data generation within a generation
         data_seed = (self.seed + generation * 1000) if self.seed else None
         
-        for i, gene in enumerate(population):
-            self.evaluate_fitness(gene, data_seed)
+        # Determine number of workers
+        num_workers = self.config.num_workers
+        if num_workers == 0:
+            num_workers = max(1, cpu_count() - 1)  # Leave one CPU free
+        
+        if num_workers > 1 and len(population) > 1:
+            # Parallel evaluation using multiprocessing
             if self.verbose:
-                print(f"  Evaluating {i+1}/{len(population)}: {gene}")
+                print(f"  Evaluating {len(population)} genes using {num_workers} workers...")
+            
+            # Prepare args for module-level worker function
+            # Each arg tuple: (gene, symbols, days, initial_capital, fitness_weights, data_seed)
+            eval_args = [
+                (gene, self.symbols, self.days, self.initial_capital, 
+                 dict(self.config.fitness_weights), data_seed)
+                for gene in population
+            ]
+            
+            # Use multiprocessing pool with module-level function
+            with Pool(processes=num_workers) as pool:
+                evaluated_population = pool.map(_evaluate_gene_worker, eval_args)
+            
+            # Replace population with evaluated genes
+            population = evaluated_population
+            
+            if self.verbose:
+                for i, gene in enumerate(population):
+                    print(f"    Gene {i+1}: {gene}")
+        else:
+            # Sequential evaluation (single worker or small population)
+            for i, gene in enumerate(population):
+                self.evaluate_fitness(gene, data_seed)
+                if self.verbose:
+                    print(f"  Evaluating {i+1}/{len(population)}: {gene}")
         
         # Sort by fitness (descending)
         population.sort(key=lambda g: g.fitness, reverse=True)
@@ -519,6 +647,8 @@ class IntradayGeneticOptimizer:
         print(f"Mutation Rate: {self.config.mutation_rate}")
         print(f"Crossover Rate: {self.config.crossover_rate}")
         print(f"Optimize Filters: {self.config.optimize_filters}")
+        num_workers = self.config.num_workers if self.config.num_workers > 0 else max(1, cpu_count() - 1)
+        print(f"Workers: {num_workers} {'(auto)' if self.config.num_workers == 0 else ''}")
         if self.seed:
             print(f"Random Seed: {self.seed}")
         print(f"{'='*70}\n")
@@ -718,6 +848,10 @@ def main():
         help='Also optimize filter on/off settings (advanced)'
     )
     parser.add_argument(
+        '--workers', '-w', type=int, default=0,
+        help='Number of parallel workers (default: 0 = auto, uses cpu_count-1)'
+    )
+    parser.add_argument(
         '--output', '-o', type=str, default='genetic_optimization_intraday_result.json',
         help='Output JSON file (default: genetic_optimization_intraday_result.json)'
     )
@@ -740,6 +874,7 @@ def main():
         mutation_rate=args.mutation_rate,
         crossover_rate=args.crossover_rate,
         optimize_filters=args.optimize_filters,
+        num_workers=args.workers,
     )
     
     optimizer = IntradayGeneticOptimizer(
