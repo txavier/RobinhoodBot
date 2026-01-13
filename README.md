@@ -203,3 +203,149 @@ Review backtest results to:
 3. Test different SMA periods and risk settings
 4. Evaluate performance across different market conditions
 
+# Genetic Algorithm Optimizer
+
+The bot includes a genetic algorithm that automatically evolves trading parameters to maximize profits and minimize losses.
+
+## Quick Start
+
+```bash
+cd robinhoodbot/
+
+# Generate sample data first
+python sample_data_generator.py --symbols AAPL,MSFT,GOOGL --days 200 --scenario mixed --seed 42
+
+# Run genetic optimization with sample data
+python genetic_optimizer.py --symbols AAPL,MSFT,GOOGL --sample-data sample_data/ --generations 15 --population 20
+```
+
+## How It Works
+
+The genetic algorithm treats each set of trading parameters as a "chromosome" and evolves them over generations:
+
+1. **Initialization**: Creates a population of random parameter combinations
+2. **Evaluation**: Runs backtests to calculate fitness (profit, Sharpe ratio, win rate, etc.)
+3. **Selection**: Tournament selection picks the fittest individuals for breeding
+4. **Crossover**: Parents exchange parameters to create offspring
+5. **Mutation**: Random changes introduce genetic diversity
+6. **Elitism**: Top performers are preserved unchanged
+7. **Repeat**: Process continues for specified number of generations
+
+## Parameters Being Optimized
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `short_sma` | 5-50 | Short-term Simple Moving Average period |
+| `long_sma` | 20-200 | Long-term Simple Moving Average period |
+| `golden_cross_days` | 1-10 | Days to look back for golden cross signals |
+| `stop_loss_pct` | 1-15% | Stop loss percentage |
+| `take_profit_pct` | 0.3-5% | Take profit percentage |
+| `position_size_pct` | 5-30% | Maximum position size as % of portfolio |
+
+## Fitness Function
+
+The fitness score is a weighted combination of multiple metrics:
+
+| Metric | Weight | Description |
+|--------|--------|-------------|
+| Total Return | 30% | Overall profit/loss percentage |
+| Sharpe Ratio | 25% | Risk-adjusted return |
+| Win Rate | 15% | Percentage of winning trades |
+| Profit Factor | 15% | Gross profits / gross losses |
+| Max Drawdown | 15% | Penalty for large drawdowns |
+
+## Command Line Options
+
+```bash
+# Basic usage with defaults
+python genetic_optimizer.py --symbols AAPL,MSFT
+
+# Full optimization with all options
+python genetic_optimizer.py \
+    --symbols AAPL,MSFT,GOOGL \
+    --start 2025-01-01 \
+    --end 2025-12-31 \
+    --capital 10000 \
+    --population 30 \
+    --generations 25 \
+    --mutation-rate 0.15 \
+    --crossover-rate 0.7 \
+    --sample-data sample_data/ \
+    --output my_optimization.json \
+    --seed 42
+
+# Quick test run
+python genetic_optimizer.py --symbols AAPL --generations 5 --population 10 --sample-data sample_data/
+```
+
+### Options Reference
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `--symbols` | `-s` | Comma-separated stock symbols | AAPL,MSFT,GOOGL |
+| `--start` | `-st` | Start date (YYYY-MM-DD) | Calculated from --days |
+| `--end` | `-e` | End date (YYYY-MM-DD) | Today |
+| `--days` | `-d` | Days to backtest | 200 |
+| `--capital` | `-c` | Initial capital | 10000 |
+| `--population` | `-p` | Population size (more = better exploration, slower) | 20 |
+| `--generations` | `-g` | Number of generations (more = better convergence) | 15 |
+| `--mutation-rate` | `-m` | Probability of mutation (0.0-1.0) | 0.15 |
+| `--crossover-rate` | | Probability of crossover (0.0-1.0) | 0.7 |
+| `--sample-data` | | Directory with sample data files | None |
+| `--output` | `-o` | Output JSON file | genetic_optimization_result.json |
+| `--seed` | | Random seed for reproducibility | None |
+| `--quiet` | `-q` | Suppress verbose output | False |
+
+## Example Output
+
+```
+======================================================================
+GENETIC ALGORITHM OPTIMIZER
+======================================================================
+Symbols: AAPL, MSFT, GOOGL
+Period: 2025-01-01 to 2025-12-31
+Population: 20
+Generations: 15
+======================================================================
+
+--- Generation 1/15 ---
+  Evaluating 1/20: SMA(20/50) GC:3d SL:5.0% TP:0.7% Pos:15% | Fit:0.4521
+  ...
+
+--- Generation 15/15 ---
+  Best:  SMA(12/35) GC:4d SL:3.5% TP:1.2% Pos:18% | Fit:0.8234
+
+======================================================================
+BEST CONFIGURATION FOUND
+======================================================================
+
+# Add these to your config.py:
+# SMA Settings
+short_sma = 12
+long_sma = 35
+golden_cross_buy_days = 4
+
+# Risk Management
+stop_loss_percent = 3.5
+take_profit_percent = 1.2
+
+# Position Sizing
+purchase_limit_percentage = 18.0
+
+# Performance Metrics:
+# Total Return: +8.45%
+# Win Rate: 72.5%
+# Sharpe Ratio: 1.2341
+# Max Drawdown: 3.21%
+# Profit Factor: 2.85
+```
+
+## Tips for Best Results
+
+1. **More Data = Better**: Use at least 200 days of historical data
+2. **Larger Population**: 30-50 individuals explores more possibilities
+3. **More Generations**: 20-30 generations allows better convergence
+4. **Multiple Runs**: Run several times with different seeds and compare
+5. **Diverse Symbols**: Test across different stocks/sectors
+6. **Sample Data First**: Generate good sample data with various scenarios before optimizing
+
