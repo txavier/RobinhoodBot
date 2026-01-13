@@ -406,6 +406,10 @@ class IntradayTradingStrategy:
         short_sma: int = 20,  # 20 hours ≈ ~3 trading days
         long_sma: int = 50,   # 50 hours ≈ ~7 trading days
         golden_cross_hours: int = 24,  # Look back 24 hours for cross (matches golden_cross_buy_days * 7hrs)
+        # Dynamic SMA parameters (used when use_dynamic_sma=True)
+        short_sma_downtrend: int = 14,  # Used when market not in uptrend
+        short_sma_take_profit: int = 5,  # Used after take profit (only if balance < $25k PDT limit)
+        long_sma_take_profit: int = 7,   # Used after take profit (only if balance < $25k PDT limit)
         stop_loss_pct: float = 5.0,
         take_profit_pct: float = 0.70,
         use_stop_loss: bool = True,
@@ -419,11 +423,16 @@ class IntradayTradingStrategy:
         use_slope_ordering: bool = True,  # Prioritize by price slope
         use_price_cap: bool = True,  # Max price filter
         price_cap_value: float = 2100.0,
-        slope_threshold: float = 0.0008  # Min slope to consider (from main.py order_symbols_by_slope)
+        slope_threshold: float = 0.0008,  # Min slope to consider (from main.py order_symbols_by_slope)
+        account_balance: float = 30000.0  # For PDT rule check ($25k+ exempt from day trade limits)
     ):
         self.short_sma = short_sma
         self.long_sma = long_sma
         self.golden_cross_hours = golden_cross_hours
+        # Dynamic SMA parameters
+        self.short_sma_downtrend = short_sma_downtrend
+        self.short_sma_take_profit = short_sma_take_profit
+        self.long_sma_take_profit = long_sma_take_profit
         self.stop_loss_pct = stop_loss_pct
         self.take_profit_pct = take_profit_pct
         self.use_stop_loss = use_stop_loss
@@ -439,6 +448,7 @@ class IntradayTradingStrategy:
         self.use_price_cap = use_price_cap
         self.price_cap_value = price_cap_value
         self.slope_threshold = slope_threshold
+        self.account_balance = account_balance
     
     def get_dynamic_sma_periods(
         self,
@@ -450,21 +460,27 @@ class IntradayTradingStrategy:
         Get dynamic SMA periods based on market conditions.
         
         Matches main.py logic:
-        - Default: n1=20, n2=50
-        - If market in downtrend (not uptrend): n1=14
-        - If took_profit AND traded_today: n1=5, n2=7 (more aggressive)
+        - Default: n1=short_sma, n2=long_sma
+        - If market in downtrend (not uptrend): n1=short_sma_downtrend
+        - If took_profit AND traded_today AND balance < $25k: n1=short_sma_take_profit, n2=long_sma_take_profit
+          (PDT rule only applies to accounts under $25k)
         """
         if not self.use_dynamic_sma:
             return self.short_sma, self.long_sma
         
         n1, n2 = self.short_sma, self.long_sma
         
-        if took_profit_today and traded_today:
-            # More aggressive after taking profit
-            n1, n2 = 5, 7
+        # PDT rule: Day trade limits only apply if account balance < $25,000
+        # If balance >= $25k, we don't need to use aggressive SMAs to avoid day trades
+        pdt_applies = self.account_balance < 25000
+        
+        if took_profit_today and traded_today and pdt_applies:
+            # More aggressive after taking profit (to avoid day trade limits)
+            # Only applies if under PDT threshold
+            n1, n2 = self.short_sma_take_profit, self.long_sma_take_profit
         elif market_in_downtrend:
             # More conservative in downtrend
-            n1 = 14
+            n1 = self.short_sma_downtrend
         
         return n1, n2
     
@@ -476,12 +492,12 @@ class IntradayTradingStrategy:
         df['sma_diff'] = df['sma_short'] - df['sma_long']
         df['sma_diff_prev'] = df['sma_diff'].shift(1)
         
-        # Also calculate alternative SMA for downtrend (n1=14)
-        df['sma_short_14'] = df['close'].rolling(window=14, min_periods=1).mean()
+        # Also calculate alternative SMA for downtrend
+        df['sma_short_downtrend'] = df['close'].rolling(window=self.short_sma_downtrend, min_periods=1).mean()
         
-        # And aggressive SMA for post-profit (n1=5, n2=7)
-        df['sma_short_5'] = df['close'].rolling(window=5, min_periods=1).mean()
-        df['sma_long_7'] = df['close'].rolling(window=7, min_periods=1).mean()
+        # And aggressive SMA for post-profit (only used if balance < $25k PDT limit)
+        df['sma_short_take_profit'] = df['close'].rolling(window=self.short_sma_take_profit, min_periods=1).mean()
+        df['sma_long_take_profit'] = df['close'].rolling(window=self.long_sma_take_profit, min_periods=1).mean()
         
         return df
     
@@ -593,12 +609,12 @@ class IntradayTradingStrategy:
             return False, None, None
         
         # Get SMA columns based on periods
-        if n1 == 14:
-            sma_short_col = 'sma_short_14'
+        if n1 == self.short_sma_downtrend and n2 == self.long_sma:
+            sma_short_col = 'sma_short_downtrend'
             sma_long_col = 'sma_long'
-        elif n1 == 5 and n2 == 7:
-            sma_short_col = 'sma_short_5'
-            sma_long_col = 'sma_long_7'
+        elif n1 == self.short_sma_take_profit and n2 == self.long_sma_take_profit:
+            sma_short_col = 'sma_short_take_profit'
+            sma_long_col = 'sma_long_take_profit'
         else:
             sma_short_col = 'sma_short'
             sma_long_col = 'sma_long'
@@ -660,12 +676,12 @@ class IntradayTradingStrategy:
             return False, None
         
         # Get SMA columns based on periods
-        if n1 == 14:
-            sma_short_col = 'sma_short_14'
+        if n1 == self.short_sma_downtrend and n2 == self.long_sma:
+            sma_short_col = 'sma_short_downtrend'
             sma_long_col = 'sma_long'
-        elif n1 == 5 and n2 == 7:
-            sma_short_col = 'sma_short_5'
-            sma_long_col = 'sma_long_7'
+        elif n1 == self.short_sma_take_profit and n2 == self.long_sma_take_profit:
+            sma_short_col = 'sma_short_take_profit'
+            sma_long_col = 'sma_long_take_profit'
         else:
             sma_short_col = 'sma_short'
             sma_long_col = 'sma_long'
