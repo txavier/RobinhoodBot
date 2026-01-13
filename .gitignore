@@ -138,3 +138,4 @@ robinhoodbot/log.json
 robinhoodbot/sample_data/
 robinhoodbot/backtest_cache/
 robinhoodbot/backtest_result.json
+robinhoodbot/genetic_optimization_result.json
