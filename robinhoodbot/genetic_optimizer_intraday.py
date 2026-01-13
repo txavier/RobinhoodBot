@@ -679,6 +679,9 @@ def print_evolution_summary(optimizer: IntradayGeneticOptimizer):
 
 
 def main():
+    start_time = datetime.now()
+    print(f"\n⏱️  Genetic optimizer started at: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    
     parser = argparse.ArgumentParser(
         description='Intraday Genetic Algorithm Optimizer for RobinhoodBot Day Trading'
     )
@@ -757,6 +760,11 @@ def main():
     
     # Save results
     optimizer.save_results(args.output)
+    
+    end_time = datetime.now()
+    elapsed = end_time - start_time
+    print(f"\n⏱️  Genetic optimizer completed at: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"⏱️  Total runtime: {elapsed.total_seconds():.2f} seconds ({elapsed.total_seconds()/60:.1f} minutes)")
     
     return best_gene
 

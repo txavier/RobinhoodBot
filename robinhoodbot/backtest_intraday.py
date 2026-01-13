@@ -1415,6 +1415,9 @@ class IntradayBacktester:
 
 
 def main():
+    start_time = datetime.now()
+    print(f"\n⏱️  Backtest started at: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    
     parser = argparse.ArgumentParser(
         description='Intraday Backtesting for RobinhoodBot Day Trading (Accurate main.py Simulation)'
     )
@@ -1567,6 +1570,11 @@ def main():
         with open(args.output, 'w') as f:
             json.dump(results, f, indent=2)
         print(f"\nResults saved to {args.output}")
+    
+    end_time = datetime.now()
+    elapsed = end_time - start_time
+    print(f"\n⏱️  Backtest completed at: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"⏱️  Total runtime: {elapsed.total_seconds():.2f} seconds")
     
     return results
 
