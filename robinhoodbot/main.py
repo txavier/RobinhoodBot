@@ -398,17 +398,21 @@ def get_modified_holdings():
     return holdings
 
 
-def get_sma_proximity(stockTicker, n1=20, n2=50):
+def get_sma_proximity(stockTicker, n1=None, n2=None):
     """Get the proximity of the short-term SMA to the long-term SMA for death cross analysis.
     
     Args:
         stockTicker(str): Symbol of the stock
-        n1(int): Short-term SMA period (default 20)
-        n2(int): Long-term SMA period (default 50)
+        n1(int): Short-term SMA period (default from config.short_sma)
+        n2(int): Long-term SMA period (default from config.long_sma)
     
     Returns:
         dict with sma_short, sma_long, gap, gap_pct, and status
     """
+    if n1 is None:
+        n1 = short_sma
+    if n2 is None:
+        n2 = long_sma
     try:
         history = rsa.get_stock_historicals(stockTicker, interval='hour', span='3month', bounds='regular')
         if not history or len(history) < n2:
@@ -1210,8 +1214,8 @@ def get_market_tag_stocks_report():
             all_market_tag_stocks = rr.get_all_stocks_from_market_tag(market_tag_for_report_item, info = 'symbol')
             print(market_tag_for_report_item + " " + str(len(all_market_tag_stocks)) + " items.")
             for market_tag_stock in all_market_tag_stocks:
-                # cross = golden_cross(market_tag_stock, n1=20, n2=50, days=5, direction="above")
-                cross = retry_call(golden_cross, fargs=[market_tag_stock], fkwargs={"n1": 20,"n2": 50,"days": 5, "direction": "above"}, tries=3, backoff=5, delay=2)
+                # cross = golden_cross(market_tag_stock, n1=short_sma, n2=long_sma, days=5, direction="above")
+                cross = retry_call(golden_cross, fargs=[market_tag_stock], fkwargs={"n1": short_sma,"n2": long_sma,"days": 5, "direction": "above"}, tries=3, backoff=5, delay=2)
                 if(cross[0] == 1):
                     report_string = report_string + "\n" + market_tag_stock + "{:.2f}".format(cross[2])
                     stock_array.append(market_tag_stock)
@@ -1380,12 +1384,12 @@ def scan_stocks():
                 print("Skipping " + symbol + " because there is a order currently pending for this symbol.")
                 continue
 
-            n1 = 20
-            n2 = 50
-            # If we are not in a market uptrend, tighten the belt and set the 
-            # short term SMA to 18 instead of the default 20.
-            if((not market_uptrend) or market_in_major_downtrend):
-                n1 = 14
+            n1 = short_sma
+            n2 = long_sma
+            # If we are not in a market uptrend, tighten the belt and use
+            # the downtrend short-term SMA from config.
+            if use_dynamic_sma and ((not market_uptrend) or market_in_major_downtrend):
+                n1 = short_sma_downtrend
             tradeable_stock_info = rsa.get_instruments_by_symbols(symbol)
             if (len(tradeable_stock_info) == 0 or not tradeable_stock_info[0]['tradeable']):
                 continue
@@ -1400,9 +1404,9 @@ def scan_stocks():
             # If we have surpassed the take profit threshold and the stock was traded today
             # make it less likely to sell by simply changing the periods and not immediately 
             # selling in order to try our best not to hit our day trade limit.
-            if(is_take_profit and is_traded_today):
-                n1 = 5
-                n2 = 7
+            if use_dynamic_sma and is_take_profit and is_traded_today:
+                n1 = short_sma_take_profit
+                n2 = long_sma_take_profit
                 is_take_profit = False
                 print("For " + symbol + " setting the short term period to " + str(n1) + " and setting the long term period to " + str(n2) + ".")
             is_sudden_drop = sudden_drop(symbol, 10, 2) or sudden_drop(symbol, 15, 1)
