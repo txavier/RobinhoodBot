@@ -74,6 +74,12 @@ use_caching=True
 use_stop_loss=True
 # stop_loss_percent: Sell if total loss from buy price exceeds this percentage (e.g., 5 = sell at -5%)
 stop_loss_percent=5
+# Take-profit settings
+# take_profit_percent: Sell if total gain from buy price exceeds this percentage (e.g., 1.5 = sell at +1.5%)
+take_profit_percent=1.5
 
+# Golden cross buy settings
+# golden_cross_buy_days: Number of days to look back for golden cross buy signals
+golden_cross_buy_days=3
 # Version number for tracking
-version="0.9.9"
+version="0.9.13"
