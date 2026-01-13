@@ -133,3 +133,8 @@ robinhoodbot/ai_changelog.json
 # Log files
 robinhoodbot/console_log.json
 robinhoodbot/log.json
+
+# Backtesting generated data
+robinhoodbot/sample_data/
+robinhoodbot/backtest_cache/
+robinhoodbot/backtest_result.json

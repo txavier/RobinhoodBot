@@ -49,3 +49,157 @@ venv:
 /home/theo/dev/.venv/bin/activate
 ~/> source dev/.venv/bin/activate
 
+
+# Backtesting
+
+The bot includes a comprehensive backtesting module to test the trading strategy against historical data before risking real money.
+
+## Quick Start
+
+```bash
+cd robinhoodbot/
+
+# Generate sample data and run backtest
+./run_backtest.sh
+
+# Or run with custom parameters
+./run_backtest.sh --symbols AAPL,MSFT,GOOGL --days 180 --capital 20000
+```
+
+## Backtest Module
+
+Run backtests directly with the Python script:
+
+```bash
+# Basic backtest with default symbols (AAPL,MSFT,GOOGL,AMZN,NVDA)
+python backtest.py
+
+# Specify symbols and use sample data (no API required)
+python backtest.py --symbols AAPL,MSFT --sample-data sample_data/
+
+# Backtest with explicit date range
+python backtest.py --symbols AAPL,MSFT,GOOGL --start 2025-01-01 --end 2025-12-31
+
+# Backtest last 200 days with custom capital
+python backtest.py --symbols AAPL --days 200 --capital 25000
+
+# Custom strategy parameters (shorter SMAs, tighter stop-loss)
+python backtest.py --symbols AAPL --short-sma 10 --long-sma 30 --stop-loss 3 --take-profit 1.0
+
+# Quiet mode - suppress trade-by-trade output
+python backtest.py --symbols AAPL,MSFT --sample-data sample_data/ --quiet
+
+# Save results to custom file
+python backtest.py --symbols AAPL --output my_backtest_results.json
+
+# Full example with all options
+python backtest.py \
+    --symbols AAPL,MSFT,GOOGL \
+    --start 2025-01-01 \
+    --end 2025-10-31 \
+    --capital 10000 \
+    --short-sma 20 \
+    --long-sma 50 \
+    --stop-loss 5 \
+    --take-profit 0.7 \
+    --sample-data sample_data/ \
+    --output backtest_result.json
+```
+
+### Command Line Options
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `--symbols` | `-s` | Comma-separated stock symbols to test | AAPL,MSFT,GOOGL,AMZN,NVDA |
+| `--start` | `-st` | Start date in YYYY-MM-DD format | Calculated from --days |
+| `--end` | `-e` | End date in YYYY-MM-DD format | Today |
+| `--days` | `-d` | Number of days to backtest (used if --start not specified) | 365 |
+| `--capital` | `-c` | Initial capital in dollars | 10000 |
+| `--short-sma` | | Short-term Simple Moving Average period | 20 |
+| `--long-sma` | | Long-term Simple Moving Average period | 50 |
+| `--stop-loss` | | Stop loss percentage (sells if loss exceeds this %) | 5 (from config) |
+| `--take-profit` | | Take profit percentage (sells if gain exceeds this %) | 0.7 (from config) |
+| `--sample-data` | | Directory containing sample data files (bypasses API) | None |
+| `--no-api` | | Disable API calls, use only cached/sample data | False |
+| `--output` | `-o` | Output JSON file for results | backtest_result.json |
+| `--quiet` | `-q` | Suppress verbose trade-by-trade output | False |
+
+## Sample Data Generator
+
+Generate synthetic stock data for testing without requiring a Robinhood login:
+
+```bash
+# Generate mixed scenario data (bullish, bearish, golden cross patterns)
+python sample_data_generator.py --symbols AAPL,MSFT,GOOGL --days 365 --scenario mixed
+
+# Generate golden cross scenarios (good for testing buy signals)
+python sample_data_generator.py --symbols TEST1,TEST2 --scenario golden_cross
+
+# Generate death cross scenarios (good for testing sell signals)
+python sample_data_generator.py --symbols TEST1,TEST2 --scenario death_cross
+
+# Use a seed for reproducible results
+python sample_data_generator.py --symbols AAPL --seed 42
+```
+
+### Data Scenarios
+
+| Scenario | Description |
+|----------|-------------|
+| `random` | Random trends (bullish, bearish, sideways, volatile) |
+| `golden_cross` | Data designed to trigger golden cross buy signals |
+| `death_cross` | Data designed to trigger death cross sell signals |
+| `mixed` | Combination of all scenarios |
+
+## Backtest Results
+
+Results are saved to JSON and include:
+
+- **Financial Summary**: Initial/final capital, total return
+- **Performance Metrics**: Max drawdown, Sharpe ratio
+- **Trading Statistics**: Win rate, average win/loss, profit factor
+- **Trade History**: Complete list of all trades with timestamps and reasons
+
+Example output:
+```
+============================================================
+BACKTEST RESULTS
+============================================================
+
+📅 Period: 2024-01-01 to 2024-12-31
+📈 Symbols: AAPL, MSFT, GOOGL
+
+💰 FINANCIAL SUMMARY
+   Initial Capital:  $    10,000.00
+   Final Capital:    $    11,234.56
+   Total Return:     $    +1,234.56 (+12.35%)
+
+📊 PERFORMANCE METRICS
+   Max Drawdown:     $       567.89 (5.67%)
+   Sharpe Ratio:           0.8234
+
+🎯 TRADING STATISTICS
+   Total Trades:               24
+   Winning Trades:             15
+   Losing Trades:               9
+   Win Rate:                62.50%
+   Avg Win:          $       123.45
+   Avg Loss:         $        67.89
+   Profit Factor:           2.73
+```
+
+## Using Backtest Results
+
+The backtest module uses the same trading logic as the main bot:
+- Golden Cross (SMA 20/50) for buy signals
+- Death Cross for sell signals
+- Stop-loss protection
+- Take-profit targets
+- Sudden drop detection
+
+Review backtest results to:
+1. Validate strategy parameters before live trading
+2. Understand expected win rates and drawdowns
+3. Test different SMA periods and risk settings
+4. Evaluate performance across different market conditions
+
