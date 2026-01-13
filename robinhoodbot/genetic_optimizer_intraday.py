@@ -155,7 +155,7 @@ class IntradayGeneticOptimizer:
         self,
         symbols: List[str],
         days: int = 60,
-        initial_capital: float = 10000.0,
+        initial_capital: float = 30000.0,
         config: Optional[IntradayGeneticConfig] = None,
         verbose: bool = True,
         seed: int = None
@@ -691,8 +691,8 @@ def main():
         help='Trading days to simulate (default: 60)'
     )
     parser.add_argument(
-        '--capital', '-c', type=float, default=10000,
-        help='Initial capital (default: 10000)'
+        '--capital', '-c', type=float, default=30000,
+        help='Initial capital (default: 30000)'
     )
     parser.add_argument(
         '--population', '-p', type=int, default=20,
