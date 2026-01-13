@@ -470,7 +470,7 @@ class TradingStrategy:
         pct_threshold_2hr: float = 10.0
     ) -> bool:
         """Check for sudden price drops"""
-        if current_idx < 2:
+        if current_idx < 2 or current_idx >= len(df):
             return False
         
         current_price = df.iloc[current_idx]['close']
