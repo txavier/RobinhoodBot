@@ -1265,6 +1265,14 @@ class IntradayBacktester:
         buy_trades = [t for t in self.trades if t.trade_type == TradeType.BUY]
         sell_trades = [t for t in self.trades if t.trade_type == TradeType.SELL]
         
+        # Enhancement #10: Track exit reasons distribution
+        exit_reasons = {}
+        for trade in sell_trades:
+            reason = trade.reason
+            if reason not in exit_reasons:
+                exit_reasons[reason] = {'count': 0, 'total_pnl': 0.0, 'wins': 0, 'losses': 0}
+            exit_reasons[reason]['count'] += 1
+        
         # Match buys with sells to calculate P&L
         winning_trades = 0
         losing_trades = 0
@@ -1272,13 +1280,24 @@ class IntradayBacktester:
         total_losses = 0.0
         
         buy_prices = {}
+        buy_shares = {}  # Track shares for exit reason P&L
         for trade in self.trades:
             if trade.trade_type == TradeType.BUY:
                 buy_prices[trade.symbol] = trade.price
+                buy_shares[trade.symbol] = trade.shares
             elif trade.trade_type == TradeType.SELL:
                 if trade.symbol in buy_prices:
                     buy_price = buy_prices[trade.symbol]
                     pnl = (trade.price - buy_price) * trade.shares
+                    
+                    # Track P&L per exit reason
+                    if trade.reason in exit_reasons:
+                        exit_reasons[trade.reason]['total_pnl'] += pnl
+                        if pnl > 0:
+                            exit_reasons[trade.reason]['wins'] += 1
+                        else:
+                            exit_reasons[trade.reason]['losses'] += 1
+                    
                     if pnl > 0:
                         winning_trades += 1
                         total_wins += pnl
@@ -1286,6 +1305,8 @@ class IntradayBacktester:
                         losing_trades += 1
                         total_losses += abs(pnl)
                     del buy_prices[trade.symbol]
+                    if trade.symbol in buy_shares:
+                        del buy_shares[trade.symbol]
         
         final_capital = self.cash
         total_return = final_capital - self.initial_capital
@@ -1351,6 +1372,7 @@ class IntradayBacktester:
             'trading_days': trading_days,
             'trades_per_day': round(trades_per_day, 2),
             'symbols_tested': symbols,
+            'exit_reasons': exit_reasons,  # Enhancement #10: Exit reason tracking
             'strategy': {
                 'short_sma': self.strategy.short_sma,
                 'long_sma': self.strategy.long_sma,
@@ -1390,6 +1412,17 @@ class IntradayBacktester:
         pf = results['profit_factor']
         pf_str = f"{pf:>12.2f}" if pf != 'inf' else "         inf"
         print(f"   Profit Factor:      {pf_str}")
+        
+        # Enhancement #10: Show exit reason breakdown
+        if 'exit_reasons' in results and results['exit_reasons']:
+            print(f"\n📤 EXIT REASON BREAKDOWN")
+            exit_reasons = results['exit_reasons']
+            total_exits = sum(r['count'] for r in exit_reasons.values())
+            for reason, stats in sorted(exit_reasons.items(), key=lambda x: -x[1]['count']):
+                pct = (stats['count'] / total_exits * 100) if total_exits > 0 else 0
+                win_rate = (stats['wins'] / stats['count'] * 100) if stats['count'] > 0 else 0
+                avg_pnl = stats['total_pnl'] / stats['count'] if stats['count'] > 0 else 0
+                print(f"   {reason:20}: {stats['count']:>4} ({pct:5.1f}%) | Win: {win_rate:5.1f}% | Avg P/L: ${avg_pnl:>+8.2f}")
         
         # NEW: Show rejected buy reasons
         if 'rejected_buys' in results:
