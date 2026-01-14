@@ -52,7 +52,7 @@ reset_watchlist=True
 # i.e. If you have invested $7,000 and the purchase_limit_percentage is 15 percent
 # then no one stock purchase can exceed $1,050.
 use_purchase_limit_percentage=True
-purchase_limit_percentage=15
+purchase_limit_percentage=14
 # The below line would be the big "Investing" number on the home view of Robinhood 
 # Use this if this app is calculating the wrong initial investment number for you.
 # Uncomment and set to your total invested amount
@@ -73,10 +73,10 @@ use_caching=True
 # This protects against holding losing positions waiting for technical indicators
 use_stop_loss=True
 # stop_loss_percent: Sell if total loss from buy price exceeds this percentage (e.g., 5 = sell at -5%)
-stop_loss_percent=5
+stop_loss_percent=4.5
 # Take-profit settings
 # take_profit_percent: Sell if total gain from buy price exceeds this percentage (e.g., 1.52 = sell at +1.52%)
-take_profit_percent=1.52
+take_profit_percent=1.26
 
 # Golden cross buy settings
 # golden_cross_buy_days: Number of days to look back for golden cross buy signals
@@ -86,15 +86,15 @@ golden_cross_buy_days=3
 # short_sma: Short-term SMA period in hours (default 20 hours ≈ ~3 trading days)
 short_sma=20
 # long_sma: Long-term SMA period in hours (default 50 hours ≈ ~7 trading days)
-long_sma=50
+long_sma=55
 # short_sma_downtrend: Short-term SMA when market is not in uptrend (tighter belt)
-short_sma_downtrend=14
+short_sma_downtrend=17
 # short_sma_take_profit: Short-term SMA when take profit triggered and traded today (avoid day trade limit)
 short_sma_take_profit=5
 # long_sma_take_profit: Long-term SMA when take profit triggered and traded today
-long_sma_take_profit=7
+long_sma_take_profit=15
 # use_dynamic_sma: Enable/disable dynamic SMA adjustment based on market conditions
 use_dynamic_sma=True
 
 # Version number for tracking
-version="0.9.14"
+version="0.9.15"
