@@ -162,9 +162,9 @@ def _evaluate_gene_worker(args: Tuple) -> IntradayTradingGene:
     Module-level function for parallel gene evaluation.
     Must be at module level for multiprocessing to pickle it.
     
-    Args is a tuple of (gene, symbols, days, initial_capital, fitness_weights, data_seed)
+    Args is a tuple of (gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions)
     """
-    gene, symbols, days, initial_capital, fitness_weights, data_seed = args
+    gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions = args
     
     # Create strategy with gene parameters
     strategy = IntradayTradingStrategy(
@@ -191,7 +191,7 @@ def _evaluate_gene_worker(args: Tuple) -> IntradayTradingGene:
     # Run backtest
     backtester = IntradayBacktester(
         initial_capital=initial_capital,
-        max_positions=5,
+        max_positions=max_positions,
         max_position_pct=gene.position_size_pct,
         strategy=strategy
     )
@@ -268,7 +268,8 @@ class IntradayGeneticOptimizer:
         initial_capital: float = 30000.0,
         config: Optional[IntradayGeneticConfig] = None,
         verbose: bool = True,
-        seed: int = None
+        seed: int = None,
+        max_positions: int = 5
     ):
         self.symbols = symbols
         self.days = days
@@ -276,6 +277,7 @@ class IntradayGeneticOptimizer:
         self.config = config or IntradayGeneticConfig()
         self.verbose = verbose
         self.seed = seed
+        self.max_positions = max_positions
         
         # Track evolution history
         self.generation_history: List[Dict] = []
@@ -473,10 +475,10 @@ class IntradayGeneticOptimizer:
                 print(f"  Evaluating {len(population)} genes using {num_workers} workers...")
             
             # Prepare args for module-level worker function
-            # Each arg tuple: (gene, symbols, days, initial_capital, fitness_weights, data_seed)
+            # Each arg tuple: (gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions)
             eval_args = [
                 (gene, self.symbols, self.days, self.initial_capital, 
-                 dict(self.config.fitness_weights), data_seed)
+                 dict(self.config.fitness_weights), data_seed, self.max_positions)
                 for gene in population
             ]
             
@@ -697,6 +699,7 @@ class IntradayGeneticOptimizer:
         print(f"Symbols: {', '.join(self.symbols)}")
         print(f"Trading Days: {self.days}")
         print(f"Initial Capital: ${self.initial_capital:,.2f}")
+        print(f"Max Positions: {self.max_positions}")
         print(f"Population: {self.config.population_size}")
         print(f"Generations: {self.config.generations}")
         print(f"Mutation Rate: {self.config.mutation_rate}")
@@ -923,6 +926,10 @@ def main():
         '--quiet', '-q', action='store_true',
         help='Suppress verbose output'
     )
+    parser.add_argument(
+        '--max-positions', type=int, default=5,
+        help='Maximum concurrent positions (default: 5). More positions = more realistic trading volume.'
+    )
     
     args = parser.parse_args()
     
@@ -943,7 +950,8 @@ def main():
         initial_capital=args.capital,
         config=config,
         verbose=not args.quiet,
-        seed=args.seed
+        seed=args.seed,
+        max_positions=args.max_positions
     )
     
     # Run optimization
