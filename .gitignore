@@ -140,3 +140,4 @@ robinhoodbot/backtest_cache/
 robinhoodbot/backtest_result.json
 robinhoodbot/genetic_optimization_result.json
 robinhoodbot/genetic_optimization_intraday_result.json
+robinhoodbot/ai_suggested_config_changelog.json

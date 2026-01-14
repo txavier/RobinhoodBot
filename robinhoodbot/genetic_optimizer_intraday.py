@@ -24,6 +24,7 @@ import copy
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field, asdict
+from collections import Counter
 import numpy as np
 from multiprocessing import Pool, cpu_count
 from functools import partial
@@ -103,6 +104,9 @@ class IntradayTradingGene:
     avg_win: float = 0.0
     avg_loss: float = 0.0
     
+    # Exit reason tracking (Enhancement #10 - tracks which sell strategies are triggering)
+    exit_reasons: Dict = field(default_factory=dict)
+    
     def to_dict(self) -> Dict:
         return asdict(self)
     
@@ -147,10 +151,14 @@ class IntradayGeneticConfig:
     
     # Fitness weights (how much each metric contributes to fitness)
     # Adjusted for day trading: emphasize consistency and risk-adjusted returns
+    # UPDATED 2026-01-13: Recalibrated based on real trade log analysis:
+    # - Real trading shows 75% win rate matters more than big returns
+    # - Most wins are small (59% in 0-2% range), so consistency > magnitude
+    # - profit_before_eod is most common successful exit (55% of exits)
     fitness_weights: Dict = field(default_factory=lambda: {
-        'total_return_pct': 0.25,      # 25% weight on total return
-        'sharpe_ratio': 0.30,          # 30% weight on risk-adjusted return (higher for day trading)
-        'win_rate': 0.15,              # 15% weight on win rate
+        'total_return_pct': 0.20,      # 20% weight on total return (down from 25% - big returns rare in real trading)
+        'sharpe_ratio': 0.25,          # 25% weight on risk-adjusted return (down from 30%)
+        'win_rate': 0.25,              # 25% weight on win rate (up from 15% - consistency matters most)
         'profit_factor': 0.15,         # 15% weight on profit factor
         'max_drawdown_penalty': 0.10,  # 10% penalty for drawdown
         'trades_per_day_bonus': 0.05,  # 5% bonus for active trading
@@ -214,6 +222,7 @@ def _evaluate_gene_worker(args: Tuple) -> IntradayTradingGene:
     gene.trades_per_day = result.get('trades_per_day', 0)
     gene.avg_win = result.get('avg_win', 0)
     gene.avg_loss = result.get('avg_loss', 0)
+    gene.exit_reasons = result.get('exit_reasons', {})
     
     # Calculate weighted fitness
     fitness = 0.0
@@ -843,7 +852,173 @@ class IntradayGeneticOptimizer:
         print(f"# Avg Win: ${gene.avg_win:.2f}")
         print(f"# Avg Loss: ${gene.avg_loss:.2f}")
         print(f"# Fitness Score: {gene.fitness:.4f}")
+        
+        # Enhancement #10: Display exit reason breakdown
+        if gene.exit_reasons:
+            print(f"\n# Exit Reason Breakdown (Enhancement #10):")
+            total_exits = sum(r['count'] for r in gene.exit_reasons.values())
+            for reason, stats in sorted(gene.exit_reasons.items(), key=lambda x: -x[1]['count']):
+                pct = (stats['count'] / total_exits * 100) if total_exits > 0 else 0
+                win_rate = (stats['wins'] / stats['count'] * 100) if stats['count'] > 0 else 0
+                avg_pnl = stats['total_pnl'] / stats['count'] if stats['count'] > 0 else 0
+                print(f"#   {reason:20}: {stats['count']:>3} ({pct:5.1f}%) | Win: {win_rate:5.1f}% | Avg: ${avg_pnl:>+7.2f}")
+        
         print(f"{'='*70}\n")
+
+
+def validate_against_real_trades(gene: IntradayTradingGene, tradehistory_path: str = "tradehistory-real.json") -> Dict:
+    """
+    Enhancement #6: Validate optimized parameters against real trading history.
+    
+    Compares the genetic optimizer's recommended configuration against actual
+    trading performance from tradehistory-real.json to check alignment.
+    
+    Returns a dict with validation metrics and recommendations.
+    """
+    print(f"\n{'='*70}")
+    print("REAL TRADE VALIDATION")
+    print(f"{'='*70}")
+    
+    if not os.path.exists(tradehistory_path):
+        print(f"⚠️  Warning: {tradehistory_path} not found. Skipping validation.")
+        return {'status': 'skipped', 'reason': 'file_not_found'}
+    
+    with open(tradehistory_path, 'r') as f:
+        trade_history = json.load(f)
+    
+    # Analyze real trading patterns
+    real_profits = []
+    real_losses = []
+    exit_reasons_real = Counter()
+    
+    for timestamp, trades in trade_history.items():
+        for symbol, trade in trades.items():
+            pct_change = float(trade.get('percent_change', 0))
+            if pct_change > 0:
+                real_profits.append(pct_change)
+            else:
+                real_losses.append(abs(pct_change))
+    
+    # Load buy_reasons.json for exit reason analysis
+    buy_reasons_path = "buy_reasons.json"
+    if os.path.exists(buy_reasons_path):
+        with open(buy_reasons_path, 'r') as f:
+            buy_reasons = json.load(f)
+        for symbol, info in buy_reasons.items():
+            reason = info.get('reason', 'unknown')
+            # Handle compound reasons
+            for r in reason.split(','):
+                exit_reasons_real[r.strip()] += 1
+    
+    total_trades = len(real_profits) + len(real_losses)
+    real_win_rate = len(real_profits) / total_trades * 100 if total_trades > 0 else 0
+    real_avg_profit = sum(real_profits) / len(real_profits) if real_profits else 0
+    real_avg_loss = sum(real_losses) / len(real_losses) if real_losses else 0
+    
+    print(f"\n📊 REAL TRADING STATISTICS (from {tradehistory_path})")
+    print(f"   Total Trades: {total_trades}")
+    print(f"   Win Rate: {real_win_rate:.1f}%")
+    print(f"   Avg Profit: +{real_avg_profit:.2f}%")
+    print(f"   Avg Loss: -{real_avg_loss:.2f}%")
+    
+    if exit_reasons_real:
+        print(f"\n📤 REAL EXIT REASONS (from buy_reasons.json)")
+        total_exits = sum(exit_reasons_real.values())
+        for reason, count in exit_reasons_real.most_common():
+            pct = count / total_exits * 100
+            print(f"   {reason:20}: {count:>4} ({pct:5.1f}%)")
+    
+    # Compare with optimized gene parameters
+    print(f"\n🔬 PARAMETER ALIGNMENT ANALYSIS")
+    
+    alignment_score = 0
+    max_score = 5
+    
+    # 1. Take profit alignment
+    # Real avg profit is ~1.87% for profitable trades, median is lower
+    if 0.5 <= gene.take_profit_pct <= 2.5:
+        alignment_score += 1
+        tp_status = "✅ ALIGNED"
+    else:
+        tp_status = "⚠️  MISALIGNED"
+    print(f"   Take Profit ({gene.take_profit_pct:.2f}%): {tp_status}")
+    print(f"      Real avg profitable exit: +{real_avg_profit:.2f}%")
+    
+    # 2. Stop loss alignment  
+    # Real avg loss around 4-5%
+    if 3.0 <= gene.stop_loss_pct <= 7.0:
+        alignment_score += 1
+        sl_status = "✅ ALIGNED"
+    else:
+        sl_status = "⚠️  MISALIGNED"
+    print(f"   Stop Loss ({gene.stop_loss_pct:.1f}%): {sl_status}")
+    print(f"      Real avg loss: -{real_avg_loss:.2f}%")
+    
+    # 3. Win rate expectation
+    # Real win rate ~75%
+    if gene.win_rate >= 60:
+        alignment_score += 1
+        wr_status = "✅ ALIGNED"
+    else:
+        wr_status = "⚠️  LOWER THAN REAL"
+    print(f"   Expected Win Rate ({gene.win_rate:.1f}%): {wr_status}")
+    print(f"      Real win rate: {real_win_rate:.1f}%")
+    
+    # 4. Exit reason mix
+    # Real: profit_before_eod dominates (55%), then take_profit (15%), stop_loss (13%)
+    if gene.exit_reasons:
+        gene_exit_total = sum(r['count'] for r in gene.exit_reasons.values())
+        gene_pbe = gene.exit_reasons.get('profit_before_eod', {}).get('count', 0)
+        gene_pbe_pct = gene_pbe / gene_exit_total * 100 if gene_exit_total > 0 else 0
+        
+        if gene_pbe_pct >= 30:  # profit_before_eod should be significant
+            alignment_score += 1
+            exit_status = "✅ ALIGNED"
+        else:
+            exit_status = "⚠️  DIFFERENT MIX"
+        print(f"   Exit Reason Mix: {exit_status}")
+        print(f"      Gene profit_before_eod: {gene_pbe_pct:.1f}%")
+        print(f"      Real profit_before_eod: {exit_reasons_real.get('profit_before_eod', 0) / sum(exit_reasons_real.values()) * 100 if exit_reasons_real else 0:.1f}%")
+    else:
+        print(f"   Exit Reason Mix: ⚠️  No exit reason data in gene")
+    
+    # 5. Overall consistency
+    if gene.sharpe_ratio > 1.0 and gene.max_drawdown_pct < 5.0:
+        alignment_score += 1
+        risk_status = "✅ GOOD RISK PROFILE"
+    else:
+        risk_status = "⚠️  REVIEW RISK"
+    print(f"   Risk Profile: {risk_status}")
+    print(f"      Sharpe: {gene.sharpe_ratio:.2f}, Max DD: {gene.max_drawdown_pct:.2f}%")
+    
+    # Overall score
+    print(f"\n📈 ALIGNMENT SCORE: {alignment_score}/{max_score}")
+    
+    if alignment_score >= 4:
+        recommendation = "✅ EXCELLENT - Parameters well-aligned with real trading patterns"
+    elif alignment_score >= 3:
+        recommendation = "✅ GOOD - Parameters reasonably aligned, minor tuning may help"
+    elif alignment_score >= 2:
+        recommendation = "⚠️  FAIR - Some misalignment, consider reviewing parameters"
+    else:
+        recommendation = "❌ POOR - Significant misalignment with real trading, reconsider strategy"
+    
+    print(f"\n{recommendation}")
+    print(f"{'='*70}\n")
+    
+    return {
+        'status': 'completed',
+        'alignment_score': alignment_score,
+        'max_score': max_score,
+        'real_stats': {
+            'total_trades': total_trades,
+            'win_rate': real_win_rate,
+            'avg_profit': real_avg_profit,
+            'avg_loss': real_avg_loss,
+            'exit_reasons': dict(exit_reasons_real)
+        },
+        'recommendation': recommendation
+    }
 
 
 def print_evolution_summary(optimizer: IntradayGeneticOptimizer):
@@ -930,6 +1105,10 @@ def main():
         '--max-positions', type=int, default=5,
         help='Maximum concurrent positions (default: 5). More positions = more realistic trading volume.'
     )
+    parser.add_argument(
+        '--validate-real', action='store_true',
+        help='After optimization, validate best gene against tradehistory-real.json patterns (Enhancement #6)'
+    )
     
     args = parser.parse_args()
     
@@ -960,6 +1139,10 @@ def main():
     # Print results
     print_evolution_summary(optimizer)
     optimizer.print_best_config()
+    
+    # Enhancement #6: Validate against real trades if requested
+    if args.validate_real:
+        validation_result = validate_against_real_trades(best_gene)
     
     # Save results
     optimizer.save_results(args.output)

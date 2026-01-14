@@ -386,6 +386,8 @@ python genetic_optimizer_intraday.py \
 | `--mutation-rate` | `-m` | Mutation probability (0.0-1.0) | 0.15 |
 | `--crossover-rate` | | Crossover probability (0.0-1.0) | 0.7 |
 | `--optimize-filters` | | Also optimize filter on/off settings | False |
+| `--max-positions` | | Maximum concurrent positions | 5 |
+| `--validate-real` | | Validate results against tradehistory-real.json | False |
 | `--output` | `-o` | Output JSON file | genetic_optimization_intraday_result.json |
 | `--seed` | | Random seed for reproducibility | None |
 | `--quiet` | `-q` | Suppress verbose output | False |
