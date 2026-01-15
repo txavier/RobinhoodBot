@@ -41,7 +41,7 @@ auto_invest_exclusion_watchlist="Exclusion"
 # use_price_cap: If True, only consider stocks below the price_cap value
 use_price_cap=True
 # price_cap: Maximum stock price to consider for buying (in dollars)
-price_cap=210
+price_cap=3082
 # The minimum amount of volume of shares a stock needs to be considered.
 min_volume=1000000
 # The minimum amount of market cap a stock needs to be considered.
@@ -80,21 +80,21 @@ take_profit_percent=2.0
 
 # Golden cross buy settings
 # golden_cross_buy_days: Number of days to look back for golden cross buy signals
-golden_cross_buy_days=3
+golden_cross_buy_days=2
 
 # SMA (Simple Moving Average) settings
 # short_sma: Short-term SMA period in hours (default 20 hours ≈ ~3 trading days)
-short_sma=32
+short_sma=30
 # long_sma: Long-term SMA period in hours (default 50 hours ≈ ~7 trading days)
 long_sma=70
 # short_sma_downtrend: Short-term SMA when market is not in uptrend (tighter belt)
-short_sma_downtrend=17
+short_sma_downtrend=20
 # short_sma_take_profit: Short-term SMA when take profit triggered and traded today (avoid day trade limit)
-short_sma_take_profit=5
+short_sma_take_profit=8
 # long_sma_take_profit: Long-term SMA when take profit triggered and traded today
-long_sma_take_profit=15
+long_sma_take_profit=12
 # use_dynamic_sma: Enable/disable dynamic SMA adjustment based on market conditions
 use_dynamic_sma=True
 
 # Version number for tracking
-version="0.9.16"
+version="0.9.17"
