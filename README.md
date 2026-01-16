@@ -11,8 +11,43 @@ https://medium.com/@kev.guo123/building-a-robinhood-stock-trading-bot-8ee1b040ec
 
 This project supports Python 3.7+
 
+---
 
-To Install:
+## 🚀 Quick Start
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/txavier/RobinhoodBot.git
+cd RobinhoodBot
+
+# 2. Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# 3. Install dependencies
+cd robinhoodbot
+pip install -r requirements.txt
+
+# 4. Configure your credentials
+cp config.py.sample config.py
+# Edit config.py with your Robinhood credentials:
+#   - rh_username: Your Robinhood email
+#   - RH_DEVICE_TOKEN: Your 16-character device token
+#   - rh_email/rh_mail_password: For SMS notifications (optional)
+
+# 5. Setup Robinhood
+# - Enable 2FA in Robinhood app (Settings > Security > Two-Factor Authentication)
+# - Create a watchlist named "Default" with stocks to monitor
+# - Create a watchlist named "Exclusion" for stocks to ignore
+
+# 6. Run the bot
+python main.py          # Single run
+./run.sh               # Continuous loop (runs every 7 minutes)
+```
+
+---
+
+## Installation (Detailed)
 
 ```bash
 git clone https://github.com/txavier/RobinhoodBot.git
@@ -21,11 +56,12 @@ pip install -r requirements.txt
 cp config.py.sample config.py # add auth info and watchlist name to monitor after copying
 ```
 
-To Run:
+## Running the Bot
+
 In RobinHood create a watchlist named "Exclusion".  This will be the watchlist that you will use to tell the bot to ignore the stock tickers contained within.
 
-```python
-cd RobinboodBot/robinhoodbot (If outside of root directory)
+```bash
+cd RobinhoodBot/robinhoodbot
 python3 main.py
 ```
 
