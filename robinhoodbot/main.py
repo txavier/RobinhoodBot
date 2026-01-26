@@ -686,7 +686,7 @@ def purchase_limiter(num_shares, stock_price, equity):
     return result
 
 def is_market_in_major_downtrend():
-    stockTickerNdaq = 'NDAQ'
+    stockTickerNdaq = 'QQQ'
     stockTickerDow = 'DIA'
     stockTickerSP = 'SPY'
     downtrendNdaq = False
@@ -721,7 +721,7 @@ def is_market_in_major_downtrend():
     return result
 
 def is_market_in_uptrend():
-    stockTickerNdaq = 'NDAQ'
+    stockTickerNdaq = 'QQQ'
     stockTickerDow = 'DIA'
     stockTickerSP = 'SPY'
     uptrendNdaq = False
@@ -1312,9 +1312,8 @@ def scan_stocks():
     try:
 
         # Log in to Robinhood
-        # Put your username in the config file and password in an environment variable with the name 'rh_password'
-        rh = os.environ.get("rh")
-        login = rr.authentication.login(username=rh_username,password=rh)
+        # Put your username in the config file.
+        login = rr.authentication.login(username=rh_username)
         login_to_sms()
 
         # Clear caches at the start of each scan to get fresh data
