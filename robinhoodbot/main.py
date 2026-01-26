@@ -548,7 +548,7 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
     yearCheck = retry_call(five_year_check, fargs=[stockTicker], tries=3, backoff=5, delay=5)
 
     if(direction == "above" and not yearCheck):
-        return False,0,0
+        return False, 0, 0, 0, None, None, None
 
     # print('About to try ' + stockTicker)
     history = rsa.get_stock_historicals(stockTicker, interval='hour', span='3month', bounds='regular')
@@ -577,7 +577,11 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
         #           label1=str(n1)+" day SMA", label2=str(n2)+" day SMA", label3="21 day SMA", label4="50 day SMA")
         show_plot(price, sma1, sma2, dates, symbol=stockTicker,
                   label1=str(n1)+" day SMA", label2=str(n2)+" day SMA")
-    return cross[0], cross[1], cross[2], history[len(history)-5]['close_price']
+    # Return: cross_signal, price_at_cross, current_price, price_5hr_ago, current_sma20, current_sma50
+    current_sma20 = float(sma1.iloc[-1]) if not pd.isna(sma1.iloc[-1]) else None
+    current_sma50 = float(sma2.iloc[-1]) if not pd.isna(sma2.iloc[-1]) else None
+    current_price = float(price.iloc[-1]) if len(price) > 0 else None
+    return cross[0], cross[1], cross[2], history[len(history)-5]['close_price'], current_sma20, current_sma50, current_price
 
 
 def sell_holdings(symbol, holdings_data):
@@ -1576,18 +1580,105 @@ def scan_stocks():
                                             eod_message = symbol + ": It is after 1:30pm EST and as such trading has ended for today as the probability for inflection change usually occurs after this time of day up to and including market close."
                                             print(eod_message)
                                             send_text(eod_message)
+                                            json_logger.log("skip_buy", f"Skipping {symbol} - end of day", {
+                                                "symbol": symbol,
+                                                "reason": "eod_trading_paused",
+                                                "golden_cross": True,
+                                                "price_rising": True,
+                                                "price_above_5hr_ago": True,
+                                                "current_price": float(cross[2]),
+                                                "sma20": round(cross[4], 4) if cross[4] else None,
+                                                "sma50": round(cross[5], 4) if cross[5] else None,
+                                                "market_uptrend": market_uptrend,
+                                                "is_eod": eod,
+                                                "current_time": datetime.datetime.now().strftime("%H:%M"),
+                                                "need": "Wait until before 1:30pm EST (trading window: 9:30am-1:30pm)"
+                                            })
                                     else:
                                         print("If the market is closed and you do not have a premium account then buying is paused until market open.")
+                                        json_logger.log("skip_buy", f"Skipping {symbol} - market closed", {
+                                            "symbol": symbol,
+                                            "reason": "market_closed_no_premium",
+                                            "golden_cross": True,
+                                            "price_rising": True,
+                                            "price_above_5hr_ago": True,
+                                            "current_price": float(cross[2]),
+                                            "sma20": round(cross[4], 4) if cross[4] else None,
+                                            "sma50": round(cross[5], 4) if cross[5] else None,
+                                            "market_uptrend": market_uptrend,
+                                            "is_market_open": is_market_open,
+                                            "premium_account": premium_account,
+                                            "need": "Market must be open (9:30am-4:00pm EST) OR have premium_account=True"
+                                        })
                                 else:
                                     day_trade_message = "Unable to buy " + symbol + " because there are " + str(day_trades) + " day trades."
                                     print(day_trade_message)
                                     send_text(day_trade_message)
+                                    json_logger.log("skip_buy", f"Skipping {symbol} - day trade limit", {
+                                        "symbol": symbol,
+                                        "reason": "day_trade_limit",
+                                        "golden_cross": True,
+                                        "price_rising": True,
+                                        "price_above_5hr_ago": True,
+                                        "current_price": float(cross[2]),
+                                        "sma20": round(cross[4], 4) if cross[4] else None,
+                                        "sma50": round(cross[5], 4) if cross[5] else None,
+                                        "market_uptrend": market_uptrend,
+                                        "day_trades": day_trades,
+                                        "traded_today": traded_today(symbol, profileData),
+                                        "need": f"day_trades <= 1 (currently {day_trades}) OR stock not traded today"
+                                    })
                             else:
                                 print("But the markets on average are not in an uptrend.")
+                                json_logger.log("skip_buy", f"Skipping {symbol} - market downtrend", {
+                                    "symbol": symbol,
+                                    "reason": "market_not_uptrend",
+                                    "golden_cross": True,
+                                    "price_rising": True,
+                                    "price_above_5hr_ago": True,
+                                    "current_price": float(cross[2]),
+                                    "sma20": round(cross[4], 4) if cross[4] else None,
+                                    "sma50": round(cross[5], 4) if cross[5] else None,
+                                    "market_uptrend": market_uptrend,
+                                    "market_in_major_downtrend": market_in_major_downtrend,
+                                    "need": "At least 2 of 3 indexes (QQQ, DIA, SPY) must be up today AND not in major weekly downtrend"
+                                })
                         else:
                             print("But the price is lower than it was 5 hours ago.")
+                            json_logger.log("skip_buy", f"Skipping {symbol} - price below 5hr ago", {
+                                "symbol": symbol,
+                                "reason": "price_below_5hr_ago",
+                                "golden_cross": True,
+                                "price_rising": True,
+                                "current_price": float(cross[2]),
+                                "price_5hr_ago": float(cross[3]),
+                                "sma20": round(cross[4], 4) if cross[4] else None,
+                                "sma50": round(cross[5], 4) if cross[5] else None,
+                                "need": f"Current price (${cross[2]:.2f}) must be > price 5hr ago (${cross[3]:.2f})"
+                            })
                     else:
                         print("But the price is lower than it was when the golden cross formed " + str(cross[2]) + " < " + str(cross[1]))
+                        json_logger.log("skip_buy", f"Skipping {symbol} - price below cross price", {
+                            "symbol": symbol,
+                            "reason": "price_below_cross_price",
+                            "golden_cross": True,
+                            "current_price": float(cross[2]),
+                            "price_at_cross": float(cross[1]),
+                            "sma20": round(cross[4], 4) if cross[4] else None,
+                            "sma50": round(cross[5], 4) if cross[5] else None,
+                            "need": f"Current price (${cross[2]:.2f}) must be > price at golden cross (${cross[1]:.2f})"
+                        })
+                else:
+                    # No golden cross detected
+                    json_logger.log("skip_buy", f"Skipping {symbol} - no golden cross", {
+                        "symbol": symbol,
+                        "reason": "no_golden_cross",
+                        "cross_result": cross[0] if cross else None,
+                        "current_price": cross[6] if cross and len(cross) > 6 else None,
+                        "sma20": round(cross[4], 4) if cross and len(cross) > 4 and cross[4] else None,
+                        "sma50": round(cross[5], 4) if cross and len(cross) > 5 and cross[5] else None,
+                        "need": f"SMA(20) must cross above SMA(50) within {golden_cross_buy_days} days"
+                    })
                     
         if(len(potential_buys) > 0):
             equity = profile_data.get('equity')
