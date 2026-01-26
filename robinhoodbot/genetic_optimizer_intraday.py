@@ -29,6 +29,15 @@ import numpy as np
 from multiprocessing import Pool, cpu_count
 from functools import partial
 
+# Ray support for distributed computing (optional)
+# Falls back to multiprocessing.Pool if Ray is not available
+try:
+    import ray
+    RAY_AVAILABLE = True
+except ImportError:
+    RAY_AVAILABLE = False
+    ray = None
+
 from backtest_intraday import (
     IntradayBacktester, IntradayTradingStrategy,
     generate_market_data, generate_golden_cross_intraday
@@ -130,6 +139,8 @@ class IntradayGeneticConfig:
     elite_size: int = 3  # Top performers kept unchanged
     tournament_size: int = 5
     num_workers: int = 0  # 0 = auto (cpu_count), 1 = no multiprocessing
+    use_ray: bool = False  # True = use Ray for distributed computing (local or K8s cluster)
+    disable_ray_mem_monitor: bool = False  # True = disable Ray memory monitor (fixes cgroup v2 issues)
     
     # Whether to optimize filter settings (True = can toggle filters on/off)
     optimize_filters: bool = False
@@ -172,7 +183,13 @@ def _evaluate_gene_worker(args: Tuple) -> IntradayTradingGene:
     
     Args is a tuple of (gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions)
     """
-    gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions = args
+    return _evaluate_gene_impl(*args)
+
+
+def _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions) -> IntradayTradingGene:
+    """
+    Core gene evaluation logic - used by both multiprocessing and Ray workers.
+    """
     
     # Create strategy with gene parameters
     strategy = IntradayTradingStrategy(
@@ -469,7 +486,13 @@ class IntradayGeneticOptimizer:
         return fitness
     
     def evaluate_population(self, population: List[IntradayTradingGene], generation: int) -> List[IntradayTradingGene]:
-        """Evaluate fitness for entire population (optionally in parallel)"""
+        """Evaluate fitness for entire population (optionally in parallel)
+        
+        Supports three execution modes:
+        1. Ray (distributed): Set use_ray=True - scales from local to Kubernetes cluster
+        2. Multiprocessing (local): Default when Ray not available - uses CPU cores
+        3. Sequential: Set num_workers=1 - useful for debugging
+        """
         # Use consistent seed for data generation within a generation
         data_seed = (self.seed + generation * 1000) if self.seed else None
         
@@ -479,24 +502,18 @@ class IntradayGeneticOptimizer:
             num_workers = max(1, cpu_count() - 1)  # Leave one CPU free
         
         if num_workers > 1 and len(population) > 1:
-            # Parallel evaluation using multiprocessing
-            if self.verbose:
-                print(f"  Evaluating {len(population)} genes using {num_workers} workers...")
-            
-            # Prepare args for module-level worker function
-            # Each arg tuple: (gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions)
+            # Prepare args for worker functions
             eval_args = [
                 (gene, self.symbols, self.days, self.initial_capital, 
                  dict(self.config.fitness_weights), data_seed, self.max_positions)
                 for gene in population
             ]
             
-            # Use multiprocessing pool with module-level function
-            with Pool(processes=num_workers) as pool:
-                evaluated_population = pool.map(_evaluate_gene_worker, eval_args)
-            
-            # Replace population with evaluated genes
-            population = evaluated_population
+            # Try Ray first if enabled and available
+            if self.config.use_ray and RAY_AVAILABLE:
+                population = self._evaluate_with_ray(eval_args, num_workers)
+            else:
+                population = self._evaluate_with_multiprocessing(eval_args, num_workers)
             
             if self.verbose:
                 for i, gene in enumerate(population):
@@ -511,6 +528,54 @@ class IntradayGeneticOptimizer:
         # Sort by fitness (descending)
         population.sort(key=lambda g: g.fitness, reverse=True)
         return population
+    
+    def _evaluate_with_ray(self, eval_args: List[Tuple], num_workers: int) -> List[IntradayTradingGene]:
+        """Evaluate genes using Ray (works locally or distributed across Kubernetes)"""
+        if self.verbose:
+            ray_info = ray.cluster_resources() if ray.is_initialized() else {}
+            num_nodes = int(ray_info.get('CPU', num_workers))
+            print(f"  Evaluating {len(eval_args)} genes using Ray ({num_nodes} CPUs available)...")
+        
+        # Initialize Ray if not already done
+        if not ray.is_initialized():
+            # Configure Ray init options
+            init_kwargs = {"ignore_reinit_error": True}
+            
+            # Disable memory monitor if configured (fixes cgroup v2 issues on some Linux systems)
+            if self.config.disable_ray_mem_monitor:
+                init_kwargs["_system_config"] = {
+                    "automatic_object_spilling_enabled": False,
+                    "memory_monitor_refresh_ms": 0,
+                }
+                if self.verbose:
+                    print("  Ray memory monitor disabled (--disable-ray-mem-monitor)")
+            
+            # ray.init() auto-detects: local CPUs or K8s cluster
+            ray.init(**init_kwargs)
+        
+        # Define remote function inside method to avoid module-level Ray dependency
+        @ray.remote
+        def ray_evaluate_gene(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions):
+            return _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions)
+        
+        # Submit all tasks
+        futures = [
+            ray_evaluate_gene.remote(*args) for args in eval_args
+        ]
+        
+        # Gather results
+        evaluated_population = ray.get(futures)
+        return evaluated_population
+    
+    def _evaluate_with_multiprocessing(self, eval_args: List[Tuple], num_workers: int) -> List[IntradayTradingGene]:
+        """Evaluate genes using multiprocessing.Pool (local only)"""
+        if self.verbose:
+            print(f"  Evaluating {len(eval_args)} genes using {num_workers} multiprocessing workers...")
+        
+        with Pool(processes=num_workers) as pool:
+            evaluated_population = pool.map(_evaluate_gene_worker, eval_args)
+        
+        return evaluated_population
     
     def tournament_select(self, population: List[IntradayTradingGene]) -> IntradayTradingGene:
         """Select a gene using tournament selection"""
@@ -870,7 +935,7 @@ def validate_against_real_trades(gene: IntradayTradingGene, tradehistory_path: s
     """
     Enhancement #6: Validate optimized parameters against real trading history.
     
-    Compares the genetic optimizer's recommended configuration against actual
+    Compares the genetic optimizer recommended configuration against actual
     trading performance from tradehistory-real.json to check alignment.
     
     Returns a dict with validation metrics and recommendations.
@@ -1090,6 +1155,14 @@ def main():
         help='Number of parallel workers (default: 0 = auto, uses cpu_count-1)'
     )
     parser.add_argument(
+        '--use-ray', action='store_true',
+        help='Use Ray for distributed computing (works locally or on Kubernetes cluster)'
+    )
+    parser.add_argument(
+        '--disable-ray-mem-monitor', action='store_true',
+        help='Disable Ray memory monitor (fixes cgroup v2 crashes on some Linux systems)'
+    )
+    parser.add_argument(
         '--output', '-o', type=str, default='genetic_optimization_intraday_result.json',
         help='Output JSON file (default: genetic_optimization_intraday_result.json)'
     )
@@ -1121,7 +1194,17 @@ def main():
         crossover_rate=args.crossover_rate,
         optimize_filters=args.optimize_filters,
         num_workers=args.workers,
+        use_ray=args.use_ray,
+        disable_ray_mem_monitor=args.disable_ray_mem_monitor,
     )
+    
+    # Print Ray status if requested
+    if args.use_ray:
+        if RAY_AVAILABLE:
+            print("🌟 Ray mode enabled - will use Ray for distributed computing")
+        else:
+            print("⚠️  Ray requested but not installed - falling back to multiprocessing")
+            print("   Install with: pip install 'ray[default]'")
     
     optimizer = IntradayGeneticOptimizer(
         symbols=symbols,
