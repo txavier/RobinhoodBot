@@ -82,7 +82,7 @@ Afterwards, be sure to run /> pip install .
 # VENV
 ## In the event you want to use Venv instead of anaconda, activate it with the follwing command.
 venv:
-/home/theo/dev/.venv/bin/activate
+/home/[Your home directory]/dev/.venv/bin/activate
 ~/> source dev/.venv/bin/activate
 
 
@@ -427,6 +427,9 @@ python genetic_optimizer_intraday.py \
 | `--output` | `-o` | Output JSON file | genetic_optimization_intraday_result.json |
 | `--seed` | | Random seed for reproducibility | None |
 | `--quiet` | `-q` | Suppress verbose output | False |
+| `--workers` | `-w` | Number of parallel workers (0 = auto, uses cpu_count-1) | 0 |
+| `--use-ray` | | Use Ray for distributed computing (local or Kubernetes) | False |
+| `--disable-ray-mem-monitor` | | Disable Ray memory monitor (fixes cgroup v2 crashes) | False |
 
 ## Example Output
 
