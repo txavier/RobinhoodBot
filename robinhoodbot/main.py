@@ -462,10 +462,18 @@ def get_last_crossing(df, days, symbol="", direction=""):
     found = index
     recentDiff = (shortTerm.at[index] - LongTerm.at[index]) >= 0
     if((direction == "above" and not recentDiff) or (direction == "below" and recentDiff)):
-        return 0,0,0
+        return 0, 0, 0, None
     index -= 1
+    # Count trading days (exclude weekends) instead of calendar days
+    trading_days_checked = 0
+    prev_date = None
     while(index >= 0 and found == lastIndex and not np.isnan(shortTerm.at[index]) and not np.isnan(LongTerm.at[index])
-          and ((pd.Timestamp("now", tz='UTC') - dates.at[index]) <= pd.Timedelta(str(days) + " days"))):
+          and trading_days_checked <= days):
+        # Track unique trading days (weekdays only)
+        current_date = dates.at[index].date() if hasattr(dates.at[index], 'date') else pd.to_datetime(dates.at[index]).date()
+        if current_date != prev_date and current_date.weekday() < 5:  # Monday=0 to Friday=4
+            trading_days_checked += 1
+            prev_date = current_date
         if(recentDiff):
             if((shortTerm.at[index] - LongTerm.at[index]) < 0):
                 found = index
@@ -479,9 +487,9 @@ def get_last_crossing(df, days, symbol="", direction=""):
                 pd.Timestamp("now", tz='UTC') - dates.at[found]) + " ago", ", price at cross: " + str(prices.at[found]) + ", current price: " + str(prices.at[lastIndex])
 
             print(last_crossing_report)
-        return (1 if recentDiff else -1), prices.at[found], prices.at[lastIndex]
+        return (1 if recentDiff else -1), prices.at[found], prices.at[lastIndex], dates.at[found]
     else:
-        return 0,0,0
+        return 0, 0, 0, None
 
 
 def five_year_check(stockTicker):
@@ -548,7 +556,7 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
     yearCheck = retry_call(five_year_check, fargs=[stockTicker], tries=3, backoff=5, delay=5)
 
     if(direction == "above" and not yearCheck):
-        return False, 0, 0, 0, None, None, None
+        return False, 0, 0, 0, None, None, None, None
 
     # print('About to try ' + stockTicker)
     history = rsa.get_stock_historicals(stockTicker, interval='hour', span='3month', bounds='regular')
@@ -577,11 +585,13 @@ def golden_cross(stockTicker, n1, n2, days, direction=""):
         #           label1=str(n1)+" day SMA", label2=str(n2)+" day SMA", label3="21 day SMA", label4="50 day SMA")
         show_plot(price, sma1, sma2, dates, symbol=stockTicker,
                   label1=str(n1)+" day SMA", label2=str(n2)+" day SMA")
-    # Return: cross_signal, price_at_cross, current_price, price_5hr_ago, current_sma20, current_sma50
+    # Return: cross_signal, price_at_cross, current_price, price_5hr_ago, current_sma20, current_sma50, current_price, cross_date
     current_sma20 = float(sma1.iloc[-1]) if not pd.isna(sma1.iloc[-1]) else None
     current_sma50 = float(sma2.iloc[-1]) if not pd.isna(sma2.iloc[-1]) else None
     current_price = float(price.iloc[-1]) if len(price) > 0 else None
-    return cross[0], cross[1], cross[2], history[len(history)-5]['close_price'], current_sma20, current_sma50, current_price
+    cross_date = str(cross[3]) if cross[3] is not None else None
+    price_5hr_ago = float(history[len(history)-5]['close_price']) if len(history) >= 5 else current_price
+    return cross[0], cross[1], cross[2], price_5hr_ago, current_sma20, current_sma50, current_price, cross_date
 
 
 def sell_holdings(symbol, holdings_data):
@@ -592,8 +602,7 @@ def sell_holdings(symbol, holdings_data):
         holdings_data(dict): dict obtained from get_modified_holdings() method
     """
     shares_owned = int(float(holdings_data[symbol].get("quantity")))
-    if not debug:
-        rr.order_sell_market(symbol, shares_owned,None, 'gfd')
+    rr.order_sell_market(symbol, shares_owned,None, 'gfd')
     print("####### Selling " + str(shares_owned) +
           " shares of " + symbol + " #######")
     send_text("SELL: \nSelling " + str(shares_owned) + " shares of " + symbol)
@@ -1584,6 +1593,7 @@ def scan_stocks():
                                                 "symbol": symbol,
                                                 "reason": "eod_trading_paused",
                                                 "golden_cross": True,
+                                                "golden_cross_date": cross[7] if len(cross) > 7 else None,
                                                 "price_rising": True,
                                                 "price_above_5hr_ago": True,
                                                 "current_price": float(cross[2]),
@@ -1600,6 +1610,7 @@ def scan_stocks():
                                             "symbol": symbol,
                                             "reason": "market_closed_no_premium",
                                             "golden_cross": True,
+                                            "golden_cross_date": cross[7] if len(cross) > 7 else None,
                                             "price_rising": True,
                                             "price_above_5hr_ago": True,
                                             "current_price": float(cross[2]),
@@ -1618,6 +1629,7 @@ def scan_stocks():
                                         "symbol": symbol,
                                         "reason": "day_trade_limit",
                                         "golden_cross": True,
+                                        "golden_cross_date": cross[7] if len(cross) > 7 else None,
                                         "price_rising": True,
                                         "price_above_5hr_ago": True,
                                         "current_price": float(cross[2]),
@@ -1634,6 +1646,7 @@ def scan_stocks():
                                     "symbol": symbol,
                                     "reason": "market_not_uptrend",
                                     "golden_cross": True,
+                                    "golden_cross_date": cross[7] if len(cross) > 7 else None,
                                     "price_rising": True,
                                     "price_above_5hr_ago": True,
                                     "current_price": float(cross[2]),
@@ -1649,6 +1662,7 @@ def scan_stocks():
                                 "symbol": symbol,
                                 "reason": "price_below_5hr_ago",
                                 "golden_cross": True,
+                                "golden_cross_date": cross[7] if len(cross) > 7 else None,
                                 "price_rising": True,
                                 "current_price": float(cross[2]),
                                 "price_5hr_ago": float(cross[3]),
@@ -1662,6 +1676,7 @@ def scan_stocks():
                             "symbol": symbol,
                             "reason": "price_below_cross_price",
                             "golden_cross": True,
+                            "golden_cross_date": cross[7] if len(cross) > 7 else None,
                             "current_price": float(cross[2]),
                             "price_at_cross": float(cross[1]),
                             "sma20": round(cross[4], 4) if cross[4] else None,
@@ -1673,6 +1688,8 @@ def scan_stocks():
                     json_logger.log("skip_buy", f"Skipping {symbol} - no golden cross", {
                         "symbol": symbol,
                         "reason": "no_golden_cross",
+                        "golden_cross": False,
+                        "golden_cross_date": None,
                         "cross_result": cross[0] if cross else None,
                         "current_price": cross[6] if cross and len(cross) > 6 else None,
                         "sma20": round(cross[4], 4) if cross and len(cross) > 4 and cross[4] else None,

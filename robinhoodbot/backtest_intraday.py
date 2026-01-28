@@ -405,7 +405,7 @@ class IntradayTradingStrategy:
         self,
         short_sma: int = 20,  # 20 hours ≈ ~3 trading days
         long_sma: int = 50,   # 50 hours ≈ ~7 trading days
-        golden_cross_hours: int = 24,  # Look back 24 hours for cross (matches golden_cross_buy_days * 7hrs)
+        golden_cross_buy_days: int = 2,  # Look back N trading days for cross (matches main.py)
         # Dynamic SMA parameters (used when use_dynamic_sma=True)
         short_sma_downtrend: int = 14,  # Used when market not in uptrend
         short_sma_take_profit: int = 5,  # Used after take profit (only if balance < $25k PDT limit)
@@ -428,7 +428,7 @@ class IntradayTradingStrategy:
     ):
         self.short_sma = short_sma
         self.long_sma = long_sma
-        self.golden_cross_hours = golden_cross_hours
+        self.golden_cross_buy_days = golden_cross_buy_days
         # Dynamic SMA parameters
         self.short_sma_downtrend = short_sma_downtrend
         self.short_sma_take_profit = short_sma_take_profit
@@ -583,19 +583,19 @@ class IntradayTradingStrategy:
         self,
         df: pd.DataFrame,
         current_idx: int,
-        lookback_hours: int = None,
+        lookback_days: int = None,
         n1: int = None,
         n2: int = None
     ) -> Tuple[bool, Optional[float], Optional[float]]:
         """
-        Check if a golden cross occurred within lookback_hours.
+        Check if a golden cross occurred within lookback_days trading days.
         Golden cross = short SMA crosses above long SMA
         
         Returns:
             (is_golden_cross, cross_price, price_5hr_ago)
         """
-        if lookback_hours is None:
-            lookback_hours = self.golden_cross_hours
+        if lookback_days is None:
+            lookback_days = self.golden_cross_buy_days
         
         if n1 is None:
             n1 = self.short_sma
@@ -627,31 +627,45 @@ class IntradayTradingStrategy:
         if current_row[sma_short_col] <= current_row[sma_long_col]:
             return False, None, None
         
-        # Look for the cross point
-        start_idx = max(0, current_idx - lookback_hours)
-        for i in range(start_idx, current_idx):
-            if i == 0:
-                continue
+        # Look for the cross point, counting trading days (matching main.py logic)
+        trading_days_checked = 0
+        prev_date = None
+        i = current_idx - 1
+        
+        while i >= 0 and trading_days_checked <= lookback_days:
+            # Track unique trading days (weekdays only)
+            row_date = df.iloc[i]['date']
+            if hasattr(row_date, 'weekday'):
+                current_date = row_date
+            else:
+                current_date = pd.to_datetime(row_date).date()
             
-            prev_row = df.iloc[i - 1]
-            curr_row = df.iloc[i]
+            if current_date != prev_date:
+                # Check if it's a weekday (Monday=0 to Friday=4)
+                weekday = current_date.weekday() if hasattr(current_date, 'weekday') else pd.to_datetime(current_date).weekday()
+                if weekday < 5:
+                    trading_days_checked += 1
+                    prev_date = current_date
             
-            if pd.isna(prev_row.get(sma_short_col)) or pd.isna(prev_row.get(sma_long_col)):
-                continue
-            if pd.isna(curr_row.get(sma_short_col)) or pd.isna(curr_row.get(sma_long_col)):
-                continue
-            
-            # Cross: prev short <= prev long AND curr short > curr long
-            if prev_row[sma_short_col] <= prev_row[sma_long_col] and curr_row[sma_short_col] > curr_row[sma_long_col]:
-                cross_price = curr_row['close']
-                current_price = df.iloc[current_idx]['close']
+            if i > 0:
+                prev_row = df.iloc[i - 1]
+                curr_row = df.iloc[i]
                 
-                # Get price 5 hours ago
-                price_5hr_ago = df.iloc[max(0, current_idx - 5)]['close'] if current_idx >= 5 else current_price
-                
-                # Only buy if price is still rising (current > cross price)
-                if current_price >= cross_price:
-                    return True, cross_price, price_5hr_ago
+                if not pd.isna(prev_row.get(sma_short_col)) and not pd.isna(prev_row.get(sma_long_col)) and \
+                   not pd.isna(curr_row.get(sma_short_col)) and not pd.isna(curr_row.get(sma_long_col)):
+                    # Cross: prev short <= prev long AND curr short > curr long
+                    if prev_row[sma_short_col] <= prev_row[sma_long_col] and curr_row[sma_short_col] > curr_row[sma_long_col]:
+                        cross_price = curr_row['close']
+                        current_price = df.iloc[current_idx]['close']
+                        
+                        # Get price 5 hours ago
+                        price_5hr_ago = df.iloc[max(0, current_idx - 5)]['close'] if current_idx >= 5 else current_price
+                        
+                        # Only buy if price is still rising (current > cross price)
+                        if current_price >= cross_price:
+                            return True, cross_price, price_5hr_ago
+            
+            i -= 1
         
         return False, None, None
     
@@ -1376,7 +1390,7 @@ class IntradayBacktester:
             'strategy': {
                 'short_sma': self.strategy.short_sma,
                 'long_sma': self.strategy.long_sma,
-                'golden_cross_hours': self.strategy.golden_cross_hours,
+                'golden_cross_buy_days': self.strategy.golden_cross_buy_days,
                 'stop_loss_pct': self.strategy.stop_loss_pct,
                 'take_profit_pct': self.strategy.take_profit_pct
             }
@@ -1448,7 +1462,7 @@ class IntradayBacktester:
         print(f"\n⚙️  STRATEGY CONFIGURATION")
         strat = results['strategy']
         print(f"   Hourly SMA: {strat['short_sma']}/{strat['long_sma']}")
-        print(f"   Golden Cross Lookback: {strat['golden_cross_hours']} hours")
+        print(f"   Golden Cross Lookback: {strat['golden_cross_buy_days']} trading days")
         print(f"   Stop Loss: {strat['stop_loss_pct']}%")
         print(f"   Take Profit: {strat['take_profit_pct']}%")
         
@@ -1499,8 +1513,8 @@ def main():
         help=f'Stop loss percentage (default: {stop_loss_percent})'
     )
     parser.add_argument(
-        '--golden-cross-hours', type=int, default=24,
-        help='Hours to look back for golden cross (default: 24)'
+        '--golden-cross-buy-days', type=int, default=2,
+        help='Trading days to look back for golden cross (default: 2)'
     )
     parser.add_argument(
         '--max-positions', type=int, default=5,
@@ -1586,7 +1600,7 @@ def main():
     strategy = IntradayTradingStrategy(
         short_sma=args.short_sma,
         long_sma=args.long_sma,
-        golden_cross_hours=args.golden_cross_hours,
+        golden_cross_buy_days=args.golden_cross_buy_days,
         stop_loss_pct=args.stop_loss,
         take_profit_pct=args.take_profit,
         use_stop_loss=True,
