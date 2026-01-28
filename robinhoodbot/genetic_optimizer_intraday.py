@@ -71,7 +71,7 @@ class IntradayTradingGene:
     # SMA parameters (in HOURS, not days)
     short_sma: int = 20          # Range: 5-50 hours (~1-7 trading days)
     long_sma: int = 50           # Range: 20-100 hours (~3-14 trading days)
-    golden_cross_hours: int = 24 # Range: 7-72 hours (1-10 trading days equivalent)
+    golden_cross_buy_days: int = 2 # Range: 1-10 trading days
     
     # Dynamic SMA parameters (used when use_dynamic_sma=True)
     short_sma_downtrend: int = 14  # Range: 5-30 hours - used when market not in uptrend
@@ -124,7 +124,7 @@ class IntradayTradingGene:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
     
     def __str__(self) -> str:
-        return (f"SMA({self.short_sma}/{self.long_sma}) GC:{self.golden_cross_hours}h "
+        return (f"SMA({self.short_sma}/{self.long_sma}) GC:{self.golden_cross_buy_days}d "
                 f"SL:{self.stop_loss_pct:.1f}% TP:{self.take_profit_pct:.2f}% "
                 f"Slope:{self.slope_threshold:.4f} | Fit:{self.fitness:.4f}")
 
@@ -149,7 +149,7 @@ class IntradayGeneticConfig:
     param_ranges: Dict = field(default_factory=lambda: {
         'short_sma': (5, 50),         # Hours
         'long_sma': (20, 100),        # Hours
-        'golden_cross_hours': (7, 72), # Hours (1-10 trading days)
+        'golden_cross_buy_days': (1, 10), # Trading days
         'short_sma_downtrend': (5, 30),  # Hours - more conservative SMA in downtrend
         'short_sma_take_profit': (3, 15),  # Hours - aggressive SMA after take profit
         'long_sma_take_profit': (5, 20),   # Hours - aggressive SMA after take profit
@@ -195,7 +195,7 @@ def _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, d
     strategy = IntradayTradingStrategy(
         short_sma=gene.short_sma,
         long_sma=gene.long_sma,
-        golden_cross_hours=gene.golden_cross_hours,
+        golden_cross_buy_days=gene.golden_cross_buy_days,
         short_sma_downtrend=gene.short_sma_downtrend,
         short_sma_take_profit=gene.short_sma_take_profit,
         long_sma_take_profit=gene.long_sma_take_profit,
@@ -322,7 +322,7 @@ class IntradayGeneticOptimizer:
         gene = IntradayTradingGene(
             short_sma=short_sma,
             long_sma=long_sma,
-            golden_cross_hours=random.randint(*ranges['golden_cross_hours']),
+            golden_cross_buy_days=random.randint(*ranges['golden_cross_buy_days']),
             short_sma_downtrend=random.randint(*ranges['short_sma_downtrend']),
             short_sma_take_profit=random.randint(*ranges['short_sma_take_profit']),
             long_sma_take_profit=random.randint(*ranges['long_sma_take_profit']),
@@ -354,28 +354,28 @@ class IntradayGeneticOptimizer:
         defaults = [
             # Default main.py settings (matching config.py)
             IntradayTradingGene(
-                short_sma=20, long_sma=50, golden_cross_hours=24,
+                short_sma=20, long_sma=50, golden_cross_buy_days=2,
                 short_sma_downtrend=14, short_sma_take_profit=5, long_sma_take_profit=7,
                 use_stop_loss=True, stop_loss_pct=5.0, take_profit_pct=1.52, position_size_pct=15.0,
                 slope_threshold=0.0008, price_cap_value=2100.0
             ),
             # More aggressive day trading
             IntradayTradingGene(
-                short_sma=10, long_sma=30, golden_cross_hours=14,
+                short_sma=10, long_sma=30, golden_cross_buy_days=2,
                 short_sma_downtrend=8, short_sma_take_profit=3, long_sma_take_profit=5,
                 use_stop_loss=True, stop_loss_pct=3.0, take_profit_pct=1.0, position_size_pct=20.0,
                 slope_threshold=0.001, price_cap_value=1500.0
             ),
             # More conservative
             IntradayTradingGene(
-                short_sma=30, long_sma=70, golden_cross_hours=35,
+                short_sma=30, long_sma=70, golden_cross_buy_days=5,
                 short_sma_downtrend=20, short_sma_take_profit=8, long_sma_take_profit=12,
                 use_stop_loss=True, stop_loss_pct=7.0, take_profit_pct=0.5, position_size_pct=25.0,
                 slope_threshold=0.0005, price_cap_value=3000.0
             ),
             # Very aggressive (quick scalping)
             IntradayTradingGene(
-                short_sma=5, long_sma=15, golden_cross_hours=7,
+                short_sma=5, long_sma=15, golden_cross_buy_days=1,
                 short_sma_downtrend=5, short_sma_take_profit=3, long_sma_take_profit=5,
                 use_stop_loss=True, stop_loss_pct=2.0, take_profit_pct=0.5, position_size_pct=10.0,
                 slope_threshold=0.0015, price_cap_value=1000.0
@@ -398,7 +398,7 @@ class IntradayGeneticOptimizer:
         strategy = IntradayTradingStrategy(
             short_sma=gene.short_sma,
             long_sma=gene.long_sma,
-            golden_cross_hours=gene.golden_cross_hours,
+            golden_cross_buy_days=gene.golden_cross_buy_days,
             short_sma_downtrend=gene.short_sma_downtrend,
             short_sma_take_profit=gene.short_sma_take_profit,
             long_sma_take_profit=gene.long_sma_take_profit,
@@ -594,7 +594,7 @@ class IntradayGeneticOptimizer:
         child2 = IntradayTradingGene()
         
         # Numeric parameters
-        params = ['short_sma', 'long_sma', 'golden_cross_hours',
+        params = ['short_sma', 'long_sma', 'golden_cross_buy_days',
                   'short_sma_downtrend', 'short_sma_take_profit', 'long_sma_take_profit',
                   'stop_loss_pct', 'take_profit_pct', 'position_size_pct',
                   'slope_threshold', 'price_cap_value']
@@ -654,10 +654,10 @@ class IntradayGeneticOptimizer:
                                   min(ranges['long_sma'][1], mutated.long_sma + delta))
         
         if random.random() < self.config.mutation_rate:
-            delta = random.randint(-7, 7)
-            mutated.golden_cross_hours = max(ranges['golden_cross_hours'][0],
-                                            min(ranges['golden_cross_hours'][1],
-                                                mutated.golden_cross_hours + delta))
+            delta = random.randint(-2, 2)
+            mutated.golden_cross_buy_days = max(ranges['golden_cross_buy_days'][0],
+                                            min(ranges['golden_cross_buy_days'][1],
+                                                mutated.golden_cross_buy_days + delta))
         
         # Mutate dynamic SMA parameters
         if random.random() < self.config.mutation_rate:
@@ -881,7 +881,7 @@ class IntradayGeneticOptimizer:
         print(f"\n# SMA Settings (Hourly)")
         print(f"short_sma = {gene.short_sma}  # ~{gene.short_sma/7:.1f} trading days")
         print(f"long_sma = {gene.long_sma}   # ~{gene.long_sma/7:.1f} trading days")
-        print(f"golden_cross_buy_days = {max(1, gene.golden_cross_hours // 7)}  # {gene.golden_cross_hours} hours")
+        print(f"golden_cross_buy_days = {gene.golden_cross_buy_days}  # trading days")
         print(f"\n# Dynamic SMA Settings (used when use_dynamic_sma=True)")
         print(f"short_sma_downtrend = {gene.short_sma_downtrend}  # Used when market not in uptrend")
         print(f"short_sma_take_profit = {gene.short_sma_take_profit}  # Used after take profit (only if balance < $25k PDT limit)")
