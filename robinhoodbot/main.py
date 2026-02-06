@@ -130,6 +130,131 @@ console_logger = ConsoleLogger()
 sys.stdout = console_logger
 
 
+# US Stock Market Holidays
+def get_us_market_holidays(year: int) -> set:
+    """
+    Returns a set of US stock market holidays for a given year.
+    NYSE/NASDAQ are closed on these days.
+    """
+    holidays = set()
+    
+    # New Year's Day (Jan 1, or observed on nearest weekday)
+    new_years = datetime.date(year, 1, 1)
+    if new_years.weekday() == 5:  # Saturday
+        holidays.add(datetime.date(year - 1, 12, 31))  # Observed Friday before
+    elif new_years.weekday() == 6:  # Sunday
+        holidays.add(datetime.date(year, 1, 2))  # Observed Monday after
+    else:
+        holidays.add(new_years)
+    
+    # Martin Luther King Jr. Day (3rd Monday of January)
+    jan_first = datetime.date(year, 1, 1)
+    days_to_monday = (7 - jan_first.weekday()) % 7
+    first_monday = jan_first + datetime.timedelta(days=days_to_monday)
+    mlk_day = first_monday + datetime.timedelta(weeks=2)
+    holidays.add(mlk_day)
+    
+    # Presidents Day (3rd Monday of February)
+    feb_first = datetime.date(year, 2, 1)
+    days_to_monday = (7 - feb_first.weekday()) % 7
+    first_monday = feb_first + datetime.timedelta(days=days_to_monday)
+    presidents_day = first_monday + datetime.timedelta(weeks=2)
+    holidays.add(presidents_day)
+    
+    # Good Friday (Friday before Easter Sunday)
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    easter = datetime.date(year, month, day)
+    good_friday = easter - datetime.timedelta(days=2)
+    holidays.add(good_friday)
+    
+    # Memorial Day (last Monday of May)
+    may_last = datetime.date(year, 5, 31)
+    days_back = (may_last.weekday() - 0) % 7
+    memorial_day = may_last - datetime.timedelta(days=days_back)
+    holidays.add(memorial_day)
+    
+    # Juneteenth (June 19, or observed)
+    juneteenth = datetime.date(year, 6, 19)
+    if juneteenth.weekday() == 5:  # Saturday
+        holidays.add(datetime.date(year, 6, 18))
+    elif juneteenth.weekday() == 6:  # Sunday
+        holidays.add(datetime.date(year, 6, 20))
+    else:
+        holidays.add(juneteenth)
+    
+    # Independence Day (July 4, or observed)
+    july_fourth = datetime.date(year, 7, 4)
+    if july_fourth.weekday() == 5:  # Saturday
+        holidays.add(datetime.date(year, 7, 3))
+    elif july_fourth.weekday() == 6:  # Sunday
+        holidays.add(datetime.date(year, 7, 5))
+    else:
+        holidays.add(july_fourth)
+    
+    # Labor Day (1st Monday of September)
+    sep_first = datetime.date(year, 9, 1)
+    days_to_monday = (7 - sep_first.weekday()) % 7
+    labor_day = sep_first + datetime.timedelta(days=days_to_monday)
+    holidays.add(labor_day)
+    
+    # Thanksgiving Day (4th Thursday of November)
+    nov_first = datetime.date(year, 11, 1)
+    days_to_thursday = (3 - nov_first.weekday()) % 7
+    first_thursday = nov_first + datetime.timedelta(days=days_to_thursday)
+    thanksgiving = first_thursday + datetime.timedelta(weeks=3)
+    holidays.add(thanksgiving)
+    
+    # Christmas Day (Dec 25, or observed)
+    christmas = datetime.date(year, 12, 25)
+    if christmas.weekday() == 5:  # Saturday
+        holidays.add(datetime.date(year, 12, 24))
+    elif christmas.weekday() == 6:  # Sunday
+        holidays.add(datetime.date(year, 12, 26))
+    else:
+        holidays.add(christmas)
+    
+    return holidays
+
+
+def is_trading_day(check_date) -> bool:
+    """Check if a date is a valid trading day (not weekend, not holiday)."""
+    if hasattr(check_date, 'date'):
+        check_date = check_date.date()
+    elif not isinstance(check_date, datetime.date):
+        check_date = pd.to_datetime(check_date).date()
+    
+    # Skip weekends
+    if check_date.weekday() >= 5:
+        return False
+    
+    # Skip holidays
+    holidays = get_us_market_holidays(check_date.year)
+    if check_date in holidays:
+        return False
+    
+    return True
+
+
+def is_market_holiday_today() -> bool:
+    """Check if today is a market holiday."""
+    today = datetime.date.today()
+    holidays = get_us_market_holidays(today.year)
+    return today in holidays
+
+
 # Safe divide by zero division function
 def safe_division(n, d):
     return n / d if d else 0
@@ -243,16 +368,25 @@ def remove_watchlist_symbols(watchlist_symbols):
     Returns:
         Result of the delete request.
     """
-    # Night
+    # Night - reset watchlist on Friday (or Thursday if Friday is a holiday)
     begin_time = datetime.time(21, 00)
     end_time = datetime.time(23, 00)
     timenow = datetime.datetime.now().time()
+    today = datetime.date.today()
+    
+    # Check if today is Friday, or Thursday if Friday is a holiday
+    is_reset_day = False
+    if today.weekday() == 4:  # Friday
+        is_reset_day = True
+    elif today.weekday() == 3:  # Thursday - check if Friday is a holiday
+        friday = today + datetime.timedelta(days=1)
+        if not is_trading_day(friday):
+            is_reset_day = True
           
-    if(timenow >= begin_time and timenow < end_time and datetime.datetime.today().weekday() == 4):
+    if(timenow >= begin_time and timenow < end_time and is_reset_day):
         print("----- Removing all of this weeks stocks from watchlist -----")
         result = rr.delete_symbols_from_watchlist(watchlist_symbols, name = watch_list_name)
         return result
-
 
 def get_position_creation_date(symbol, holdings_data):
     """Returns the time at which we bought a certain stock in our portfolio
@@ -464,14 +598,14 @@ def get_last_crossing(df, days, symbol="", direction=""):
     if((direction == "above" and not recentDiff) or (direction == "below" and recentDiff)):
         return 0, 0, 0, None
     index -= 1
-    # Count trading days (exclude weekends) instead of calendar days
+    # Count trading days (exclude weekends and holidays) instead of calendar days
     trading_days_checked = 0
     prev_date = None
     while(index >= 0 and found == lastIndex and not np.isnan(shortTerm.at[index]) and not np.isnan(LongTerm.at[index])
           and trading_days_checked <= days):
-        # Track unique trading days (weekdays only)
+        # Track unique trading days (weekdays and non-holidays only)
         current_date = dates.at[index].date() if hasattr(dates.at[index], 'date') else pd.to_datetime(dates.at[index]).date()
-        if current_date != prev_date and current_date.weekday() < 5:  # Monday=0 to Friday=4
+        if current_date != prev_date and is_trading_day(current_date):
             trading_days_checked += 1
             prev_date = current_date
         if(recentDiff):
@@ -887,8 +1021,8 @@ def is_market_open_now():
     end_time = datetime.time(16, 00)
     timenow = datetime.datetime.now().time()
 
-    # If the weekday is less than five then it was some day less than Saturday...
-    if(datetime.datetime.now().weekday() < 5):
+    # Check if it's a trading day (weekday and not a holiday)
+    if is_trading_day(datetime.date.today()):
         if(timenow >= begin_time and timenow < end_time):
             return True
 
@@ -927,7 +1061,7 @@ def is_eod():
     
     timenow = datetime.datetime.now().time()
 
-    eod = timenow >= begin_time and timenow < end_time and datetime.datetime.today().weekday() <= 4
+    eod = timenow >= begin_time and timenow < end_time and is_trading_day(datetime.date.today())
     return eod
 
 
