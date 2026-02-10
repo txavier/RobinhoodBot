@@ -767,6 +767,8 @@ class IntradayGeneticOptimizer:
         Run the genetic algorithm optimization.
         Returns the best gene found.
         """
+        self.start_time = datetime.now()
+        
         print(f"\n{'='*70}")
         print("INTRADAY GENETIC ALGORITHM OPTIMIZER")
         print(f"{'='*70}")
@@ -834,6 +836,8 @@ class IntradayGeneticOptimizer:
             if gen < self.config.generations - 1:
                 population = self.create_next_generation(population)
         
+        self.end_time = datetime.now()
+        
         print(f"\n{'='*70}")
         print("OPTIMIZATION COMPLETE")
         print(f"{'='*70}")
@@ -842,9 +846,18 @@ class IntradayGeneticOptimizer:
     
     def save_results(self, filepath: str = "genetic_optimization_intraday_result.json"):
         """Save optimization results to JSON file"""
+        # Calculate runtime
+        start_time = getattr(self, 'start_time', None)
+        end_time = getattr(self, 'end_time', None)
+        runtime_seconds = (end_time - start_time).total_seconds() if start_time and end_time else None
+        
         results = {
-            'optimization_date': str(datetime.now()),
+            'start_time': str(start_time) if start_time else None,
+            'end_time': str(end_time) if end_time else None,
+            'runtime_seconds': runtime_seconds,
+            'runtime_minutes': round(runtime_seconds / 60, 2) if runtime_seconds else None,
             'optimizer_type': 'intraday',
+            'num_symbols': len(self.symbols),
             'symbols': self.symbols,
             'days': self.days,
             'initial_capital': self.initial_capital,
