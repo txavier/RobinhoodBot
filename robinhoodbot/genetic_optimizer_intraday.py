@@ -21,6 +21,8 @@ import json
 import os
 import random
 import copy
+import signal
+import sys
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field, asdict
@@ -310,6 +312,189 @@ class IntradayGeneticOptimizer:
         self.best_gene: Optional[IntradayTradingGene] = None
         self.best_fitness: float = float('-inf')
         
+        # Checkpoint/resume support
+        self.checkpoint_path: Optional[str] = None
+        self._interrupted = False
+        
+    def save_checkpoint(self, filepath: str, generation: int, population: List[IntradayTradingGene]):
+        """Save optimizer state to a checkpoint file after each generation.
+        
+        This allows resuming from the last completed generation if the process
+        is interrupted (Ctrl+C, crash, etc.).
+        """
+        checkpoint = {
+            'checkpoint_version': 1,
+            'saved_at': str(datetime.now()),
+            'start_time': str(self.start_time) if hasattr(self, 'start_time') else None,
+            'completed_generation': generation,
+            'total_generations': self.config.generations,
+            # Optimizer parameters (to verify compatibility on resume)
+            'symbols': self.symbols,
+            'days': self.days,
+            'initial_capital': self.initial_capital,
+            'max_positions': self.max_positions,
+            'seed': self.seed,
+            'config': {
+                'population_size': self.config.population_size,
+                'generations': self.config.generations,
+                'mutation_rate': self.config.mutation_rate,
+                'crossover_rate': self.config.crossover_rate,
+                'elite_size': self.config.elite_size,
+                'optimize_filters': self.config.optimize_filters,
+                'num_workers': self.config.num_workers,
+            },
+            # State to restore
+            'best_gene': self.best_gene.to_dict() if self.best_gene else None,
+            'best_fitness': self.best_fitness,
+            'generation_history': self.generation_history,
+            'population': [g.to_dict() for g in population],
+            # Random state for reproducibility
+            'random_state': random.getstate(),
+            'numpy_random_state': np.random.get_state(),
+        }
+        
+        # Custom serializer for numpy types
+        def numpy_serializer(obj):
+            if isinstance(obj, (np.integer,)):
+                return int(obj)
+            elif isinstance(obj, (np.floating,)):
+                return float(obj)
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+        
+        # Write to temp file first, then rename (atomic on same filesystem)
+        tmp_path = filepath + '.tmp'
+        with open(tmp_path, 'w') as f:
+            json.dump(checkpoint, f, indent=2, default=numpy_serializer)
+        os.replace(tmp_path, filepath)
+        
+        if self.verbose:
+            print(f"  💾 Checkpoint saved: Gen {generation + 1}/{self.config.generations} → {filepath}")
+    
+    def load_checkpoint(self, filepath: str) -> Optional[dict]:
+        """Load a checkpoint file and return the checkpoint data.
+        
+        Returns None if the file doesn't exist or is invalid.
+        Validates that the checkpoint is compatible with current optimizer settings.
+        """
+        if not os.path.exists(filepath):
+            return None
+        
+        try:
+            with open(filepath, 'r') as f:
+                checkpoint = json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"  ⚠️  Warning: Could not load checkpoint {filepath}: {e}")
+            return None
+        
+        # Validate checkpoint version
+        if checkpoint.get('checkpoint_version') != 1:
+            print(f"  ⚠️  Warning: Unknown checkpoint version, ignoring")
+            return None
+        
+        # Validate compatibility - warn but allow resume if symbols differ
+        # (config params like population size must match)
+        cp_config = checkpoint.get('config', {})
+        if cp_config.get('population_size') != self.config.population_size:
+            print(f"  ⚠️  Warning: Checkpoint population size ({cp_config.get('population_size')}) "
+                  f"differs from current ({self.config.population_size}). Cannot resume.")
+            return None
+        if cp_config.get('generations') != self.config.generations:
+            print(f"  ⚠️  Warning: Checkpoint generations ({cp_config.get('generations')}) "
+                  f"differs from current ({self.config.generations}). Cannot resume.")
+            return None
+        
+        # Validate symbols match
+        if checkpoint.get('symbols') != self.symbols:
+            print(f"  ⚠️  Warning: Checkpoint symbols differ from current run. Cannot resume.")
+            return None
+        
+        return checkpoint
+    
+    def restore_from_checkpoint(self, checkpoint: dict) -> Tuple[int, List[IntradayTradingGene]]:
+        """Restore optimizer state from a checkpoint.
+        
+        Returns (start_generation, population) to resume from.
+        start_generation is the NEXT generation to run (0-indexed).
+        """
+        # Restore best gene and fitness
+        if checkpoint['best_gene']:
+            self.best_gene = IntradayTradingGene.from_dict(checkpoint['best_gene'])
+        self.best_fitness = checkpoint['best_fitness']
+        
+        # Restore generation history
+        self.generation_history = checkpoint['generation_history']
+        
+        # Restore population
+        population = [IntradayTradingGene.from_dict(g) for g in checkpoint['population']]
+        
+        # Restore random state for reproducibility
+        if 'random_state' in checkpoint:
+            try:
+                # random.getstate() returns a tuple with internal state
+                state = checkpoint['random_state']
+                # Convert the internal state list back to a tuple as required
+                if isinstance(state, list):
+                    state[1] = tuple(state[1])
+                    state = tuple(state)
+                random.setstate(state)
+            except Exception:
+                pass  # Non-critical - just won't be perfectly reproducible
+        
+        if 'numpy_random_state' in checkpoint:
+            try:
+                np_state = checkpoint['numpy_random_state']
+                # numpy state: (string, ndarray, int, int, float)
+                np.random.set_state((
+                    np_state[0],
+                    np.array(np_state[1], dtype=np.uint32),
+                    np_state[2],
+                    np_state[3],
+                    np_state[4]
+                ))
+            except Exception:
+                pass  # Non-critical
+        
+        # Restore start time
+        if checkpoint.get('start_time') and checkpoint['start_time'] != 'None':
+            try:
+                self.start_time = datetime.fromisoformat(checkpoint['start_time'])
+            except (ValueError, TypeError):
+                self.start_time = datetime.now()
+        
+        # The next generation to run is completed_generation + 1 (0-indexed)
+        # completed_generation is 0-indexed (gen 0 = "Generation 1/20")
+        start_gen = checkpoint['completed_generation'] + 1
+        
+        return start_gen, population
+    
+    def _setup_signal_handler(self):
+        """Set up signal handlers to save checkpoint on interrupt."""
+        self._original_sigint = signal.getsignal(signal.SIGINT)
+        self._original_sigterm = signal.getsignal(signal.SIGTERM)
+        
+        def handler(signum, frame):
+            sig_name = 'SIGINT (Ctrl+C)' if signum == signal.SIGINT else 'SIGTERM'
+            print(f"\n\n  🛑 Received {sig_name}. Saving checkpoint before exit...")
+            self._interrupted = True
+            # The checkpoint will be saved at the next safe point in the run() loop
+            # If we're in the middle of pool.map(), we need to let it finish or abort
+            # Re-raise to stop the multiprocessing pool
+            if self._original_sigint and signum == signal.SIGINT:
+                signal.signal(signal.SIGINT, self._original_sigint)
+                os.kill(os.getpid(), signal.SIGINT)
+        
+        signal.signal(signal.SIGINT, handler)
+        signal.signal(signal.SIGTERM, handler)
+    
+    def _restore_signal_handlers(self):
+        """Restore original signal handlers."""
+        if hasattr(self, '_original_sigint') and self._original_sigint:
+            signal.signal(signal.SIGINT, self._original_sigint)
+        if hasattr(self, '_original_sigterm') and self._original_sigterm:
+            signal.signal(signal.SIGTERM, self._original_sigterm)
+
     def create_random_gene(self) -> IntradayTradingGene:
         """Create a random trading gene within parameter ranges"""
         ranges = self.config.param_ranges
@@ -766,8 +951,35 @@ class IntradayGeneticOptimizer:
         """
         Run the genetic algorithm optimization.
         Returns the best gene found.
+        
+        Supports checkpoint/resume: if self.checkpoint_path is set and a checkpoint
+        file exists, the optimizer will resume from the last completed generation.
+        After each generation, progress is saved to the checkpoint file.
+        On successful completion, the checkpoint file is removed.
         """
-        self.start_time = datetime.now()
+        start_gen = 0
+        population = None
+        resumed = False
+        
+        # Check for existing checkpoint to resume from
+        if self.checkpoint_path:
+            checkpoint = self.load_checkpoint(self.checkpoint_path)
+            if checkpoint:
+                completed = checkpoint['completed_generation'] + 1
+                total = checkpoint['total_generations']
+                print(f"\n🔄 RESUMING from checkpoint: Generation {completed}/{total} completed")
+                print(f"   Checkpoint saved at: {checkpoint['saved_at']}")
+                print(f"   Best fitness so far: {checkpoint['best_fitness']:.4f}")
+                start_gen, population = self.restore_from_checkpoint(checkpoint)
+                resumed = True
+                # Create next generation from the restored population
+                # (the checkpoint saved the population AFTER evaluation but BEFORE next_gen creation)
+                if start_gen < self.config.generations:
+                    population = self.create_next_generation(population)
+                    print(f"   Resuming from Generation {start_gen + 1}...\n")
+        
+        if not resumed:
+            self.start_time = datetime.now()
         
         print(f"\n{'='*70}")
         print("INTRADAY GENETIC ALGORITHM OPTIMIZER")
@@ -785,58 +997,100 @@ class IntradayGeneticOptimizer:
         print(f"Workers: {num_workers} {'(auto)' if self.config.num_workers == 0 else ''}")
         if self.seed:
             print(f"Random Seed: {self.seed}")
+        if self.checkpoint_path:
+            print(f"Checkpoint: {self.checkpoint_path} {'(resumed)' if resumed else '(enabled)'}")
         print(f"{'='*70}\n")
         
-        # Set random seed if provided
-        if self.seed:
+        # Set random seed if provided (only on fresh start, not resume)
+        if self.seed and not resumed:
             random.seed(self.seed)
             np.random.seed(self.seed)
         
-        # Initialize population
-        print("Initializing population...")
-        population = self.initialize_population()
+        # Initialize population (only on fresh start)
+        if population is None:
+            print("Initializing population...")
+            population = self.initialize_population()
+        
+        # Set up signal handler for graceful shutdown
+        if self.checkpoint_path:
+            self._setup_signal_handler()
         
         # Evolution loop
-        for gen in range(self.config.generations):
-            print(f"\n--- Generation {gen + 1}/{self.config.generations} ---")
+        try:
+            for gen in range(start_gen, self.config.generations):
+                print(f"\n--- Generation {gen + 1}/{self.config.generations} ---")
+                
+                # Evaluate fitness
+                population = self.evaluate_population(population, gen)
+                
+                # Track best
+                gen_best = population[0]
+                gen_avg = sum(g.fitness for g in population) / len(population)
+                gen_worst = population[-1].fitness
+                
+                if gen_best.fitness > self.best_fitness:
+                    self.best_fitness = gen_best.fitness
+                    self.best_gene = copy.deepcopy(gen_best)
+                
+                # Record generation stats
+                self.generation_history.append({
+                    'generation': gen + 1,
+                    'best_fitness': gen_best.fitness,
+                    'avg_fitness': gen_avg,
+                    'worst_fitness': gen_worst,
+                    'best_gene': gen_best.to_dict(),
+                    'best_return_pct': gen_best.total_return_pct,
+                    'best_sharpe': gen_best.sharpe_ratio,
+                    'best_win_rate': gen_best.win_rate,
+                    'best_trades_per_day': gen_best.trades_per_day,
+                })
+                
+                print(f"\n  Best:  {gen_best}")
+                print(f"  Avg Fitness: {gen_avg:.4f} | Worst: {gen_worst:.4f}")
+                print(f"  Return: {gen_best.total_return_pct:+.2f}% | "
+                      f"Sharpe: {gen_best.sharpe_ratio:.2f} | "
+                      f"Win Rate: {gen_best.win_rate:.1f}% | "
+                      f"Trades/Day: {gen_best.trades_per_day:.2f}")
+                
+                # Save checkpoint after each completed generation
+                if self.checkpoint_path:
+                    self.save_checkpoint(self.checkpoint_path, gen, population)
+                
+                # Create next generation (skip on last iteration)
+                if gen < self.config.generations - 1:
+                    population = self.create_next_generation(population)
+        
+        except KeyboardInterrupt:
+            # Save emergency checkpoint if we have any progress
+            if self.checkpoint_path and self.generation_history:
+                last_completed_gen = len(self.generation_history) - 1 + start_gen
+                # Only save if we haven't already (the per-generation save may have caught it)
+                print(f"\n  🛑 Interrupted! Checkpoint was saved after Gen {len(self.generation_history)}.")
+                print(f"     Resume with: --resume to continue from Gen {len(self.generation_history) + 1}")
+            else:
+                print(f"\n  🛑 Interrupted before any generation completed. No checkpoint to save.")
             
-            # Evaluate fitness
-            population = self.evaluate_population(population, gen)
+            # Restore signal handlers
+            if self.checkpoint_path:
+                self._restore_signal_handlers()
             
-            # Track best
-            gen_best = population[0]
-            gen_avg = sum(g.fitness for g in population) / len(population)
-            gen_worst = population[-1].fitness
-            
-            if gen_best.fitness > self.best_fitness:
-                self.best_fitness = gen_best.fitness
-                self.best_gene = copy.deepcopy(gen_best)
-            
-            # Record generation stats
-            self.generation_history.append({
-                'generation': gen + 1,
-                'best_fitness': gen_best.fitness,
-                'avg_fitness': gen_avg,
-                'worst_fitness': gen_worst,
-                'best_gene': gen_best.to_dict(),
-                'best_return_pct': gen_best.total_return_pct,
-                'best_sharpe': gen_best.sharpe_ratio,
-                'best_win_rate': gen_best.win_rate,
-                'best_trades_per_day': gen_best.trades_per_day,
-            })
-            
-            print(f"\n  Best:  {gen_best}")
-            print(f"  Avg Fitness: {gen_avg:.4f} | Worst: {gen_worst:.4f}")
-            print(f"  Return: {gen_best.total_return_pct:+.2f}% | "
-                  f"Sharpe: {gen_best.sharpe_ratio:.2f} | "
-                  f"Win Rate: {gen_best.win_rate:.1f}% | "
-                  f"Trades/Day: {gen_best.trades_per_day:.2f}")
-            
-            # Create next generation (skip on last iteration)
-            if gen < self.config.generations - 1:
-                population = self.create_next_generation(population)
+            # Still return best gene found so far (if any)
+            if self.best_gene:
+                self.end_time = datetime.now()
+                return self.best_gene
+            raise
+        
+        finally:
+            # Restore signal handlers
+            if self.checkpoint_path:
+                self._restore_signal_handlers()
         
         self.end_time = datetime.now()
+        
+        # Clean up checkpoint file on successful completion
+        if self.checkpoint_path and os.path.exists(self.checkpoint_path):
+            os.remove(self.checkpoint_path)
+            print(f"  🧹 Checkpoint file removed (optimization complete)")
         
         print(f"\n{'='*70}")
         print("OPTIMIZATION COMPLETE")
@@ -1195,6 +1449,14 @@ def main():
         '--validate-real', action='store_true',
         help='After optimization, validate best gene against tradehistory-real.json patterns (Enhancement #6)'
     )
+    parser.add_argument(
+        '--resume', action='store_true',
+        help='Resume from checkpoint if one exists. Saves progress after each generation so interrupts are recoverable.'
+    )
+    parser.add_argument(
+        '--checkpoint-file', type=str, default=None,
+        help='Checkpoint file path (default: <output>.checkpoint.json). Used with --resume.'
+    )
     
     args = parser.parse_args()
     
@@ -1228,6 +1490,12 @@ def main():
         seed=args.seed,
         max_positions=args.max_positions
     )
+    
+    # Set up checkpoint/resume
+    if args.resume:
+        checkpoint_file = args.checkpoint_file or (args.output.replace('.json', '') + '.checkpoint.json')
+        optimizer.checkpoint_path = checkpoint_file
+        print(f"📋 Checkpoint/resume enabled: {checkpoint_file}")
     
     # Run optimization
     best_gene = optimizer.run()
