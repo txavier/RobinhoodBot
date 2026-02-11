@@ -430,6 +430,8 @@ python genetic_optimizer_intraday.py \
 | `--workers` | `-w` | Number of parallel workers (0 = auto, uses cpu_count-1) | 0 |
 | `--use-ray` | | Use Ray for distributed computing (local or Kubernetes) | False |
 | `--disable-ray-mem-monitor` | | Disable Ray memory monitor (fixes cgroup v2 crashes) | False |
+| `--resume` | | Enable checkpoint/resume - saves progress after each generation | False |
+| `--checkpoint-file` | | Custom checkpoint file path | `<output>.checkpoint.json` |
 
 ## Example Output
 
@@ -501,6 +503,55 @@ price_cap = 1800
 # Fitness Score: 0.6234
 ======================================================================
 ```
+
+## Checkpoint / Resume
+
+Long-running optimizations (e.g. 2000 symbols, 20 generations) can take days. The `--resume` flag saves a checkpoint after every completed generation so that an interruption (Ctrl+C, crash, reboot) doesn't lose progress.
+
+```bash
+# Start a long run with resume enabled
+python genetic_optimizer_intraday.py \
+    --symbols AAPL,MSFT,GOOGL,NVDA,TSLA \
+    --generations 20 --population 30 \
+    --resume
+
+# If interrupted at Gen 12/20, just re-run the same command:
+python genetic_optimizer_intraday.py \
+    --symbols AAPL,MSFT,GOOGL,NVDA,TSLA \
+    --generations 20 --population 30 \
+    --resume
+# Output: 🔄 RESUMING from checkpoint: Generation 12/20 completed
+#         Resuming from Generation 13...
+```
+
+### How it works
+
+| Step | What happens |
+|------|--------------|
+| **Each generation completes** | Full state is saved to `<output>.checkpoint.json` (atomic write) |
+| **Ctrl+C / crash** | The last completed generation's checkpoint is safe on disk |
+| **Re-run with `--resume`** | Detects the checkpoint, validates compatibility, restores population + best gene + random state, and continues from the next generation |
+| **All generations complete** | Checkpoint file is automatically deleted |
+
+### What's saved in the checkpoint
+
+- Completed generation number and total generations
+- Full population (all genes with fitness scores)
+- Best gene found so far and overall best fitness
+- Generation history (for the evolution summary)
+- Python `random` and `numpy` random state (for reproducibility)
+- All optimizer config (validated on resume to prevent mismatches)
+
+### Custom checkpoint file
+
+```bash
+# Use a custom checkpoint path
+python genetic_optimizer_intraday.py \
+    --symbols AAPL,MSFT --generations 20 \
+    --resume --checkpoint-file my_run.checkpoint.json
+```
+
+> **Note**: The checkpoint validates that the symbols, population size, and generation count match the current run. If they differ, the checkpoint is ignored and a fresh run starts.
 
 ## Tips for Best Results
 
