@@ -11,6 +11,7 @@ import traceback
 import time
 import os
 import json
+import getpass
 from retry.api import retry_call
 from functools import cache
 from pandas.plotting import register_matplotlib_converters
@@ -25,6 +26,105 @@ from robin_stocks_adapter import rsa, api_tracker, clear_all_caches, cache_stats
 
 # SMS notification state
 sms_enabled = False
+
+
+class RobinhoodPasswordRequired(Exception):
+    """Raised when Robinhood login requires a password (session expired)."""
+    pass
+
+
+def _send_password_required_email():
+    """Send an email/SMS notification that Robinhood login requires manual password entry.
+    
+    This is called when the cached session (pickle) has expired and robin_stocks
+    prompts for a password. Since the bot runs unattended, we notify the user
+    and exit gracefully instead of blocking forever on the password prompt.
+    """
+    subject = "🚨 RobinhoodBot: Login Password Required"
+    message = (
+        "RobinhoodBot authentication has expired and requires manual password entry.\n\n"
+        f"Time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"Host: {os.uname().nodename}\n\n"
+        "Action required:\n"
+        "  1. SSH into the server\n"
+        "  2. Run: cd ~/dev/RobinhoodBot/robinhoodbot && python main.py\n"
+        "  3. Enter your Robinhood password when prompted\n"
+        "  4. This will refresh the session pickle for future runs\n"
+        "  5. Restart the bot: ./run.sh\n\n"
+        "The bot will not trade until the session is renewed."
+    )
+    
+    try:
+        sms_gateway = rh_phone + '@' + rh_company_url
+        context = ssl.create_default_context(cafile=certifi.where())
+        smtp_server = smtplib.SMTP("smtp.gmail.com", 587, timeout=30)
+        smtp_server.ehlo()
+        smtp_server.starttls(context=context)
+        smtp_server.ehlo()
+        smtp_server.login(rh_email, rh_mail_password)
+        
+        msg = MIMEMultipart()
+        msg['From'] = rh_email
+        msg['To'] = sms_gateway
+        msg['Subject'] = subject
+        msg.attach(MIMEText(message, 'plain'))
+        smtp_server.sendmail(rh_email, sms_gateway, msg.as_string())
+        smtp_server.quit()
+        print("📧 Password-required notification sent via SMS/email.")
+    except Exception as e:
+        print(f"⚠️  Failed to send password-required notification: {e}")
+
+
+def _getpass_intercept(prompt="Password: "):
+    """Replacement for getpass.getpass that detects Robinhood password prompts.
+    
+    When robin_stocks calls getpass.getpass("Robinhood password: "), this
+    intercept gives the user 60 seconds to type their password (hidden).
+    If no input is received (i.e. running unattended via run.sh), it sends
+    a notification email and exits cleanly instead of blocking forever.
+    """
+    if "robinhood" in prompt.lower() or "password" in prompt.lower():
+        import threading
+        PASSWORD_TIMEOUT = 60  # seconds to wait for password input
+        result = [None]
+        error = [None]
+        
+        print(f"\n⚠️  Robinhood session expired - password required.")
+        print(f"   You have {PASSWORD_TIMEOUT} seconds to enter your password.")
+        print(f"   If no input is received, a notification email will be sent.\n")
+        
+        def get_password():
+            try:
+                result[0] = _original_getpass(prompt)
+            except Exception as e:
+                error[0] = e
+        
+        # Run getpass in a daemon thread so it doesn't block forever
+        t = threading.Thread(target=get_password, daemon=True)
+        t.start()
+        t.join(timeout=PASSWORD_TIMEOUT)
+        
+        if t.is_alive():
+            # Timeout — nobody is at the keyboard
+            print(f"\n🚨 No password entered after {PASSWORD_TIMEOUT}s. Running unattended.")
+            print("   Sending notification email...")
+            _send_password_required_email()
+            raise RobinhoodPasswordRequired(
+                "Robinhood session expired - password required. "
+                "Notification sent. Run main.py manually to re-authenticate."
+            )
+        
+        if error[0]:
+            raise error[0]
+        
+        return result[0]
+    # For any non-Robinhood password prompt, fall back to the real getpass
+    return _original_getpass(prompt)
+
+
+# Save the original getpass and install our intercept
+_original_getpass = getpass.getpass
+getpass.getpass = _getpass_intercept
 
 # JSON Logger for monitor output
 class JSONLogger:
@@ -1886,6 +1986,16 @@ def scan_stocks():
         print(e)
         print(sys.exc_info()[0])
         json_logger.log("error", f"IOError: {str(e)}", {"error_type": "IOError", "details": str(sys.exc_info()[0])})
+    except RobinhoodPasswordRequired as e:
+        print(f"\n🚨 {e}")
+        json_logger.log("error", "Robinhood password required - session expired", {
+            "error_type": "RobinhoodPasswordRequired",
+            "message": str(e),
+            "action": "Notification sent. Manual login required to refresh session."
+        })
+        print("Bot will exit. Run 'python main.py' manually to enter password, then restart with './run.sh'.")
+        print("run.sh will NOT restart automatically to avoid triggering Robinhood security lockout.")
+        sys.exit(75)  # EX_TEMPFAIL - distinctive code so run.sh stops looping
     except Exception as e:
         print("Unexpected error:", str(e))
         json_logger.log("error", f"Unexpected error: {str(e)}", {"error_type": type(e).__name__, "traceback": traceback.format_exc()})
