@@ -943,14 +943,18 @@ def is_market_in_major_downtrend():
     # Using NasDaq as the market downtrend indicator which does not have extended trading hours.
     today_history = rsa.get_stock_historicals(stockTickerNdaq, interval='5minute', span='day', bounds='regular') 
     week_history = rsa.get_stock_historicals(stockTickerNdaq, interval='day', span='week', bounds='regular')   
-    if(float(week_history[0]['open_price']) > float(today_history[len(today_history) - 1]['close_price'])):
+    ndaq_week_open = float(week_history[0]['open_price'])
+    ndaq_current_close = float(today_history[-1]['close_price'])
+    if(ndaq_week_open > ndaq_current_close):
         downtrendNdaq = True
 
     # DOW
     # Using Dow as the market downtrend indicator.
     today_history = rsa.get_stock_historicals(stockTickerDow, interval='5minute', span='day', bounds='regular')  
     week_history = rsa.get_stock_historicals(stockTickerDow, interval='day', span='week', bounds='regular')   
-    if(float(week_history[0]['open_price']) > float(today_history[len(today_history) - 1]['close_price'])):
+    dow_week_open = float(week_history[0]['open_price'])
+    dow_current_close = float(today_history[-1]['close_price'])
+    if(dow_week_open > dow_current_close):
         downtrendDow = True
 
     # S&P Index
@@ -958,13 +962,20 @@ def is_market_in_major_downtrend():
     # day_trades = rr.get_day_trades()
     today_history = rsa.get_stock_historicals(stockTickerSP, interval='5minute', span='day', bounds='regular')    
     week_history = rsa.get_stock_historicals(stockTickerSP, interval='day', span='week', bounds='regular')   
-    if(float(week_history[0]['open_price']) > float(today_history[len(today_history) - 1]['close_price'])):
+    sp_week_open = float(week_history[0]['open_price'])
+    sp_current_close = float(today_history[-1]['close_price'])
+    if(sp_week_open > sp_current_close):
         downtrendSp = True
     
     # If there are atleast two markets in a major downtrend over the past week report return true.
-    result = (downtrendNdaq + downtrendDow + downtrendSp) >= 2
+    downtrend_count = downtrendNdaq + downtrendDow + downtrendSp
+    result = downtrend_count >= 2
     if(result):
         print("The markets are in a major downtrend.")
+        print(f"  NASDAQ (QQQ):  {'DOWNTREND' if downtrendNdaq else 'OK':>9} | Week Open: {ndaq_week_open:.2f} | Current Close: {ndaq_current_close:.2f}")
+        print(f"  DOW (DIA):     {'DOWNTREND' if downtrendDow else 'OK':>9} | Week Open: {dow_week_open:.2f} | Current Close: {dow_current_close:.2f}")
+        print(f"  S&P 500 (SPY): {'DOWNTREND' if downtrendSp else 'OK':>9} | Week Open: {sp_week_open:.2f} | Current Close: {sp_current_close:.2f}")
+        print(f"  Justification: {downtrend_count}/3 indices have week open > current close (>=2 required)")
     return result
 
 def is_market_in_uptrend():
@@ -977,21 +988,35 @@ def is_market_in_uptrend():
     # Nasdaq
     # Using NasDaq as the market uptrend indicator which does not have extended trading hours.
     today_history = rsa.get_stock_historicals(stockTickerNdaq, interval='5minute', span='day', bounds='regular')    
-    if(float(today_history[0]['open_price']) < float(today_history[len(today_history) - 1]['close_price'])):
+    ndaq_day_open = float(today_history[0]['open_price'])
+    ndaq_current_close = float(today_history[-1]['close_price'])
+    if(ndaq_day_open < ndaq_current_close):
         uptrendNdaq = True
     # DOW
     # Using Dow as the market uptrend indicator.
     today_history = rsa.get_stock_historicals(stockTickerDow, interval='5minute', span='day', bounds='regular')    
-    if(float(today_history[0]['open_price']) < float(today_history[len(today_history) - 1]['close_price'])):
+    dow_day_open = float(today_history[0]['open_price'])
+    dow_current_close = float(today_history[-1]['close_price'])
+    if(dow_day_open < dow_current_close):
         uptrendDow = True
     # S&P Index
     # Using S&P as the market uptrend indicator.
     # day_trades = rr.get_day_trades()
     today_history = rsa.get_stock_historicals(stockTickerSP, interval='5minute', span='day', bounds='regular')    
-    if(float(today_history[0]['open_price']) < float(today_history[len(today_history) - 1]['close_price'])):
+    sp_day_open = float(today_history[0]['open_price'])
+    sp_current_close = float(today_history[-1]['close_price'])
+    if(sp_day_open < sp_current_close):
         uptrendSp = True
     
-    result = (uptrendNdaq + uptrendDow + uptrendSp) >= 2
+    uptrend_count = uptrendNdaq + uptrendDow + uptrendSp
+    result = uptrend_count >= 2
+    if(not result):
+        downtrend_count = 3 - uptrend_count
+        print("The market(s) in general are in a downtrend.")
+        print(f"  NASDAQ (QQQ):  {'DOWNTREND' if not uptrendNdaq else 'OK':>9} | Day Open: {ndaq_day_open:.2f} | Current Close: {ndaq_current_close:.2f}")
+        print(f"  DOW (DIA):     {'DOWNTREND' if not uptrendDow else 'OK':>9} | Day Open: {dow_day_open:.2f} | Current Close: {dow_current_close:.2f}")
+        print(f"  S&P 500 (SPY): {'DOWNTREND' if not uptrendSp else 'OK':>9} | Day Open: {sp_day_open:.2f} | Current Close: {sp_current_close:.2f}")
+        print(f"  Justification: {downtrend_count}/3 indices have day open >= current close (>=2 required)")
     return result
 
 def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
@@ -1596,7 +1621,7 @@ def scan_stocks():
         market_in_major_downtrend = is_market_in_major_downtrend()
 
         if(not market_uptrend):
-                print("The market(s) in general are in a downtrend.  Setting the sell day period to 14 days.")
+                print("Setting the sell day period to 14 days.")
                 n1 = 14
 
         if(market_in_major_downtrend):
