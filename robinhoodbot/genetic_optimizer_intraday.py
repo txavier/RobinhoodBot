@@ -1051,6 +1051,7 @@ class IntradayGeneticOptimizer:
                       f"Sharpe: {gen_best.sharpe_ratio:.2f} | "
                       f"Win Rate: {gen_best.win_rate:.1f}% | "
                       f"Trades/Day: {gen_best.trades_per_day:.2f}")
+                print(f"  ⏱️  Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 
                 # Save checkpoint after each completed generation
                 if self.checkpoint_path:
