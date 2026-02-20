@@ -149,13 +149,13 @@ class IntradayGeneticConfig:
     
     # Parameter ranges for random generation and mutation
     param_ranges: Dict = field(default_factory=lambda: {
-        'short_sma': (5, 50),         # Hours
+        'short_sma': (5, 80),         # Hours (upper expanded from 50 - best hit 46/50)
         'long_sma': (20, 100),        # Hours
         'golden_cross_buy_days': (1, 10), # Trading days
-        'short_sma_downtrend': (5, 30),  # Hours - more conservative SMA in downtrend
+        'short_sma_downtrend': (5, 50),  # Hours - more conservative SMA in downtrend (upper expanded from 30 - best hit 27/30)
         'short_sma_take_profit': (3, 15),  # Hours - aggressive SMA after take profit
-        'long_sma_take_profit': (5, 20),   # Hours - aggressive SMA after take profit
-        'stop_loss_pct': (1.0, 15.0),
+        'long_sma_take_profit': (2, 20),   # Hours - aggressive SMA after take profit (lower expanded from 5 - best hit 5/5)
+        'stop_loss_pct': (0.5, 15.0),  # (lower expanded from 1.0 - best hit 2.1/1.0)
         'take_profit_pct': (0.3, 3.0), # Tighter range for day trading
         'position_size_pct': (5.0, 30.0),
         'slope_threshold': (0.0001, 0.002),
