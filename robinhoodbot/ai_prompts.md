@@ -10,3 +10,7 @@
 /> log these changes in the ai_changelog
 
 /> Analyze all the logs, including  ai_suggested_config_changelog.json, buy_reasons.json, genetic_optimization_intraday_result.json, log.json, tradehistory-real.json.  Analyze today's entries to find the effect of the config modifications recommended by the genetic_optimizer.  Compare it to previous logs to find out all of the positive effects and negative effects.
+
+Tuning the optimizer.
+/> what are ranges for the values evaluated inthe genetic optimizer?
+/> Based on the optimizer best values which ranges should be adjusted in order to theoretically give a possibility for better results?
