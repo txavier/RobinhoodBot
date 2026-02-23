@@ -880,12 +880,17 @@ def buy_holdings(potential_buys, cash, equity, holdings_data_length, buy_reasons
         elif (stock_price < ideal_position_size):
             num_shares = int(ideal_position_size/stock_price)
         else:
-            num_shares = float(ideal_position_size*1.5/stock_price)
-            output = "####### Tried buying " + str(int(ideal_position_size/stock_price)) + " or more shares of " + potential_buys[i] + " at ${:.2f}".format(stock_price) + " costing ${:.2f}".format(stock_price * num_shares) + " however your account balance of ${:.2f}".format(cash) + " is not enough buying power to purchase at the ideal buying position size. #######"
-            print(output)
-            if (len(potential_buys) > 1):
-                ideal_position_size = (safe_division(portfolio_value, holdings_data_length)+cash/(len(potential_buys)-1))/(2 * (len(potential_buys)-1))
-            continue
+            # Stock price exceeds ideal position size - but can we afford at least 1 share?
+            if stock_price <= cash:
+                num_shares = 1
+                print(f"####### {potential_buys[i]}: Price ${stock_price:.2f} exceeds ideal position size ${ideal_position_size:.2f}, buying minimum 1 share. #######")
+            else:
+                num_shares = float(ideal_position_size*1.5/stock_price)
+                output = "####### Tried buying " + str(int(ideal_position_size/stock_price)) + " or more shares of " + potential_buys[i] + " at ${:.2f}".format(stock_price) + " costing ${:.2f}".format(stock_price * num_shares) + " however your account balance of ${:.2f}".format(cash) + " is not enough buying power to purchase at the ideal buying position size. #######"
+                print(output)
+                if (len(potential_buys) > 1):
+                    ideal_position_size = (safe_division(portfolio_value, holdings_data_length)+cash/(len(potential_buys)-1))/(2 * (len(potential_buys)-1))
+                continue
 
         # Limit the amount of shares if the purchase price is above the limit set in the config file.
         num_shares = purchase_limiter(num_shares, stock_price, equity)
