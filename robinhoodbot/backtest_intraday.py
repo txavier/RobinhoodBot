@@ -272,14 +272,18 @@ class DailyStats:
 def generate_market_data(
     start_date: datetime,
     days: int,
-    seed: int = None
+    seed: int = None,
+    uptrend_threshold_pct: float = 0.1,
+    major_downtrend_threshold_pct: float = 1.0,
+    use_momentum_check: bool = True
 ) -> pd.DataFrame:
     """
     Generate synthetic market index data (like SPY/DIA/NDAQ).
     
     This simulates the overall market conditions that main.py checks via:
-    - is_market_in_uptrend(): Today's close > today's open for 2+ of 3 indices
-    - is_market_in_major_downtrend(): Week open > current close for 2+ of 3 indices
+    - is_market_in_uptrend(): Today's change >= uptrend_threshold_pct for 2+ of 3 indices
+    - is_market_in_major_downtrend(): Week change <= -major_downtrend_threshold_pct for 2+ of 3 indices
+    - Momentum check: if market is recovering (was lower earlier), don't flag as downtrend
     
     Returns DataFrame with daily market conditions.
     """
@@ -337,11 +341,21 @@ def generate_market_data(
             if close_price > open_price:
                 close_price = open_price * (1 - abs(daily_return))
         
-        # is_market_in_uptrend: today's close > today's open
-        is_uptrend = close_price > open_price
+        # is_market_in_uptrend: today's change >= uptrend_threshold_pct
+        intraday_pct_change = (close_price - open_price) / open_price * 100
+        is_uptrend = intraday_pct_change >= uptrend_threshold_pct
         
-        # is_market_in_major_downtrend: week open > current close
-        is_major_downtrend = week_start_price > close_price * 1.02  # 2% down from week start
+        # is_market_in_major_downtrend: week change <= -major_downtrend_threshold_pct
+        week_pct_change = (close_price - week_start_price) / week_start_price * 100
+        is_major_downtrend = week_pct_change <= -major_downtrend_threshold_pct
+        
+        # Momentum check: simulate that recovering markets aren't flagged
+        # If momentum check enabled and market was lower mid-day, it's recovering
+        if use_momentum_check and is_major_downtrend:
+            # Simulate momentum: ~30% chance the market is recovering even if below threshold
+            recovering = np.random.random() < 0.3
+            if recovering:
+                is_major_downtrend = False
         
         data.append({
             'date': current_date.date(),
@@ -559,7 +573,11 @@ class IntradayTradingStrategy:
         use_price_cap: bool = True,  # Max price filter
         price_cap_value: float = 2100.0,
         slope_threshold: float = 0.0008,  # Min slope to consider (from main.py order_symbols_by_slope)
-        account_balance: float = 30000.0  # For PDT rule check ($25k+ exempt from day trade limits)
+        account_balance: float = 30000.0,  # For PDT rule check ($25k+ exempt from day trade limits)
+        # Market trend detection thresholds
+        uptrend_threshold_pct: float = 0.1,  # Min % above open to count as uptrend
+        major_downtrend_threshold_pct: float = 1.0,  # Min % below week open for major downtrend
+        use_momentum_check: bool = True  # Check if market is recovering vs still falling
     ):
         self.short_sma = short_sma
         self.long_sma = long_sma
@@ -584,6 +602,10 @@ class IntradayTradingStrategy:
         self.price_cap_value = price_cap_value
         self.slope_threshold = slope_threshold
         self.account_balance = account_balance
+        # Market trend detection
+        self.uptrend_threshold_pct = uptrend_threshold_pct
+        self.major_downtrend_threshold_pct = major_downtrend_threshold_pct
+        self.use_momentum_check = use_momentum_check
     
     def get_dynamic_sma_periods(
         self,
@@ -1112,7 +1134,12 @@ class IntradayBacktester:
             print(f"{'='*70}\n")
         
         # Generate market data for trend filtering
-        market_data = generate_market_data(start_date, days + 60, seed)
+        market_data = generate_market_data(
+            start_date, days + 60, seed,
+            uptrend_threshold_pct=self.strategy.uptrend_threshold_pct,
+            major_downtrend_threshold_pct=self.strategy.major_downtrend_threshold_pct,
+            use_momentum_check=self.strategy.use_momentum_check
+        )
         
         # Generate intraday data for each symbol
         symbol_data: Dict[str, pd.DataFrame] = {}

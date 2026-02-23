@@ -939,43 +939,64 @@ def is_market_in_major_downtrend():
     downtrendNdaq = False
     downtrendDow = False
     downtrendSp = False
+    threshold = major_downtrend_threshold_pct / 100.0  # Convert percentage to decimal
+
+    # Helper to check momentum (is the index still falling or recovering?)
+    def _is_momentum_falling(today_history):
+        """Check if index momentum is still declining (not recovering)."""
+        if not use_momentum_check or len(today_history) < momentum_lookback_bars + 1:
+            return True  # If not enough data or momentum check disabled, assume falling
+        current_price = float(today_history[-1]['close_price'])
+        lookback_price = float(today_history[-(momentum_lookback_bars + 1)]['close_price'])
+        return current_price <= lookback_price  # Still falling or flat = true
+
     # Nasdaq
     # Using NasDaq as the market downtrend indicator which does not have extended trading hours.
-    today_history = rsa.get_stock_historicals(stockTickerNdaq, interval='5minute', span='day', bounds='regular') 
+    today_history_ndaq = rsa.get_stock_historicals(stockTickerNdaq, interval='5minute', span='day', bounds='regular') 
     week_history = rsa.get_stock_historicals(stockTickerNdaq, interval='day', span='week', bounds='regular')   
     ndaq_week_open = float(week_history[0]['open_price'])
-    ndaq_current_close = float(today_history[-1]['close_price'])
-    if(ndaq_week_open > ndaq_current_close):
-        downtrendNdaq = True
+    ndaq_current_close = float(today_history_ndaq[-1]['close_price'])
+    ndaq_pct_change = (ndaq_current_close - ndaq_week_open) / ndaq_week_open * 100
+    if(ndaq_week_open > ndaq_current_close and abs(ndaq_pct_change) >= major_downtrend_threshold_pct):
+        if not use_momentum_check or _is_momentum_falling(today_history_ndaq):
+            downtrendNdaq = True
 
     # DOW
     # Using Dow as the market downtrend indicator.
-    today_history = rsa.get_stock_historicals(stockTickerDow, interval='5minute', span='day', bounds='regular')  
+    today_history_dow = rsa.get_stock_historicals(stockTickerDow, interval='5minute', span='day', bounds='regular')  
     week_history = rsa.get_stock_historicals(stockTickerDow, interval='day', span='week', bounds='regular')   
     dow_week_open = float(week_history[0]['open_price'])
-    dow_current_close = float(today_history[-1]['close_price'])
-    if(dow_week_open > dow_current_close):
-        downtrendDow = True
+    dow_current_close = float(today_history_dow[-1]['close_price'])
+    dow_pct_change = (dow_current_close - dow_week_open) / dow_week_open * 100
+    if(dow_week_open > dow_current_close and abs(dow_pct_change) >= major_downtrend_threshold_pct):
+        if not use_momentum_check or _is_momentum_falling(today_history_dow):
+            downtrendDow = True
 
     # S&P Index
     # Using S&P as the market downtrend indicator.
-    # day_trades = rr.get_day_trades()
-    today_history = rsa.get_stock_historicals(stockTickerSP, interval='5minute', span='day', bounds='regular')    
+    today_history_sp = rsa.get_stock_historicals(stockTickerSP, interval='5minute', span='day', bounds='regular')    
     week_history = rsa.get_stock_historicals(stockTickerSP, interval='day', span='week', bounds='regular')   
     sp_week_open = float(week_history[0]['open_price'])
-    sp_current_close = float(today_history[-1]['close_price'])
-    if(sp_week_open > sp_current_close):
-        downtrendSp = True
+    sp_current_close = float(today_history_sp[-1]['close_price'])
+    sp_pct_change = (sp_current_close - sp_week_open) / sp_week_open * 100
+    if(sp_week_open > sp_current_close and abs(sp_pct_change) >= major_downtrend_threshold_pct):
+        if not use_momentum_check or _is_momentum_falling(today_history_sp):
+            downtrendSp = True
     
     # If there are atleast two markets in a major downtrend over the past week report return true.
     downtrend_count = downtrendNdaq + downtrendDow + downtrendSp
     result = downtrend_count >= 2
     if(result):
         print("The markets are in a major downtrend.")
-        print(f"  NASDAQ (QQQ):  {'DOWNTREND' if downtrendNdaq else 'OK':>9} | Week Open: {ndaq_week_open:.2f} | Current Close: {ndaq_current_close:.2f}")
-        print(f"  DOW (DIA):     {'DOWNTREND' if downtrendDow else 'OK':>9} | Week Open: {dow_week_open:.2f} | Current Close: {dow_current_close:.2f}")
-        print(f"  S&P 500 (SPY): {'DOWNTREND' if downtrendSp else 'OK':>9} | Week Open: {sp_week_open:.2f} | Current Close: {sp_current_close:.2f}")
-        print(f"  Justification: {downtrend_count}/3 indices have week open > current close (>=2 required)")
+        momentum_ndaq = "falling" if _is_momentum_falling(today_history_ndaq) else "recovering"
+        momentum_dow = "falling" if _is_momentum_falling(today_history_dow) else "recovering"
+        momentum_sp = "falling" if _is_momentum_falling(today_history_sp) else "recovering"
+        print(f"  NASDAQ (QQQ):  {'DOWNTREND' if downtrendNdaq else 'OK':>9} | Week Open: {ndaq_week_open:.2f} | Current: {ndaq_current_close:.2f} | {ndaq_pct_change:+.2f}% | Momentum: {momentum_ndaq}")
+        print(f"  DOW (DIA):     {'DOWNTREND' if downtrendDow else 'OK':>9} | Week Open: {dow_week_open:.2f} | Current: {dow_current_close:.2f} | {dow_pct_change:+.2f}% | Momentum: {momentum_dow}")
+        print(f"  S&P 500 (SPY): {'DOWNTREND' if downtrendSp else 'OK':>9} | Week Open: {sp_week_open:.2f} | Current: {sp_current_close:.2f} | {sp_pct_change:+.2f}% | Momentum: {momentum_sp}")
+        print(f"  Justification: {downtrend_count}/3 indices >= -{major_downtrend_threshold_pct}% from week open (>=2 required)")
+        if use_momentum_check:
+            print(f"  Momentum check: enabled ({momentum_lookback_bars} bars lookback)")
     return result
 
 def is_market_in_uptrend():
@@ -985,38 +1006,60 @@ def is_market_in_uptrend():
     uptrendNdaq = False
     uptrendDow = False
     uptrendSp = False
+
+    # Helper to check momentum (is the index still rising or declining?)
+    def _is_momentum_rising(today_history):
+        """Check if index momentum is rising (positive direction)."""
+        if not use_momentum_check or len(today_history) < momentum_lookback_bars + 1:
+            return True  # If not enough data or momentum check disabled, assume rising
+        current_price = float(today_history[-1]['close_price'])
+        lookback_price = float(today_history[-(momentum_lookback_bars + 1)]['close_price'])
+        return current_price >= lookback_price  # Rising or flat = true
+
     # Nasdaq
     # Using NasDaq as the market uptrend indicator which does not have extended trading hours.
-    today_history = rsa.get_stock_historicals(stockTickerNdaq, interval='5minute', span='day', bounds='regular')    
-    ndaq_day_open = float(today_history[0]['open_price'])
-    ndaq_current_close = float(today_history[-1]['close_price'])
-    if(ndaq_day_open < ndaq_current_close):
-        uptrendNdaq = True
+    today_history_ndaq = rsa.get_stock_historicals(stockTickerNdaq, interval='5minute', span='day', bounds='regular')    
+    ndaq_day_open = float(today_history_ndaq[0]['open_price'])
+    ndaq_current_close = float(today_history_ndaq[-1]['close_price'])
+    ndaq_pct_change = (ndaq_current_close - ndaq_day_open) / ndaq_day_open * 100
+    if(ndaq_pct_change >= uptrend_threshold_pct):
+        if not use_momentum_check or _is_momentum_rising(today_history_ndaq):
+            uptrendNdaq = True
+
     # DOW
     # Using Dow as the market uptrend indicator.
-    today_history = rsa.get_stock_historicals(stockTickerDow, interval='5minute', span='day', bounds='regular')    
-    dow_day_open = float(today_history[0]['open_price'])
-    dow_current_close = float(today_history[-1]['close_price'])
-    if(dow_day_open < dow_current_close):
-        uptrendDow = True
+    today_history_dow = rsa.get_stock_historicals(stockTickerDow, interval='5minute', span='day', bounds='regular')    
+    dow_day_open = float(today_history_dow[0]['open_price'])
+    dow_current_close = float(today_history_dow[-1]['close_price'])
+    dow_pct_change = (dow_current_close - dow_day_open) / dow_day_open * 100
+    if(dow_pct_change >= uptrend_threshold_pct):
+        if not use_momentum_check or _is_momentum_rising(today_history_dow):
+            uptrendDow = True
+
     # S&P Index
     # Using S&P as the market uptrend indicator.
-    # day_trades = rr.get_day_trades()
-    today_history = rsa.get_stock_historicals(stockTickerSP, interval='5minute', span='day', bounds='regular')    
-    sp_day_open = float(today_history[0]['open_price'])
-    sp_current_close = float(today_history[-1]['close_price'])
-    if(sp_day_open < sp_current_close):
-        uptrendSp = True
+    today_history_sp = rsa.get_stock_historicals(stockTickerSP, interval='5minute', span='day', bounds='regular')    
+    sp_day_open = float(today_history_sp[0]['open_price'])
+    sp_current_close = float(today_history_sp[-1]['close_price'])
+    sp_pct_change = (sp_current_close - sp_day_open) / sp_day_open * 100
+    if(sp_pct_change >= uptrend_threshold_pct):
+        if not use_momentum_check or _is_momentum_rising(today_history_sp):
+            uptrendSp = True
     
     uptrend_count = uptrendNdaq + uptrendDow + uptrendSp
     result = uptrend_count >= 2
     if(not result):
         downtrend_count = 3 - uptrend_count
+        momentum_ndaq = "rising" if _is_momentum_rising(today_history_ndaq) else "falling"
+        momentum_dow = "rising" if _is_momentum_rising(today_history_dow) else "falling"
+        momentum_sp = "rising" if _is_momentum_rising(today_history_sp) else "falling"
         print("The market(s) in general are in a downtrend.")
-        print(f"  NASDAQ (QQQ):  {'DOWNTREND' if not uptrendNdaq else 'OK':>9} | Day Open: {ndaq_day_open:.2f} | Current Close: {ndaq_current_close:.2f}")
-        print(f"  DOW (DIA):     {'DOWNTREND' if not uptrendDow else 'OK':>9} | Day Open: {dow_day_open:.2f} | Current Close: {dow_current_close:.2f}")
-        print(f"  S&P 500 (SPY): {'DOWNTREND' if not uptrendSp else 'OK':>9} | Day Open: {sp_day_open:.2f} | Current Close: {sp_current_close:.2f}")
-        print(f"  Justification: {downtrend_count}/3 indices have day open >= current close (>=2 required)")
+        print(f"  NASDAQ (QQQ):  {'DOWNTREND' if not uptrendNdaq else 'OK':>9} | Day Open: {ndaq_day_open:.2f} | Current: {ndaq_current_close:.2f} | {ndaq_pct_change:+.2f}% | Momentum: {momentum_ndaq}")
+        print(f"  DOW (DIA):     {'DOWNTREND' if not uptrendDow else 'OK':>9} | Day Open: {dow_day_open:.2f} | Current: {dow_current_close:.2f} | {dow_pct_change:+.2f}% | Momentum: {momentum_dow}")
+        print(f"  S&P 500 (SPY): {'DOWNTREND' if not uptrendSp else 'OK':>9} | Day Open: {sp_day_open:.2f} | Current: {sp_current_close:.2f} | {sp_pct_change:+.2f}% | Momentum: {momentum_sp}")
+        print(f"  Justification: {downtrend_count}/3 indices below +{uptrend_threshold_pct}% threshold (>=2 required for downtrend)")
+        if use_momentum_check:
+            print(f"  Momentum check: enabled ({momentum_lookback_bars} bars lookback)")
     return result
 
 def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):

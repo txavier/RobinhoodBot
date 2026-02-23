@@ -600,6 +600,10 @@ class IntradayGeneticOptimizer:
             use_price_cap=gene.use_price_cap,
             price_cap_value=gene.price_cap_value,
             slope_threshold=gene.slope_threshold,
+            # Market trend detection thresholds (use defaults from config)
+            uptrend_threshold_pct=0.1,
+            major_downtrend_threshold_pct=1.0,
+            use_momentum_check=True,
         )
         
         # Run backtest

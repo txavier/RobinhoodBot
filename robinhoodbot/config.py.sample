@@ -96,5 +96,18 @@ long_sma_take_profit=5
 # use_dynamic_sma: Enable/disable dynamic SMA adjustment based on market conditions
 use_dynamic_sma=True
 
+# Market trend detection settings
+# uptrend_threshold_pct: Minimum percentage the index must be above day open to count as uptrend
+# (e.g., 0.1 means index must be +0.1% above open, not just any amount above)
+uptrend_threshold_pct=0.1
+# major_downtrend_threshold_pct: Minimum percentage the index must be below week open to count as major downtrend
+# (e.g., 1.0 means index must be -1.0% below week open, filtering out trivial dips)
+major_downtrend_threshold_pct=1.0
+# use_momentum_check: Enable intraday momentum direction check on indices
+# When enabled, a recovering market (was down -1.5%, now only -0.3%) won't trigger downtrend
+use_momentum_check=True
+# momentum_lookback_bars: Number of 5-minute bars to compare for momentum direction (e.g., 12 = 1 hour ago)
+momentum_lookback_bars=12
+
 # Version number for tracking
 version="0.9.19"
