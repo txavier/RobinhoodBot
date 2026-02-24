@@ -12,6 +12,8 @@ import time
 import os
 import json
 import getpass
+import socket
+import urllib.request
 from retry.api import retry_call
 from functools import cache
 from pandas.plotting import register_matplotlib_converters
@@ -26,6 +28,31 @@ from robin_stocks_adapter import rsa, api_tracker, clear_all_caches, cache_stats
 
 # SMS notification state
 sms_enabled = False
+
+
+def check_internet_connectivity(timeout=10):
+    """Check if the internet is reachable by attempting connections to well-known hosts.
+    
+    Returns True if any host is reachable, False if the network appears down.
+    """
+    # Try a quick socket connection first (fastest)
+    hosts_to_try = [("8.8.8.8", 53), ("1.1.1.1", 53), ("8.8.4.4", 53)]
+    for host, port in hosts_to_try:
+        try:
+            sock = socket.create_connection((host, port), timeout=timeout)
+            sock.close()
+            return True
+        except (socket.timeout, OSError):
+            continue
+    
+    # Fallback: try an HTTP request
+    try:
+        urllib.request.urlopen("https://www.google.com", timeout=timeout)
+        return True
+    except Exception:
+        pass
+    
+    return False
 
 
 class RobinhoodPasswordRequired(Exception):
@@ -107,6 +134,19 @@ def _getpass_intercept(prompt="Password: "):
         if t.is_alive():
             # Timeout — nobody is at the keyboard
             print(f"\n🚨 No password entered after {PASSWORD_TIMEOUT}s. Running unattended.")
+            
+            # Before concluding the session has expired, check if the network is actually available.
+            # If the network is down, the login failure is due to connectivity, not an expired session.
+            print("   Checking internet connectivity...")
+            if not check_internet_connectivity():
+                print("   ⚠️  Network appears to be down. This is likely NOT a password expiration.")
+                print("   The bot will retry on the next loop iteration.")
+                raise ConnectionError(
+                    "Network is unavailable — login failure is likely due to connectivity, "
+                    "not an expired session. Will retry automatically."
+                )
+            
+            print("   Network is reachable — session has genuinely expired.")
             print("   Sending notification email...")
             _send_password_required_email()
             raise RobinhoodPasswordRequired(
@@ -2061,14 +2101,25 @@ def scan_stocks():
         json_logger.log("error", f"IOError: {str(e)}", {"error_type": "IOError", "details": str(sys.exc_info()[0])})
     except RobinhoodPasswordRequired as e:
         print(f"\n🚨 {e}")
-        json_logger.log("error", "Robinhood password required - session expired", {
-            "error_type": "RobinhoodPasswordRequired",
-            "message": str(e),
-            "action": "Notification sent. Manual login required to refresh session."
-        })
-        print("Bot will exit. Run 'python main.py' manually to enter password, then restart with './run.sh'.")
-        print("run.sh will NOT restart automatically to avoid triggering Robinhood security lockout.")
-        sys.exit(75)  # EX_TEMPFAIL - distinctive code so run.sh stops looping
+        # Double-check network connectivity before stopping the bot loop.
+        # If the network is down, this may be a false positive — don't exit with 75.
+        if not check_internet_connectivity():
+            print("⚠️  Network appears to be down. Not treating this as a password expiration.")
+            print("   The bot loop will continue and retry when connectivity is restored.")
+            json_logger.log("warning", "RobinhoodPasswordRequired raised but network is down — treating as network error", {
+                "error_type": "NetworkDown",
+                "original_message": str(e),
+                "action": "Will retry on next loop iteration."
+            })
+        else:
+            json_logger.log("error", "Robinhood password required - session expired", {
+                "error_type": "RobinhoodPasswordRequired",
+                "message": str(e),
+                "action": "Notification sent. Manual login required to refresh session."
+            })
+            print("Bot will exit. Run 'python main.py' manually to enter password, then restart with './run.sh'.")
+            print("run.sh will NOT restart automatically to avoid triggering Robinhood security lockout.")
+            sys.exit(75)  # EX_TEMPFAIL - distinctive code so run.sh stops looping
     except Exception as e:
         print("Unexpected error:", str(e))
         json_logger.log("error", f"Unexpected error: {str(e)}", {"error_type": type(e).__name__, "traceback": traceback.format_exc()})
