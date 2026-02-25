@@ -1525,8 +1525,12 @@ def find_symbol_with_greatest_slope(stock_array):
             i = i + 1
             dates.append(i)
         # Determine slopes.
-        linregressResult = linregress(dates, closingPrices)
-        linregressResults.append(linregressResult.slope)
+        # Guard against insufficient or constant data which causes scipy RuntimeWarnings
+        if len(dates) < 2 or len(set(closingPrices)) < 2:
+            linregressResults.append(0.0)
+        else:
+            linregressResult = linregress(dates, closingPrices)
+            linregressResults.append(linregressResult.slope)
     # Find index.
     sorted_lineregress = sorted(linregressResults)
     if(len(sorted_lineregress) == 0):
@@ -1614,8 +1618,12 @@ def order_symbols_by_slope(portfolio_symbols):
                 i = i + 1
                 dates.append(i)
             # Determine slopes.
-            linregressResult = linregress(dates, closingPrices)
-            Matrix.append([stockTicker, linregressResult.slope])
+            # Guard against insufficient or constant data which causes scipy RuntimeWarnings
+            if len(dates) < 2 or len(set(closingPrices)) < 2:
+                Matrix.append([stockTicker, 0.0])
+            else:
+                linregressResult = linregress(dates, closingPrices)
+                Matrix.append([stockTicker, linregressResult.slope])
         sorted_matrix = sorted(Matrix, key=lambda l:l[1], reverse=True)
         result_matrix = [[0 for x in range(2)] for y in range(0)]
         for row in sorted_matrix:
