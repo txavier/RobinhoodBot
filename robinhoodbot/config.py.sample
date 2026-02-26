@@ -41,7 +41,7 @@ auto_invest_exclusion_watchlist="Exclusion"
 # use_price_cap: If True, only consider stocks below the price_cap value
 use_price_cap=True
 # price_cap: Maximum stock price to consider for buying (in dollars)
-price_cap=2767
+price_cap=1843
 # The minimum amount of volume of shares a stock needs to be considered.
 min_volume=1000000
 # The minimum amount of market cap a stock needs to be considered.
@@ -73,24 +73,24 @@ use_caching=True
 # This protects against holding losing positions waiting for technical indicators
 use_stop_loss=True
 # stop_loss_percent: Sell if total loss from buy price exceeds this percentage (e.g., 5 = sell at -5%)
-stop_loss_percent=2.1
+stop_loss_percent=10
 # Take-profit settings
-# take_profit_percent: Sell if total gain from buy price exceeds this percentage (e.g., 1.24 = sell at +1.24%)
-take_profit_percent=1.24
+# take_profit_percent: Sell if total gain from buy price exceeds this percentage (e.g., 2.37 = sell at +2.37%)
+take_profit_percent=2.37
 
 # Golden cross buy settings
 # golden_cross_buy_days: Number of days to look back for golden cross buy signals
-golden_cross_buy_days=1
+golden_cross_buy_days=2
 
 # SMA (Simple Moving Average) settings
 # short_sma: Short-term SMA period in hours (default 20 hours ≈ ~3 trading days)
-short_sma=46
+short_sma=27
 # long_sma: Long-term SMA period in hours (default 50 hours ≈ ~7 trading days)
-long_sma=85
+long_sma=61
 # short_sma_downtrend: Short-term SMA when market is not in uptrend (tighter belt)
-short_sma_downtrend=27
+short_sma_downtrend=34
 # short_sma_take_profit: Short-term SMA when take profit triggered and traded today (avoid day trade limit)
-short_sma_take_profit=10
+short_sma_take_profit=6
 # long_sma_take_profit: Long-term SMA when take profit triggered and traded today
 long_sma_take_profit=5
 # use_dynamic_sma: Enable/disable dynamic SMA adjustment based on market conditions
@@ -110,4 +110,4 @@ use_momentum_check=True
 momentum_lookback_bars=12
 
 # Version number for tracking
-version="0.9.19"
+version="0.9.20"
