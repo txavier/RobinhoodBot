@@ -577,7 +577,8 @@ class IntradayTradingStrategy:
         # Market trend detection thresholds
         uptrend_threshold_pct: float = 0.1,  # Min % above open to count as uptrend
         major_downtrend_threshold_pct: float = 1.0,  # Min % below week open for major downtrend
-        use_momentum_check: bool = True  # Check if market is recovering vs still falling
+        use_momentum_check: bool = True,  # Check if market is recovering vs still falling
+        use_five_year_check: bool = True  # Reject stocks that haven't risen over available history (matches main.py five_year_check)
     ):
         self.short_sma = short_sma
         self.long_sma = long_sma
@@ -606,6 +607,7 @@ class IntradayTradingStrategy:
         self.uptrend_threshold_pct = uptrend_threshold_pct
         self.major_downtrend_threshold_pct = major_downtrend_threshold_pct
         self.use_momentum_check = use_momentum_check
+        self.use_five_year_check = use_five_year_check
     
     def get_dynamic_sma_periods(
         self,
@@ -644,17 +646,21 @@ class IntradayTradingStrategy:
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculate SMA indicators on hourly data"""
         df = df.copy()
-        df['sma_short'] = df['close'].rolling(window=self.short_sma, min_periods=1).mean()
-        df['sma_long'] = df['close'].rolling(window=self.long_sma, min_periods=1).mean()
+        df['sma_short'] = df['close'].rolling(window=self.short_sma, min_periods=self.short_sma).mean()
+        df['sma_long'] = df['close'].rolling(window=self.long_sma, min_periods=self.long_sma).mean()
         df['sma_diff'] = df['sma_short'] - df['sma_long']
         df['sma_diff_prev'] = df['sma_diff'].shift(1)
         
         # Also calculate alternative SMA for downtrend
-        df['sma_short_downtrend'] = df['close'].rolling(window=self.short_sma_downtrend, min_periods=1).mean()
+        df['sma_short_downtrend'] = df['close'].rolling(window=self.short_sma_downtrend, min_periods=self.short_sma_downtrend).mean()
         
         # And aggressive SMA for post-profit (only used if balance < $25k PDT limit)
-        df['sma_short_take_profit'] = df['close'].rolling(window=self.short_sma_take_profit, min_periods=1).mean()
-        df['sma_long_take_profit'] = df['close'].rolling(window=self.long_sma_take_profit, min_periods=1).mean()
+        df['sma_short_take_profit'] = df['close'].rolling(window=self.short_sma_take_profit, min_periods=self.short_sma_take_profit).mean()
+        df['sma_long_take_profit'] = df['close'].rolling(window=self.long_sma_take_profit, min_periods=self.long_sma_take_profit).mean()
+        
+        # Buy-specific SMA: main.py always uses hardcoded SMA(20)/SMA(50) for buy golden cross
+        df['sma_buy_short'] = df['close'].rolling(window=20, min_periods=20).mean()
+        df['sma_buy_long'] = df['close'].rolling(window=50, min_periods=50).mean()
         
         return df
     
@@ -662,8 +668,14 @@ class IntradayTradingStrategy:
         """
         Calculate price slope for the current trading day.
         
-        Matches main.py order_symbols_by_slope() which uses linregress on 5min data.
-        We simulate with hourly data for the current day.
+        main.py uses order_symbols_by_slope() with 5-minute bars over span='day'
+        (~78 data points per full trading day, 6.5 market hours * 12 bars/hour).
+        We have hourly data, so a 7-hour lookback gives ~7 data points for one
+        trading day.  To better approximate 5-minute granularity we normalise
+        the slope by scaling the x-axis: with 5-min bars the x values run
+        0..~78, while with hourly bars they run 0..7.  We therefore multiply
+        x by 12 (there are 12 five-minute intervals per hour) so that the
+        resulting slope magnitude is comparable to main.py's.
         """
         if current_idx < lookback_hours:
             return 0.0
@@ -674,7 +686,8 @@ class IntradayTradingStrategy:
         if len(prices) < 2:
             return 0.0
         
-        x = np.arange(len(prices))
+        # Scale x-axis to approximate 5-minute granularity (12 five-min bars per hour)
+        x = np.arange(len(prices)) * 12
         try:
             result = linregress(x, prices)
             return result.slope
@@ -691,6 +704,31 @@ class IntradayTradingStrategy:
         """
         return 13 <= timestamp.hour < 16 and (timestamp.hour > 13 or timestamp.minute >= 30)
     
+    def check_five_year(self, df: pd.DataFrame, current_idx: int) -> bool:
+        """
+        Simulate main.py's five_year_check() for synthetic data.
+        
+        main.py rejects stocks whose current price is below their price 5 years ago,
+        filtering out fundamentally declining stocks. With synthetic backtest data
+        we don't have 5 years of history, so we approximate by checking whether the
+        stock's current price is higher than its price at the start of the dataset.
+        
+        Returns:
+            True if the stock passes (price has risen), False if it should be rejected.
+        """
+        if not self.use_five_year_check:
+            return True
+        
+        # Find the first valid (non-NaN) close price in the dataset
+        first_valid = df['close'].first_valid_index()
+        if first_valid is None:
+            return False
+        
+        first_price = df.loc[first_valid, 'close']
+        current_price = df.iloc[current_idx]['close']
+        
+        return current_price >= first_price
+
     def check_profit_before_eod(
         self,
         position: Position,
@@ -767,7 +805,11 @@ class IntradayTradingStrategy:
             return False, None, None
         
         # Get SMA columns based on periods
-        if n1 == self.short_sma_downtrend and n2 == self.long_sma:
+        # Buy path always uses hardcoded SMA(20)/SMA(50) matching main.py
+        if n1 == 20 and n2 == 50:
+            sma_short_col = 'sma_buy_short'
+            sma_long_col = 'sma_buy_long'
+        elif n1 == self.short_sma_downtrend and n2 == self.long_sma:
             sma_short_col = 'sma_short_downtrend'
             sma_long_col = 'sma_long'
         elif n1 == self.short_sma_take_profit and n2 == self.long_sma_take_profit:
@@ -811,7 +853,8 @@ class IntradayTradingStrategy:
                         price_5hr_ago = df.iloc[max(0, current_idx - 5)]['close'] if current_idx >= 5 else current_price
                         
                         # Only buy if price is still rising (current > cross price)
-                        if current_price >= cross_price:
+                        # Strict > matches main.py: float(cross[2]) > float(cross[1])
+                        if current_price > cross_price:
                             return True, cross_price, price_5hr_ago
             
             i -= 1
@@ -1178,7 +1221,8 @@ class IntradayBacktester:
             'price_5hr': 0,
             'slope_filter': 0,
             'price_cap': 0,
-            'day_trade_limit': 0
+            'day_trade_limit': 0,
+            'five_year_check': 0
         }
         
         # Main simulation loop
@@ -1250,32 +1294,35 @@ class IntradayBacktester:
                     continue
                 current_idx = ts_idx[0]
                 
-                # Check sell conditions (priority order matching main.py)
-                sell_reason = None
+                # Check ALL sell conditions independently (matches main.py)
+                # main.py checks every condition and joins reasons with comma
+                sell_reasons_list = []
                 
-                # 1. Stop loss (highest priority)
+                # 1. Death cross (with dynamic SMA)
+                if self.strategy.check_death_cross(df, current_idx, n1=n1, n2=n2)[0]:
+                    sell_reasons_list.append(SellReason.DEATH_CROSS.value)
+                
+                # 2. Sudden drop (10% in 2hr OR 15% in 1hr)
+                if self.strategy.check_sudden_drop(df, current_idx):
+                    sell_reasons_list.append(SellReason.SUDDEN_DROP.value)
+                
+                # 3. Take profit
+                if self.strategy.check_take_profit(position, price):
+                    sell_reasons_list.append(SellReason.TAKE_PROFIT.value)
+                
+                # 4. Profit before EOD
+                if self.strategy.check_profit_before_eod(position, price, timestamp):
+                    sell_reasons_list.append(SellReason.PROFIT_BEFORE_EOD.value)
+                
+                # 5. Stop loss
                 if self.strategy.check_stop_loss(position, price):
-                    sell_reason = SellReason.STOP_LOSS.value
+                    sell_reasons_list.append(SellReason.STOP_LOSS.value)
                 
-                # 2. Take profit
-                elif self.strategy.check_take_profit(position, price):
-                    sell_reason = SellReason.TAKE_PROFIT.value
+                # 6. End of day close (optional, backtester-specific)
+                if self.strategy.close_at_eod and timestamp.hour == 15:
+                    sell_reasons_list.append(SellReason.END_OF_DAY.value)
                 
-                # 3. Sudden drop (10% in 2hr OR 15% in 1hr)
-                elif self.strategy.check_sudden_drop(df, current_idx):
-                    sell_reason = SellReason.SUDDEN_DROP.value
-                
-                # 4. Profit before EOD (NEW - matches main.py)
-                elif self.strategy.check_profit_before_eod(position, price, timestamp):
-                    sell_reason = SellReason.PROFIT_BEFORE_EOD.value
-                
-                # 5. Death cross (with dynamic SMA)
-                elif self.strategy.check_death_cross(df, current_idx, n1=n1, n2=n2)[0]:
-                    sell_reason = SellReason.DEATH_CROSS.value
-                
-                # 6. End of day close (optional)
-                elif self.strategy.close_at_eod and timestamp.hour == 15:
-                    sell_reason = SellReason.END_OF_DAY.value
+                sell_reason = ",".join(sell_reasons_list) if sell_reasons_list else None
                 
                 if sell_reason:
                     trade = self.execute_sell(symbol, price, timestamp, sell_reason, market_condition)
@@ -1359,15 +1406,22 @@ class IntradayBacktester:
                         rejected_buys['day_trade_limit'] += 1
                         continue
                     
-                    # 7. Check golden cross with dynamic SMA
+                    # 7. Five year check (matches main.py five_year_check)
+                    # Rejects stocks that haven't risen over available history
+                    if not self.strategy.check_five_year(df, current_idx):
+                        rejected_buys['five_year_check'] += 1
+                        continue
+                    
+                    # 8. Check golden cross with hardcoded SMA(20)/SMA(50)
+                    # main.py always uses n1=20, n2=50 for buy signals (five_year_check ran inside golden_cross())
                     is_golden_cross, cross_price, price_5hr_ago = self.strategy.check_golden_cross(
-                        df, current_idx, n1=n1, n2=n2
+                        df, current_idx, n1=20, n2=50
                     )
                     
                     if not is_golden_cross:
                         continue
                     
-                    # 8. Price must be > 5 hours ago (matches main.py cross[2] > cross[3])
+                    # 9. Price must be > 5 hours ago (matches main.py cross[2] > cross[3])
                     if self.strategy.use_price_5hr_check:
                         if price_5hr_ago is not None and price <= price_5hr_ago:
                             rejected_buys['price_5hr'] += 1
