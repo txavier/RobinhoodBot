@@ -718,7 +718,10 @@ def get_last_crossing(df, days, symbol="", direction=""):
 
     Args:
         df(pandas.core.frame.DataFrame): Pandas dataframe with columns containing the stock's prices, both indicators, and the dates
-        days(int): Specifies the maximum number of days that the cross can occur by
+        days(int): Specifies the maximum number of rolling 24-hour trading periods to look back.
+                   Each "day" = 24 trading hours (excludes weekends/holidays automatically since
+                   the hourly data only contains regular market hours). With hourly bars and ~7
+                   trading hours per day, 1 day ≈ 3-4 calendar trading days of bars.
         symbol(str): Symbol of the stock we're querying. Optional, used for printing purposes
         direction(str): "above" if we are searching for an upwards cross, "below" if we are searching for a downwaords cross. Optional, used for printing purposes
 
@@ -738,16 +741,14 @@ def get_last_crossing(df, days, symbol="", direction=""):
     if((direction == "above" and not recentDiff) or (direction == "below" and recentDiff)):
         return 0, 0, 0, None
     index -= 1
-    # Count trading days (exclude weekends and holidays) instead of calendar days
-    trading_days_checked = 0
-    prev_date = None
+    # Rolling 24-hour trading period(s): count trading hours (hourly bars) instead of
+    # calendar dates. Since the data uses bounds='regular' (market hours only), weekends
+    # and holidays are automatically excluded. Each "day" = 24 trading hour bars.
+    max_trading_hours = days * 24
+    trading_hours_checked = 0
     while(index >= 0 and found == lastIndex and not np.isnan(shortTerm.at[index]) and not np.isnan(LongTerm.at[index])
-          and trading_days_checked <= days):
-        # Track unique trading days (weekdays and non-holidays only)
-        current_date = dates.at[index].date() if hasattr(dates.at[index], 'date') else pd.to_datetime(dates.at[index]).date()
-        if current_date != prev_date and is_trading_day(current_date):
-            trading_days_checked += 1
-            prev_date = current_date
+          and trading_hours_checked <= max_trading_hours):
+        trading_hours_checked += 1
         if(recentDiff):
             if((shortTerm.at[index] - LongTerm.at[index]) < 0):
                 found = index

@@ -554,7 +554,7 @@ class IntradayTradingStrategy:
         self,
         short_sma: int = 20,  # 20 hours ≈ ~3 trading days
         long_sma: int = 50,   # 50 hours ≈ ~7 trading days
-        golden_cross_buy_days: int = 2,  # Look back N trading days for cross (matches main.py)
+        golden_cross_buy_days: int = 2,  # Look back N rolling 24-trading-hour periods for cross (matches main.py)
         # Dynamic SMA parameters (used when use_dynamic_sma=True)
         short_sma_downtrend: int = 14,  # Used when market not in uptrend
         short_sma_take_profit: int = 5,  # Used after take profit (only if balance < $25k PDT limit)
@@ -745,8 +745,9 @@ class IntradayTradingStrategy:
         n2: int = None
     ) -> Tuple[bool, Optional[float], Optional[float]]:
         """
-        Check if a golden cross occurred within lookback_days trading days.
-        Golden cross = short SMA crosses above long SMA
+        Check if a golden cross occurred within lookback_days rolling 24-trading-hour periods.
+        Each "day" = 24 hourly bars of trading data (weekends/holidays already excluded
+        from the hourly data). Golden cross = short SMA crosses above long SMA.
         
         Returns:
             (is_golden_cross, cross_price, price_5hr_ago)
@@ -784,24 +785,16 @@ class IntradayTradingStrategy:
         if current_row[sma_short_col] <= current_row[sma_long_col]:
             return False, None, None
         
-        # Look for the cross point, counting trading days (matching main.py logic)
-        trading_days_checked = 0
-        prev_date = None
+        # Rolling 24-trading-hour period(s): count hourly bars instead of calendar
+        # dates. Since the data only contains regular market hours, weekends and
+        # holidays are automatically excluded. Each "day" = 24 hourly bars.
+        # This matches the main.py get_last_crossing() logic.
+        max_trading_hours = lookback_days * 24
+        trading_hours_checked = 0
         i = current_idx - 1
         
-        while i >= 0 and trading_days_checked <= lookback_days:
-            # Track unique trading days (weekdays and non-holidays only)
-            row_date = df.iloc[i]['date']
-            if hasattr(row_date, 'weekday'):
-                current_date = row_date
-            else:
-                current_date = pd.to_datetime(row_date).date()
-            
-            if current_date != prev_date:
-                # Check if it's a valid trading day (weekday and not a holiday)
-                if is_trading_day(current_date):
-                    trading_days_checked += 1
-                    prev_date = current_date
+        while i >= 0 and trading_hours_checked <= max_trading_hours:
+            trading_hours_checked += 1
             
             if i > 0:
                 prev_row = df.iloc[i - 1]
