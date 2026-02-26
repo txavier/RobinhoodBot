@@ -718,10 +718,10 @@ def get_last_crossing(df, days, symbol="", direction=""):
 
     Args:
         df(pandas.core.frame.DataFrame): Pandas dataframe with columns containing the stock's prices, both indicators, and the dates
-        days(int): Specifies the maximum number of rolling 24-hour trading periods to look back.
-                   Each "day" = 24 trading hours (excludes weekends/holidays automatically since
-                   the hourly data only contains regular market hours). With hourly bars and ~7
-                   trading hours per day, 1 day ≈ 3-4 calendar trading days of bars.
+        days(int): Specifies the maximum number of trading days to look back.
+                   Each "day" = 7 trading hours (≈6.5 market hours, 9:30-16:00 ET, rounded up).
+                   Weekends/holidays are automatically excluded since the hourly data only
+                   contains regular market hours.
         symbol(str): Symbol of the stock we're querying. Optional, used for printing purposes
         direction(str): "above" if we are searching for an upwards cross, "below" if we are searching for a downwaords cross. Optional, used for printing purposes
 
@@ -741,10 +741,11 @@ def get_last_crossing(df, days, symbol="", direction=""):
     if((direction == "above" and not recentDiff) or (direction == "below" and recentDiff)):
         return 0, 0, 0, None
     index -= 1
-    # Rolling 24-hour trading period(s): count trading hours (hourly bars) instead of
-    # calendar dates. Since the data uses bounds='regular' (market hours only), weekends
-    # and holidays are automatically excluded. Each "day" = 24 trading hour bars.
-    max_trading_hours = days * 24
+    # Rolling trading day(s): count hourly bars instead of calendar dates.
+    # Since the data uses bounds='regular' (market hours only), weekends and
+    # holidays are automatically excluded. Each "day" = 7 hourly bars
+    # (6.5 market hours from 9:30-16:00 ET, rounded up).
+    max_trading_hours = days * 7
     trading_hours_checked = 0
     while(index >= 0 and found == lastIndex and not np.isnan(shortTerm.at[index]) and not np.isnan(LongTerm.at[index])
           and trading_hours_checked <= max_trading_hours):
