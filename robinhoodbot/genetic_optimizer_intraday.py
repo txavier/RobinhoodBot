@@ -73,7 +73,7 @@ class IntradayTradingGene:
     # SMA parameters (in HOURS, not days)
     short_sma: int = 20          # Range: 5-50 hours (~1-7 trading days)
     long_sma: int = 50           # Range: 20-100 hours (~3-14 trading days)
-    golden_cross_buy_days: int = 2 # Range: 1-10 rolling 24-trading-hour periods
+    golden_cross_buy_days: int = 2 # Range: 1-10 trading days (1 day = 7 hourly bars)
     
     # Dynamic SMA parameters (used when use_dynamic_sma=True)
     short_sma_downtrend: int = 14  # Range: 5-30 hours - used when market not in uptrend
@@ -151,7 +151,7 @@ class IntradayGeneticConfig:
     param_ranges: Dict = field(default_factory=lambda: {
         'short_sma': (5, 80),         # Hours (upper expanded from 50 - best hit 46/50)
         'long_sma': (20, 100),        # Hours
-        'golden_cross_buy_days': (1, 10), # Rolling 24-trading-hour periods
+        'golden_cross_buy_days': (1, 10), # Trading days (1 day = 7 hourly bars)
         'short_sma_downtrend': (5, 50),  # Hours - more conservative SMA in downtrend (upper expanded from 30 - best hit 27/30)
         'short_sma_take_profit': (3, 15),  # Hours - aggressive SMA after take profit
         'long_sma_take_profit': (2, 20),   # Hours - aggressive SMA after take profit (lower expanded from 5 - best hit 5/5)
@@ -1153,7 +1153,7 @@ class IntradayGeneticOptimizer:
         print(f"\n# SMA Settings (Hourly)")
         print(f"short_sma = {gene.short_sma}  # ~{gene.short_sma/7:.1f} trading days")
         print(f"long_sma = {gene.long_sma}   # ~{gene.long_sma/7:.1f} trading days")
-        print(f"golden_cross_buy_days = {gene.golden_cross_buy_days}  # rolling 24-trading-hour periods")
+        print(f"golden_cross_buy_days = {gene.golden_cross_buy_days}  # trading days (1 day = 7 hourly bars)")
         print(f"\n# Dynamic SMA Settings (used when use_dynamic_sma=True)")
         print(f"short_sma_downtrend = {gene.short_sma_downtrend}  # Used when market not in uptrend")
         print(f"short_sma_take_profit = {gene.short_sma_take_profit}  # Used after take profit (only if balance < $25k PDT limit)")
