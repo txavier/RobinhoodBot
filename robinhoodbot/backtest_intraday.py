@@ -28,9 +28,19 @@ from dataclasses import dataclass, field
 from enum import Enum
 from scipy.stats import linregress
 
+import hashlib
+import pickle
+
 import pandas as pd
 import numpy as np
 import ta as t
+
+try:
+    import yfinance as yf
+    YFINANCE_AVAILABLE = True
+except ImportError:
+    YFINANCE_AVAILABLE = False
+    yf = None
 
 # Import config settings
 try:
@@ -267,6 +277,228 @@ class DailyStats:
     winning_trades: int = 0
     losing_trades: int = 0
     market_condition: str = ""  # NEW: track market trend for the day
+
+
+# ============================================================================
+# Real market data via yfinance (replaces synthetic generators)
+# ============================================================================
+
+REAL_DATA_CACHE_DIR = os.path.join(os.path.dirname(__file__), '.yfinance_cache')
+
+def _get_cache_path(key: str) -> str:
+    """Get cache file path for a given key."""
+    os.makedirs(REAL_DATA_CACHE_DIR, exist_ok=True)
+    safe_key = hashlib.md5(key.encode()).hexdigest()
+    return os.path.join(REAL_DATA_CACHE_DIR, f"{safe_key}.pkl")
+
+
+def _cache_is_fresh(cache_path: str, max_age_hours: int = 12) -> bool:
+    """Check if cache file exists and is fresh enough."""
+    if not os.path.exists(cache_path):
+        return False
+    age = datetime.now().timestamp() - os.path.getmtime(cache_path)
+    return age < max_age_hours * 3600
+
+
+def download_real_data(
+    symbol: str,
+    days: int,
+    cache_max_age_hours: int = 12
+) -> pd.DataFrame:
+    """
+    Download real hourly OHLCV data from Yahoo Finance via yfinance.
+    
+    Yahoo provides up to 730 days of hourly data. Data is cached to disk
+    to avoid re-downloading during optimizer runs.
+    
+    Returns DataFrame with columns: datetime, date, hour, open, high, low, close, volume
+    (same schema as generate_golden_cross_intraday / generate_intraday_data)
+    """
+    if not YFINANCE_AVAILABLE:
+        raise ImportError("yfinance is required for real data. Install with: pip install yfinance")
+    
+    # Need extra days for SMA warmup + weekends/holidays (roughly 1.5x trading days)
+    calendar_days = int((days + 60) * 1.5)
+    calendar_days = min(calendar_days, 729)  # yfinance hourly limit
+    
+    cache_key = f"stock_{symbol}_{calendar_days}"
+    cache_path = _get_cache_path(cache_key)
+    
+    if _cache_is_fresh(cache_path, cache_max_age_hours):
+        with open(cache_path, 'rb') as f:
+            return pickle.load(f)
+    
+    # Download hourly data
+    ticker = yf.Ticker(symbol)
+    df_raw = ticker.history(period=f"{calendar_days}d", interval="1h")
+    
+    if df_raw.empty:
+        raise ValueError(f"No data returned for {symbol}. Symbol may be invalid or delisted.")
+    
+    # Convert to our expected format
+    trading_hours = [9, 10, 11, 12, 13, 14, 15]
+    rows = []
+    for idx, row in df_raw.iterrows():
+        ts = idx.to_pydatetime()
+        # Handle timezone-aware timestamps
+        if ts.tzinfo is not None:
+            ts = ts.replace(tzinfo=None)
+        
+        hour = ts.hour
+        if hour not in trading_hours:
+            continue
+        
+        rows.append({
+            'datetime': ts.replace(minute=30, second=0, microsecond=0),
+            'date': ts.date(),
+            'hour': hour,
+            'open': round(row['Open'], 2),
+            'high': round(row['High'], 2),
+            'low': round(row['Low'], 2),
+            'close': round(row['Close'], 2),
+            'volume': int(row['Volume'])
+        })
+    
+    if not rows:
+        raise ValueError(f"No trading-hours data found for {symbol} after filtering.")
+    
+    result = pd.DataFrame(rows)
+    
+    # Cache to disk
+    with open(cache_path, 'wb') as f:
+        pickle.dump(result, f)
+    
+    return result
+
+
+def download_real_market_data(
+    days: int,
+    uptrend_threshold_pct: float = 0.1,
+    major_downtrend_threshold_pct: float = 1.0,
+    use_momentum_check: bool = True,
+    cache_max_age_hours: int = 12
+) -> pd.DataFrame:
+    """
+    Download real market index data (SPY, DIA, QQQ) from Yahoo Finance
+    and compute market conditions matching main.py logic.
+    
+    main.py checks:
+    - is_market_in_uptrend(): today's change >= uptrend_threshold_pct for 2+ of 3 indices
+    - is_market_in_major_downtrend(): week change <= -major_downtrend_threshold_pct for 2+ of 3 indices
+    
+    Returns DataFrame with columns: date, market_open, market_close, week_start,
+    is_uptrend, is_major_downtrend, market_condition
+    (same schema as generate_market_data)
+    """
+    if not YFINANCE_AVAILABLE:
+        raise ImportError("yfinance is required for real data. Install with: pip install yfinance")
+    
+    calendar_days = int((days + 60) * 1.5)
+    calendar_days = min(calendar_days, 729)
+    
+    cache_key = f"market_{calendar_days}_{uptrend_threshold_pct}_{major_downtrend_threshold_pct}_{use_momentum_check}"
+    cache_path = _get_cache_path(cache_key)
+    
+    if _cache_is_fresh(cache_path, cache_max_age_hours):
+        with open(cache_path, 'rb') as f:
+            return pickle.load(f)
+    
+    indices = ['SPY', 'DIA', 'QQQ']
+    daily_data = {}
+    
+    for idx_symbol in indices:
+        ticker = yf.Ticker(idx_symbol)
+        df_raw = ticker.history(period=f"{calendar_days}d", interval="1d")
+        if df_raw.empty:
+            raise ValueError(f"No market data returned for {idx_symbol}")
+        
+        # Build daily open/close
+        records = {}
+        for ts_idx, row in df_raw.iterrows():
+            dt = ts_idx.to_pydatetime()
+            if dt.tzinfo is not None:
+                dt = dt.replace(tzinfo=None)
+            d = dt.date()
+            records[d] = {'open': row['Open'], 'close': row['Close']}
+        daily_data[idx_symbol] = records
+    
+    # Find common dates across all indices
+    common_dates = sorted(
+        set.intersection(*[set(d.keys()) for d in daily_data.values()])
+    )
+    
+    if not common_dates:
+        raise ValueError("No overlapping dates found across market indices")
+    
+    # Compute market conditions per day
+    rows = []
+    week_start_prices = {idx: None for idx in indices}
+    
+    for d in common_dates:
+        # Reset week start on Monday
+        if d.weekday() == 0:
+            for idx in indices:
+                week_start_prices[idx] = daily_data[idx][d]['open']
+        
+        # Initialize week start if not set (first day isn't Monday)
+        for idx in indices:
+            if week_start_prices[idx] is None:
+                week_start_prices[idx] = daily_data[idx][d]['open']
+        
+        # is_market_in_uptrend: today's intraday change >= threshold for 2+ of 3
+        uptrend_votes = 0
+        for idx in indices:
+            rec = daily_data[idx][d]
+            pct_change = (rec['close'] - rec['open']) / rec['open'] * 100
+            if pct_change >= uptrend_threshold_pct:
+                uptrend_votes += 1
+        is_uptrend = uptrend_votes >= 2
+        
+        # is_market_in_major_downtrend: week change <= -threshold for 2+ of 3
+        downtrend_votes = 0
+        for idx in indices:
+            close = daily_data[idx][d]['close']
+            ws = week_start_prices[idx]
+            if ws and ws > 0:
+                week_pct = (close - ws) / ws * 100
+                if week_pct <= -major_downtrend_threshold_pct:
+                    downtrend_votes += 1
+        is_major_downtrend = downtrend_votes >= 2
+        
+        # Momentum check (approximate): if market recovered from lower point
+        if use_momentum_check and is_major_downtrend:
+            # Use intraday: if close > open, market is recovering
+            recovering_votes = 0
+            for idx in indices:
+                rec = daily_data[idx][d]
+                if rec['close'] > rec['open']:
+                    recovering_votes += 1
+            if recovering_votes >= 2:
+                is_major_downtrend = False
+        
+        # Use SPY as representative market price
+        spy = daily_data['SPY'][d]
+        rows.append({
+            'date': d,
+            'market_open': round(spy['open'], 2),
+            'market_close': round(spy['close'], 2),
+            'week_start': round(week_start_prices['SPY'], 2),
+            'is_uptrend': is_uptrend,
+            'is_major_downtrend': is_major_downtrend,
+            'market_condition': (
+                MarketCondition.MAJOR_DOWNTREND.value if is_major_downtrend else
+                MarketCondition.UPTREND.value if is_uptrend else
+                MarketCondition.DOWNTREND.value
+            )
+        })
+    
+    result = pd.DataFrame(rows)
+    
+    # Cache
+    with open(cache_path, 'wb') as f:
+        pickle.dump(result, f)
+    
+    return result
 
 
 def generate_market_data(
@@ -1122,10 +1354,13 @@ class IntradayBacktester:
         days: int = 30,
         start_date: datetime = None,
         seed: int = None,
-        verbose: bool = True
+        verbose: bool = True,
+        use_real_data: bool = False,
+        real_data_cache: Dict[str, pd.DataFrame] = None,
+        real_market_cache: pd.DataFrame = None
     ) -> Dict:
         """
-        Run intraday backtest with generated data.
+        Run intraday backtest with generated or real data.
         
         ACCURATELY simulates main.py behavior including:
         - Market trend filtering
@@ -1140,6 +1375,9 @@ class IntradayBacktester:
             start_date: Starting date (defaults to today - days)
             seed: Random seed for reproducibility
             verbose: Print trade details
+            use_real_data: If True, download real data from Yahoo Finance via yfinance
+            real_data_cache: Pre-downloaded symbol data dict (avoids re-downloading per gene)
+            real_market_cache: Pre-downloaded market data DataFrame
         
         Returns:
             Dictionary with backtest results
@@ -1167,32 +1405,61 @@ class IntradayBacktester:
             print(f"   Dynamic SMA: {'ON' if self.strategy.use_dynamic_sma else 'OFF'}")
             print(f"   Slope Ordering: {'ON' if self.strategy.use_slope_ordering else 'OFF'}")
             print(f"   Price Cap (${self.strategy.price_cap_value}): {'ON' if self.strategy.use_price_cap else 'OFF'}")
+        data_source = "REAL (yfinance)" if use_real_data else "SYNTHETIC"
+        
+        if verbose:
+            print(f"   Data Source: {data_source}")
             print(f"{'='*70}\n")
         
-        # Generate market data for trend filtering
-        market_data = generate_market_data(
-            start_date, days + 60, seed,
-            uptrend_threshold_pct=self.strategy.uptrend_threshold_pct,
-            major_downtrend_threshold_pct=self.strategy.major_downtrend_threshold_pct,
-            use_momentum_check=self.strategy.use_momentum_check
-        )
-        
-        # Generate intraday data for each symbol
-        symbol_data: Dict[str, pd.DataFrame] = {}
-        for i, symbol in enumerate(symbols):
-            if verbose:
-                print(f"Generating intraday data for {symbol}...")
+        # ---- Data acquisition: real or synthetic ----
+        if use_real_data:
+            # Use pre-downloaded caches if provided (optimizer passes these in)
+            if real_market_cache is not None:
+                market_data = real_market_cache
+            else:
+                if verbose:
+                    print("Downloading real market index data (SPY/DIA/QQQ)...")
+                market_data = download_real_market_data(
+                    days=days,
+                    uptrend_threshold_pct=self.strategy.uptrend_threshold_pct,
+                    major_downtrend_threshold_pct=self.strategy.major_downtrend_threshold_pct,
+                    use_momentum_check=self.strategy.use_momentum_check
+                )
             
-            sym_seed = seed + i if seed else None
-            df = generate_golden_cross_intraday(
-                symbol,
-                start_date,
-                days + 50,  # Extra for SMA warmup
-                initial_price=100 + i * 50,  # Different starting prices
-                seed=sym_seed
+            symbol_data: Dict[str, pd.DataFrame] = {}
+            for i, symbol in enumerate(symbols):
+                if real_data_cache is not None and symbol in real_data_cache:
+                    df = real_data_cache[symbol].copy()
+                else:
+                    if verbose:
+                        print(f"Downloading real data for {symbol}...")
+                    df = download_real_data(symbol, days)
+                df = self.strategy.calculate_indicators(df)
+                symbol_data[symbol] = df
+        else:
+            # Synthetic data (original behavior)
+            market_data = generate_market_data(
+                start_date, days + 60, seed,
+                uptrend_threshold_pct=self.strategy.uptrend_threshold_pct,
+                major_downtrend_threshold_pct=self.strategy.major_downtrend_threshold_pct,
+                use_momentum_check=self.strategy.use_momentum_check
             )
-            df = self.strategy.calculate_indicators(df)
-            symbol_data[symbol] = df
+            
+            symbol_data: Dict[str, pd.DataFrame] = {}
+            for i, symbol in enumerate(symbols):
+                if verbose:
+                    print(f"Generating intraday data for {symbol}...")
+                
+                sym_seed = seed + i if seed else None
+                df = generate_golden_cross_intraday(
+                    symbol,
+                    start_date,
+                    days + 50,  # Extra for SMA warmup
+                    initial_price=100 + i * 50,  # Different starting prices
+                    seed=sym_seed
+                )
+                df = self.strategy.calculate_indicators(df)
+                symbol_data[symbol] = df
         
         # Get unique timestamps across all data
         all_timestamps = set()
@@ -1782,6 +2049,12 @@ def main():
         '--simple-mode', action='store_true',
         help='Disable ALL main.py filters (runs like old simplified backtest)'
     )
+    parser.add_argument(
+        '--real-data', action='store_true',
+        help='Use real Yahoo Finance data (via yfinance) instead of synthetic data. '
+             'Downloads hourly OHLCV for each symbol and SPY/DIA/QQQ for market conditions. '
+             'Requires: pip install yfinance'
+    )
     
     args = parser.parse_args()
     
@@ -1830,11 +2103,17 @@ def main():
         strategy=strategy
     )
     
+    # Check yfinance availability if --real-data requested
+    if args.real_data and not YFINANCE_AVAILABLE:
+        print("❌ --real-data requires yfinance. Install with: pip install yfinance")
+        sys.exit(1)
+    
     results = backtester.run(
         symbols=symbols,
         days=args.days,
         seed=args.seed,
-        verbose=not args.quiet
+        verbose=not args.quiet,
+        use_real_data=args.real_data
     )
     
     if args.output:
