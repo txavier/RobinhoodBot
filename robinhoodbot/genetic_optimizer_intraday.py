@@ -48,6 +48,11 @@ from backtest_intraday import (
     YFINANCE_AVAILABLE
 )
 
+# Load stock universe from external JSON file for --num-stocks mode.
+_SYMBOLS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'genetic_optimizer_test_symbols.json')
+with open(_SYMBOLS_FILE, 'r') as _f:
+    STOCK_UNIVERSE = json.load(_f)['symbols']
+
 # Import config defaults
 try:
     from config import (
@@ -1593,8 +1598,13 @@ def main():
         description='Intraday Genetic Algorithm Optimizer for RobinhoodBot Day Trading'
     )
     parser.add_argument(
-        '--symbols', '-s', type=str, default='AAPL,MSFT,GOOGL',
-        help='Comma-separated list of symbols (default: AAPL,MSFT,GOOGL)'
+        '--symbols', '-s', type=str, default=None,
+        help='Comma-separated list of symbols (default: AAPL,MSFT,GOOGL). Ignored if --num-stocks is used.'
+    )
+    parser.add_argument(
+        '--num-stocks', '-n', type=int, default=None,
+        help='Randomly select N stocks from a built-in universe of ~500 liquid US equities. '
+             'Overrides --symbols. Use with --seed for reproducibility. (e.g., --num-stocks 100)'
     )
     parser.add_argument(
         '--days', '-d', type=int, default=60,
@@ -1677,7 +1687,19 @@ def main():
     
     args = parser.parse_args()
     
-    symbols = [s.strip().upper() for s in args.symbols.split(',')]
+    # Resolve symbols: --num-stocks overrides --symbols
+    if args.num_stocks is not None:
+        universe = list(dict.fromkeys(STOCK_UNIVERSE))  # deduplicate preserving order
+        if args.num_stocks > len(universe):
+            print(f"⚠️  Requested {args.num_stocks} stocks but universe only has {len(universe)}. Using all.")
+            args.num_stocks = len(universe)
+        # Take the first N symbols (order in JSON matters — log-traded symbols come first)
+        symbols = universe[:args.num_stocks]
+        print(f"📊 Selected first {len(symbols)} stocks from universe of {len(universe)}")
+    elif args.symbols is not None:
+        symbols = [s.strip().upper() for s in args.symbols.split(',')]
+    else:
+        symbols = ['AAPL', 'MSFT', 'GOOGL']
     
     config = IntradayGeneticConfig(
         population_size=args.population,
