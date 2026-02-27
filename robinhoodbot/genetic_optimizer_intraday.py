@@ -192,15 +192,34 @@ class IntradayGeneticConfig:
     })
 
 
+# Module-level globals for shared data across multiprocessing workers.
+# On Linux (fork), child processes inherit these via copy-on-write —
+# no pickling/piping needed. Set before Pool creation in _evaluate_with_multiprocessing().
+_shared_real_data_cache = None
+_shared_raw_market_index_data = None
+
+
+def _init_worker():
+    """Initializer for Pool workers: ignore SIGTERM so only the parent handles it."""
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+
+
 def _evaluate_gene_worker(args: Tuple) -> IntradayTradingGene:
     """
     Module-level function for parallel gene evaluation.
     Must be at module level for multiprocessing to pickle it.
     
+    Large data (real_data_cache, raw_market_index_data) is read from module-level
+    globals set before Pool creation — avoids pickling ~4 MB per gene through pipes.
+    
     Args is a tuple of (gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
-                         use_real_data, real_data_cache, raw_market_index_data)
+                         use_real_data)
     """
-    return _evaluate_gene_impl(*args)
+    gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions, use_real_data = args
+    return _evaluate_gene_impl(
+        gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
+        use_real_data, _shared_real_data_cache, _shared_raw_market_index_data
+    )
 
 
 def _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
@@ -775,11 +794,13 @@ class IntradayGeneticOptimizer:
             num_workers = max(1, cpu_count() - 1)  # Leave one CPU free
         
         if num_workers > 1 and len(population) > 1:
-            # Prepare args for worker functions
+            # Prepare args for worker functions.
+            # Large shared data (real_data_cache, raw_market_index_data) is passed
+            # via module-level globals to avoid pickling ~4 MB per gene through pipes.
             eval_args = [
                 (gene, self.symbols, self.days, self.initial_capital, 
                  dict(self.config.fitness_weights), data_seed, self.max_positions,
-                 self.use_real_data, self.real_data_cache, self.raw_market_index_data)
+                 self.use_real_data)
                 for gene in population
             ]
             
@@ -804,7 +825,11 @@ class IntradayGeneticOptimizer:
         return population
     
     def _evaluate_with_ray(self, eval_args: List[Tuple], num_workers: int) -> List[IntradayTradingGene]:
-        """Evaluate genes using Ray (works locally or distributed across Kubernetes)"""
+        """Evaluate genes using Ray (works locally or distributed across Kubernetes)
+        
+        Large shared data is put into Ray's object store once via ray.put(),
+        then passed by reference to each remote task (no redundant serialization).
+        """
         if self.verbose:
             ray_info = ray.cluster_resources() if ray.is_initialized() else {}
             num_nodes = int(ray_info.get('CPU', num_workers))
@@ -827,6 +852,10 @@ class IntradayGeneticOptimizer:
             # ray.init() auto-detects: local CPUs or K8s cluster
             ray.init(**init_kwargs)
         
+        # Put large shared data into Ray object store once (avoids per-task serialization)
+        real_data_ref = ray.put(self.real_data_cache) if self.real_data_cache else None
+        raw_market_ref = ray.put(self.raw_market_index_data) if self.raw_market_index_data else None
+        
         # Define remote function inside method to avoid module-level Ray dependency
         @ray.remote
         def ray_evaluate_gene(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
@@ -834,9 +863,9 @@ class IntradayGeneticOptimizer:
             return _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
                                        use_real_data, real_data_cache, raw_market_index_data)
         
-        # Submit all tasks
+        # Submit all tasks — append shared data refs to each 8-element arg tuple
         futures = [
-            ray_evaluate_gene.remote(*args) for args in eval_args
+            ray_evaluate_gene.remote(*args, real_data_ref, raw_market_ref) for args in eval_args
         ]
         
         # Gather results
@@ -844,12 +873,26 @@ class IntradayGeneticOptimizer:
         return evaluated_population
     
     def _evaluate_with_multiprocessing(self, eval_args: List[Tuple], num_workers: int) -> List[IntradayTradingGene]:
-        """Evaluate genes using multiprocessing.Pool (local only)"""
+        """Evaluate genes using multiprocessing.Pool (local only)
+        
+        Large shared data is set in module-level globals before Pool creation.
+        On Linux (fork), workers inherit these via copy-on-write — no pickling needed.
+        Workers also ignore SIGTERM so only the parent process handles graceful shutdown.
+        """
+        global _shared_real_data_cache, _shared_raw_market_index_data
+        _shared_real_data_cache = self.real_data_cache
+        _shared_raw_market_index_data = self.raw_market_index_data
+        
         if self.verbose:
             self._log(f"  Evaluating {len(eval_args)} genes using {num_workers} multiprocessing workers...")
         
-        with Pool(processes=num_workers) as pool:
-            evaluated_population = pool.map(_evaluate_gene_worker, eval_args)
+        try:
+            with Pool(processes=num_workers, initializer=_init_worker) as pool:
+                evaluated_population = pool.map(_evaluate_gene_worker, eval_args)
+        finally:
+            # Clear globals after use (don't hold references longer than needed)
+            _shared_real_data_cache = None
+            _shared_raw_market_index_data = None
         
         return evaluated_population
     
