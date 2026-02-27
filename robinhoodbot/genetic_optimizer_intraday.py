@@ -43,7 +43,9 @@ except ImportError:
 from backtest_intraday import (
     IntradayBacktester, IntradayTradingStrategy,
     generate_market_data, generate_golden_cross_intraday,
-    download_real_data, download_real_market_data, YFINANCE_AVAILABLE
+    download_real_data, download_real_market_data,
+    download_raw_market_index_data, compute_market_conditions,
+    YFINANCE_AVAILABLE
 )
 
 # Import config defaults
@@ -196,13 +198,13 @@ def _evaluate_gene_worker(args: Tuple) -> IntradayTradingGene:
     Must be at module level for multiprocessing to pickle it.
     
     Args is a tuple of (gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
-                         use_real_data, real_data_cache, real_market_cache)
+                         use_real_data, real_data_cache, raw_market_index_data)
     """
     return _evaluate_gene_impl(*args)
 
 
 def _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
-                         use_real_data=False, real_data_cache=None, real_market_cache=None) -> IntradayTradingGene:
+                         use_real_data=False, real_data_cache=None, raw_market_index_data=None) -> IntradayTradingGene:
     """
     Core gene evaluation logic - used by both multiprocessing and Ray workers.
     """
@@ -233,6 +235,16 @@ def _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, d
         use_momentum_check=gene.use_momentum_check,
     )
     
+    # Compute market conditions using this gene's thresholds (no network call)
+    real_market_cache = None
+    if use_real_data and raw_market_index_data is not None:
+        real_market_cache = compute_market_conditions(
+            raw_market_index_data,
+            uptrend_threshold_pct=gene.uptrend_threshold_pct,
+            major_downtrend_threshold_pct=gene.major_downtrend_threshold_pct,
+            use_momentum_check=gene.use_momentum_check,
+        )
+    
     # Run backtest
     backtester = IntradayBacktester(
         initial_capital=initial_capital,
@@ -248,7 +260,7 @@ def _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, d
         verbose=False,
         use_real_data=use_real_data,
         real_data_cache=real_data_cache,
-        real_market_cache=None  # Don't pass cached market data - each gene needs its own thresholds
+        real_market_cache=real_market_cache
     )
     
     # Store results in gene
@@ -332,7 +344,8 @@ class IntradayGeneticOptimizer:
         
         # Real data caches (populated in run() if use_real_data=True)
         self.real_data_cache: Optional[Dict] = None
-        self.real_market_cache = None
+        self.real_market_cache = None  # Legacy - kept for compatibility
+        self.raw_market_index_data = None  # Raw SPY/DIA/QQQ OHLC for per-gene threshold computation
         
         # Track evolution history
         self.generation_history: List[Dict] = []
@@ -645,6 +658,16 @@ class IntradayGeneticOptimizer:
             use_momentum_check=gene.use_momentum_check,
         )
         
+        # Compute market conditions using this gene's thresholds (no network call)
+        real_market_cache = None
+        if self.use_real_data and self.raw_market_index_data is not None:
+            real_market_cache = compute_market_conditions(
+                self.raw_market_index_data,
+                uptrend_threshold_pct=gene.uptrend_threshold_pct,
+                major_downtrend_threshold_pct=gene.major_downtrend_threshold_pct,
+                use_momentum_check=gene.use_momentum_check,
+            )
+        
         # Run backtest
         backtester = IntradayBacktester(
             initial_capital=self.initial_capital,
@@ -660,7 +683,7 @@ class IntradayGeneticOptimizer:
             verbose=False,
             use_real_data=self.use_real_data,
             real_data_cache=self.real_data_cache,
-            real_market_cache=None  # Don't pass cached market data - each gene needs its own thresholds
+            real_market_cache=real_market_cache
         )
         
         # Store results in gene
@@ -737,7 +760,7 @@ class IntradayGeneticOptimizer:
             eval_args = [
                 (gene, self.symbols, self.days, self.initial_capital, 
                  dict(self.config.fitness_weights), data_seed, self.max_positions,
-                 self.use_real_data, self.real_data_cache, self.real_market_cache)
+                 self.use_real_data, self.real_data_cache, self.raw_market_index_data)
                 for gene in population
             ]
             
@@ -788,9 +811,9 @@ class IntradayGeneticOptimizer:
         # Define remote function inside method to avoid module-level Ray dependency
         @ray.remote
         def ray_evaluate_gene(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
-                              use_real_data=False, real_data_cache=None, real_market_cache=None):
+                              use_real_data=False, real_data_cache=None, raw_market_index_data=None):
             return _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
-                                       use_real_data, real_data_cache, real_market_cache)
+                                       use_real_data, real_data_cache, raw_market_index_data)
         
         # Submit all tasks
         futures = [
@@ -1092,13 +1115,15 @@ class IntradayGeneticOptimizer:
             print(f"\n📥 Downloading real market data for {len(self.symbols)} symbols...")
             print("   (cached to disk - subsequent runs will be instant)")
             
-            # Download market index data
-            print("   Downloading SPY/DIA/QQQ market conditions...")
-            self.real_market_cache = download_real_market_data(
+            # Download raw market index data (threshold-independent, shared across all genes)
+            print("   Downloading SPY/DIA/QQQ raw index data...")
+            self.raw_market_index_data = download_raw_market_index_data(
                 days=self.days,
                 cache_max_age_hours=12
             )
-            print(f"   ✓ Market data: {len(self.real_market_cache)} trading days")
+            # Compute with default thresholds just for the summary count
+            sample_market = compute_market_conditions(self.raw_market_index_data)
+            print(f"   ✓ Market data: {len(sample_market)} trading days (each gene computes its own thresholds)")
             
             # Download each symbol
             self.real_data_cache = {}
@@ -1121,7 +1146,7 @@ class IntradayGeneticOptimizer:
                 if not self.symbols:
                     raise ValueError("All symbols failed to download. Check internet connection and symbol names.")
             
-            print(f"\n   ✓ Real data ready: {len(self.symbols)} symbols, {len(self.real_market_cache)} market days\n")
+            print(f"\n   ✓ Real data ready: {len(self.symbols)} symbols, {len(sample_market)} market days\n")
         
         # Set up signal handler for graceful shutdown
         if self.checkpoint_path:
