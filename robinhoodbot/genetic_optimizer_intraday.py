@@ -52,13 +52,12 @@ from backtest_intraday import (
 try:
     from config import (
         stop_loss_percent, take_profit_percent,
-        golden_cross_buy_days, price_cap
+        golden_cross_buy_days
     )
 except ImportError:
     stop_loss_percent = 5
     take_profit_percent = 0.70
     golden_cross_buy_days = 3
-    price_cap = 2100
 
 
 @dataclass
@@ -93,7 +92,6 @@ class IntradayTradingGene:
     
     # Main.py specific parameters
     slope_threshold: float = 0.0008  # Range: 0.0001-0.002 (from order_symbols_by_slope)
-    price_cap_value: float = 2100.0  # Range: 500-5000
     
     # Market trend detection parameters
     uptrend_threshold_pct: float = 0.1   # Range: 0.0-0.5 - min % above day open to count as uptrend
@@ -108,7 +106,6 @@ class IntradayTradingGene:
     use_price_5hr_check: bool = True
     use_dynamic_sma: bool = True
     use_slope_ordering: bool = True
-    use_price_cap: bool = True
     
     # Fitness score (set after evaluation)
     fitness: float = 0.0
@@ -170,7 +167,6 @@ class IntradayGeneticConfig:
         'take_profit_pct': (0.3, 3.0), # Tighter range for day trading
         'position_size_pct': (5.0, 30.0),
         'slope_threshold': (0.0001, 0.002),
-        'price_cap_value': (500.0, 5000.0),
         'uptrend_threshold_pct': (0.0, 0.5),
         'major_downtrend_threshold_pct': (0.3, 3.0),
         'momentum_lookback_bars': (3, 30),
@@ -245,8 +241,6 @@ def _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, d
         use_price_5hr_check=gene.use_price_5hr_check,
         use_dynamic_sma=gene.use_dynamic_sma,
         use_slope_ordering=gene.use_slope_ordering,
-        use_price_cap=gene.use_price_cap,
-        price_cap_value=gene.price_cap_value,
         slope_threshold=gene.slope_threshold,
         # Market trend detection thresholds (evolved by genetic algorithm)
         uptrend_threshold_pct=gene.uptrend_threshold_pct,
@@ -594,7 +588,6 @@ class IntradayGeneticOptimizer:
             take_profit_pct=round(random.uniform(*ranges['take_profit_pct']), 2),
             position_size_pct=round(random.uniform(*ranges['position_size_pct']), 1),
             slope_threshold=round(random.uniform(*ranges['slope_threshold']), 4),
-            price_cap_value=round(random.uniform(*ranges['price_cap_value']), 0),
             uptrend_threshold_pct=round(random.uniform(*ranges['uptrend_threshold_pct']), 2),
             major_downtrend_threshold_pct=round(random.uniform(*ranges['major_downtrend_threshold_pct']), 1),
             use_momentum_check=random.choice([True, True, True, False]),  # 75% chance True
@@ -609,7 +602,6 @@ class IntradayGeneticOptimizer:
             gene.use_price_5hr_check = random.choice([True, False])
             gene.use_dynamic_sma = random.choice([True, False])
             gene.use_slope_ordering = random.choice([True, False])
-            gene.use_price_cap = random.choice([True, False])
         
         return gene
     
@@ -624,7 +616,7 @@ class IntradayGeneticOptimizer:
                 short_sma=23, long_sma=100, golden_cross_buy_days=4,
                 short_sma_downtrend=45, short_sma_take_profit=14, long_sma_take_profit=5,
                 use_stop_loss=True, stop_loss_pct=7.9, take_profit_pct=1.18, position_size_pct=20.0,
-                slope_threshold=0.0019, price_cap_value=1442.0,
+                slope_threshold=0.0019,
                 uptrend_threshold_pct=0.1, major_downtrend_threshold_pct=1.0,
                 use_momentum_check=True, momentum_lookback_bars=12
             ),
@@ -633,7 +625,7 @@ class IntradayGeneticOptimizer:
                 short_sma=10, long_sma=30, golden_cross_buy_days=2,
                 short_sma_downtrend=8, short_sma_take_profit=3, long_sma_take_profit=5,
                 use_stop_loss=True, stop_loss_pct=3.0, take_profit_pct=1.0, position_size_pct=20.0,
-                slope_threshold=0.001, price_cap_value=1500.0,
+                slope_threshold=0.001,
                 uptrend_threshold_pct=0.05, major_downtrend_threshold_pct=0.5,
                 use_momentum_check=True, momentum_lookback_bars=6
             ),
@@ -642,7 +634,7 @@ class IntradayGeneticOptimizer:
                 short_sma=30, long_sma=70, golden_cross_buy_days=5,
                 short_sma_downtrend=20, short_sma_take_profit=8, long_sma_take_profit=12,
                 use_stop_loss=True, stop_loss_pct=7.0, take_profit_pct=0.5, position_size_pct=25.0,
-                slope_threshold=0.0005, price_cap_value=3000.0,
+                slope_threshold=0.0005,
                 uptrend_threshold_pct=0.2, major_downtrend_threshold_pct=1.5,
                 use_momentum_check=True, momentum_lookback_bars=18
             ),
@@ -651,7 +643,7 @@ class IntradayGeneticOptimizer:
                 short_sma=5, long_sma=15, golden_cross_buy_days=1,
                 short_sma_downtrend=5, short_sma_take_profit=3, long_sma_take_profit=5,
                 use_stop_loss=True, stop_loss_pct=2.0, take_profit_pct=0.5, position_size_pct=10.0,
-                slope_threshold=0.0015, price_cap_value=1000.0,
+                slope_threshold=0.0015,
                 uptrend_threshold_pct=0.0, major_downtrend_threshold_pct=2.0,
                 use_momentum_check=False, momentum_lookback_bars=6
             ),
@@ -687,8 +679,6 @@ class IntradayGeneticOptimizer:
             use_price_5hr_check=gene.use_price_5hr_check,
             use_dynamic_sma=gene.use_dynamic_sma,
             use_slope_ordering=gene.use_slope_ordering,
-            use_price_cap=gene.use_price_cap,
-            price_cap_value=gene.price_cap_value,
             slope_threshold=gene.slope_threshold,
             # Market trend detection thresholds (evolved by genetic algorithm)
             uptrend_threshold_pct=gene.uptrend_threshold_pct,
@@ -916,7 +906,7 @@ class IntradayGeneticOptimizer:
         params = ['short_sma', 'long_sma', 'golden_cross_buy_days',
                   'short_sma_downtrend', 'short_sma_take_profit', 'long_sma_take_profit',
                   'stop_loss_pct', 'take_profit_pct', 'position_size_pct',
-                  'slope_threshold', 'price_cap_value',
+                  'slope_threshold',
                   'uptrend_threshold_pct', 'major_downtrend_threshold_pct',
                   'momentum_lookback_bars']
         
@@ -940,7 +930,7 @@ class IntradayGeneticOptimizer:
         # Filter toggles (if optimizing)
         if self.config.optimize_filters:
             filter_params = ['use_market_filter', 'use_eod_filter', 'use_profit_before_eod',
-                            'use_price_5hr_check', 'use_dynamic_sma', 'use_slope_ordering', 'use_price_cap']
+                            'use_price_5hr_check', 'use_dynamic_sma', 'use_slope_ordering']
             for param in filter_params:
                 if random.random() < 0.5:
                     setattr(child1, param, getattr(parent1, param))
@@ -1028,12 +1018,6 @@ class IntradayGeneticOptimizer:
                                                min(ranges['slope_threshold'][1],
                                                    mutated.slope_threshold + delta)), 4)
         
-        if random.random() < self.config.mutation_rate:
-            delta = random.uniform(-500, 500)
-            mutated.price_cap_value = round(max(ranges['price_cap_value'][0],
-                                               min(ranges['price_cap_value'][1],
-                                                   mutated.price_cap_value + delta)), 0)
-        
         # Mutate market trend / momentum parameters
         if random.random() < self.config.mutation_rate:
             delta = random.uniform(-0.1, 0.1)
@@ -1070,8 +1054,6 @@ class IntradayGeneticOptimizer:
                 mutated.use_dynamic_sma = not mutated.use_dynamic_sma
             if random.random() < self.config.mutation_rate:
                 mutated.use_slope_ordering = not mutated.use_slope_ordering
-            if random.random() < self.config.mutation_rate:
-                mutated.use_price_cap = not mutated.use_price_cap
         
         # Ensure long_sma > short_sma
         if mutated.long_sma <= mutated.short_sma:
@@ -1383,7 +1365,6 @@ class IntradayGeneticOptimizer:
         self._log(f"purchase_limit_percentage = {gene.position_size_pct}")
         self._log(f"\n# Main.py Specific Settings")
         self._log(f"# slope_threshold = {gene.slope_threshold}  # For order_symbols_by_slope")
-        self._log(f"price_cap = {int(gene.price_cap_value)}")
         self._log(f"\n# Market Trend Detection")
         self._log(f"uptrend_threshold_pct = {gene.uptrend_threshold_pct}")
         self._log(f"major_downtrend_threshold_pct = {gene.major_downtrend_threshold_pct}")
@@ -1398,7 +1379,6 @@ class IntradayGeneticOptimizer:
             self._log(f"# use_price_5hr_check = {gene.use_price_5hr_check}")
             self._log(f"# use_dynamic_sma = {gene.use_dynamic_sma}")
             self._log(f"# use_slope_ordering = {gene.use_slope_ordering}")
-            self._log(f"# use_price_cap = {gene.use_price_cap}")
         
         self._log(f"\n# Performance Metrics:")
         self._log(f"# Total Return: {gene.total_return_pct:+.2f}%")
