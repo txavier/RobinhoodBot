@@ -899,7 +899,7 @@ def buy_holdings(potential_buys, cash, equity, holdings_data_length, buy_reasons
     cash = float(cash)
     equity = float(equity)
     portfolio_value = equity - cash
-    ideal_position_size = (safe_division(portfolio_value, holdings_data_length)+cash/len(potential_buys))/(2 * len(potential_buys))
+    ideal_position_size = (safe_division(portfolio_value, holdings_data_length)+cash/len(potential_buys))/2
     prices = rr.get_latest_price(potential_buys)
     for i in range(0, len(potential_buys)):
         stock_price = float(prices[i])
@@ -908,14 +908,14 @@ def buy_holdings(potential_buys, cash, equity, holdings_data_length, buy_reasons
             output = "Tried buying " + str(num_shares) + " shares of " + potential_buys[i] + " at " + str(stock_price) + " costing ${:.2f}".format(stock_price * num_shares) + " but with only ${:.2f}".format(cash) + " in cash not enough to make this purchase."
             print(output)
             if (len(potential_buys) > 1):
-                ideal_position_size = (safe_division(portfolio_value, holdings_data_length)+cash/(len(potential_buys)-1))/(2 * (len(potential_buys)-1))
+                ideal_position_size = (safe_division(portfolio_value, holdings_data_length)+cash/(len(potential_buys)-1))/2
             continue
         elif ((stock_price * int(ideal_position_size*1.5/stock_price)) > cash):
             num_shares = int(ideal_position_size*1.5/stock_price)
             output = "Tried buying " + str(num_shares) + " shares of " + potential_buys[i] + " at " + str(stock_price) + " costing ${:.2f}".format(stock_price * num_shares) + " but with only ${:.2f}".format(cash) + " in cash not enough to make this purchase."
             print(output)
             if (len(potential_buys) > 1):
-                ideal_position_size = (safe_division(portfolio_value, holdings_data_length)+cash/(len(potential_buys)-1))/(2 * (len(potential_buys)-1))
+                ideal_position_size = (safe_division(portfolio_value, holdings_data_length)+cash/(len(potential_buys)-1))/2
             continue
         elif(ideal_position_size < stock_price < ideal_position_size*1.5):
             num_shares = int(ideal_position_size*1.5/stock_price)
@@ -931,7 +931,7 @@ def buy_holdings(potential_buys, cash, equity, holdings_data_length, buy_reasons
                 output = "####### Tried buying " + str(int(ideal_position_size/stock_price)) + " or more shares of " + potential_buys[i] + " at ${:.2f}".format(stock_price) + " costing ${:.2f}".format(stock_price * num_shares) + " however your account balance of ${:.2f}".format(cash) + " is not enough buying power to purchase at the ideal buying position size. #######"
                 print(output)
                 if (len(potential_buys) > 1):
-                    ideal_position_size = (safe_division(portfolio_value, holdings_data_length)+cash/(len(potential_buys)-1))/(2 * (len(potential_buys)-1))
+                    ideal_position_size = (safe_division(portfolio_value, holdings_data_length)+cash/(len(potential_buys)-1))/2
                 continue
 
         # Limit the amount of shares if the purchase price is above the limit set in the config file.
