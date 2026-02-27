@@ -371,6 +371,141 @@ def download_real_data(
     return result
 
 
+def download_raw_market_index_data(
+    days: int,
+    cache_max_age_hours: int = 12
+) -> dict:
+    """
+    Download raw market index OHLC data (SPY, DIA, QQQ) from Yahoo Finance.
+    This is threshold-independent and can be cached once and reused
+    across genes with different market trend parameters.
+    
+    Returns dict: {symbol: {date: {'open': float, 'close': float}}}
+    """
+    if not YFINANCE_AVAILABLE:
+        raise ImportError("yfinance is required for real data. Install with: pip install yfinance")
+    
+    calendar_days = int((days + 60) * 1.5)
+    calendar_days = min(calendar_days, 729)
+    
+    cache_key = f"raw_market_index_{calendar_days}"
+    cache_path = _get_cache_path(cache_key)
+    
+    if _cache_is_fresh(cache_path, cache_max_age_hours):
+        with open(cache_path, 'rb') as f:
+            return pickle.load(f)
+    
+    indices = ['SPY', 'DIA', 'QQQ']
+    daily_data = {}
+    
+    for idx_symbol in indices:
+        ticker = yf.Ticker(idx_symbol)
+        df_raw = ticker.history(period=f"{calendar_days}d", interval="1d")
+        if df_raw.empty:
+            raise ValueError(f"No market data returned for {idx_symbol}")
+        
+        records = {}
+        for ts_idx, row in df_raw.iterrows():
+            dt = ts_idx.to_pydatetime()
+            if dt.tzinfo is not None:
+                dt = dt.replace(tzinfo=None)
+            d = dt.date()
+            records[d] = {'open': row['Open'], 'close': row['Close']}
+        daily_data[idx_symbol] = records
+    
+    # Cache raw data
+    with open(cache_path, 'wb') as f:
+        pickle.dump(daily_data, f)
+    
+    return daily_data
+
+
+def compute_market_conditions(
+    raw_index_data: dict,
+    uptrend_threshold_pct: float = 0.1,
+    major_downtrend_threshold_pct: float = 1.0,
+    use_momentum_check: bool = True
+) -> pd.DataFrame:
+    """
+    Compute market conditions from raw index OHLC data.
+    Pure computation - no network calls.
+    
+    Args:
+        raw_index_data: dict from download_raw_market_index_data()
+        uptrend_threshold_pct: min % above day open for uptrend
+        major_downtrend_threshold_pct: min % below week open for major downtrend
+        use_momentum_check: check if market is recovering
+        
+    Returns DataFrame with columns: date, market_open, market_close, week_start,
+    is_uptrend, is_major_downtrend, market_condition
+    """
+    indices = ['SPY', 'DIA', 'QQQ']
+    
+    # Find common dates across all indices
+    common_dates = sorted(
+        set.intersection(*[set(raw_index_data[idx].keys()) for idx in indices])
+    )
+    
+    if not common_dates:
+        raise ValueError("No overlapping dates found across market indices")
+    
+    rows = []
+    week_start_prices = {idx: None for idx in indices}
+    
+    for d in common_dates:
+        if d.weekday() == 0:
+            for idx in indices:
+                week_start_prices[idx] = raw_index_data[idx][d]['open']
+        
+        for idx in indices:
+            if week_start_prices[idx] is None:
+                week_start_prices[idx] = raw_index_data[idx][d]['open']
+        
+        uptrend_votes = 0
+        for idx in indices:
+            rec = raw_index_data[idx][d]
+            pct_change = (rec['close'] - rec['open']) / rec['open'] * 100
+            if pct_change >= uptrend_threshold_pct:
+                uptrend_votes += 1
+        is_uptrend = uptrend_votes >= 2
+        
+        downtrend_votes = 0
+        for idx in indices:
+            close = raw_index_data[idx][d]['close']
+            ws = week_start_prices[idx]
+            if ws and ws > 0:
+                week_pct = (close - ws) / ws * 100
+                if week_pct <= -major_downtrend_threshold_pct:
+                    downtrend_votes += 1
+        is_major_downtrend = downtrend_votes >= 2
+        
+        if use_momentum_check and is_major_downtrend:
+            recovering_votes = 0
+            for idx in indices:
+                rec = raw_index_data[idx][d]
+                if rec['close'] > rec['open']:
+                    recovering_votes += 1
+            if recovering_votes >= 2:
+                is_major_downtrend = False
+        
+        spy = raw_index_data['SPY'][d]
+        rows.append({
+            'date': d,
+            'market_open': round(spy['open'], 2),
+            'market_close': round(spy['close'], 2),
+            'week_start': round(week_start_prices['SPY'], 2),
+            'is_uptrend': is_uptrend,
+            'is_major_downtrend': is_major_downtrend,
+            'market_condition': (
+                MarketCondition.MAJOR_DOWNTREND.value if is_major_downtrend else
+                MarketCondition.UPTREND.value if is_uptrend else
+                MarketCondition.DOWNTREND.value
+            )
+        })
+    
+    return pd.DataFrame(rows)
+
+
 def download_real_market_data(
     days: int,
     uptrend_threshold_pct: float = 0.1,
@@ -390,115 +525,16 @@ def download_real_market_data(
     is_uptrend, is_major_downtrend, market_condition
     (same schema as generate_market_data)
     """
-    if not YFINANCE_AVAILABLE:
-        raise ImportError("yfinance is required for real data. Install with: pip install yfinance")
+    # Download raw data (cached, threshold-independent)
+    raw_data = download_raw_market_index_data(days, cache_max_age_hours)
     
-    calendar_days = int((days + 60) * 1.5)
-    calendar_days = min(calendar_days, 729)
-    
-    cache_key = f"market_{calendar_days}_{uptrend_threshold_pct}_{major_downtrend_threshold_pct}_{use_momentum_check}"
-    cache_path = _get_cache_path(cache_key)
-    
-    if _cache_is_fresh(cache_path, cache_max_age_hours):
-        with open(cache_path, 'rb') as f:
-            return pickle.load(f)
-    
-    indices = ['SPY', 'DIA', 'QQQ']
-    daily_data = {}
-    
-    for idx_symbol in indices:
-        ticker = yf.Ticker(idx_symbol)
-        df_raw = ticker.history(period=f"{calendar_days}d", interval="1d")
-        if df_raw.empty:
-            raise ValueError(f"No market data returned for {idx_symbol}")
-        
-        # Build daily open/close
-        records = {}
-        for ts_idx, row in df_raw.iterrows():
-            dt = ts_idx.to_pydatetime()
-            if dt.tzinfo is not None:
-                dt = dt.replace(tzinfo=None)
-            d = dt.date()
-            records[d] = {'open': row['Open'], 'close': row['Close']}
-        daily_data[idx_symbol] = records
-    
-    # Find common dates across all indices
-    common_dates = sorted(
-        set.intersection(*[set(d.keys()) for d in daily_data.values()])
+    # Compute conditions with the specified thresholds
+    return compute_market_conditions(
+        raw_data,
+        uptrend_threshold_pct=uptrend_threshold_pct,
+        major_downtrend_threshold_pct=major_downtrend_threshold_pct,
+        use_momentum_check=use_momentum_check
     )
-    
-    if not common_dates:
-        raise ValueError("No overlapping dates found across market indices")
-    
-    # Compute market conditions per day
-    rows = []
-    week_start_prices = {idx: None for idx in indices}
-    
-    for d in common_dates:
-        # Reset week start on Monday
-        if d.weekday() == 0:
-            for idx in indices:
-                week_start_prices[idx] = daily_data[idx][d]['open']
-        
-        # Initialize week start if not set (first day isn't Monday)
-        for idx in indices:
-            if week_start_prices[idx] is None:
-                week_start_prices[idx] = daily_data[idx][d]['open']
-        
-        # is_market_in_uptrend: today's intraday change >= threshold for 2+ of 3
-        uptrend_votes = 0
-        for idx in indices:
-            rec = daily_data[idx][d]
-            pct_change = (rec['close'] - rec['open']) / rec['open'] * 100
-            if pct_change >= uptrend_threshold_pct:
-                uptrend_votes += 1
-        is_uptrend = uptrend_votes >= 2
-        
-        # is_market_in_major_downtrend: week change <= -threshold for 2+ of 3
-        downtrend_votes = 0
-        for idx in indices:
-            close = daily_data[idx][d]['close']
-            ws = week_start_prices[idx]
-            if ws and ws > 0:
-                week_pct = (close - ws) / ws * 100
-                if week_pct <= -major_downtrend_threshold_pct:
-                    downtrend_votes += 1
-        is_major_downtrend = downtrend_votes >= 2
-        
-        # Momentum check (approximate): if market recovered from lower point
-        if use_momentum_check and is_major_downtrend:
-            # Use intraday: if close > open, market is recovering
-            recovering_votes = 0
-            for idx in indices:
-                rec = daily_data[idx][d]
-                if rec['close'] > rec['open']:
-                    recovering_votes += 1
-            if recovering_votes >= 2:
-                is_major_downtrend = False
-        
-        # Use SPY as representative market price
-        spy = daily_data['SPY'][d]
-        rows.append({
-            'date': d,
-            'market_open': round(spy['open'], 2),
-            'market_close': round(spy['close'], 2),
-            'week_start': round(week_start_prices['SPY'], 2),
-            'is_uptrend': is_uptrend,
-            'is_major_downtrend': is_major_downtrend,
-            'market_condition': (
-                MarketCondition.MAJOR_DOWNTREND.value if is_major_downtrend else
-                MarketCondition.UPTREND.value if is_uptrend else
-                MarketCondition.DOWNTREND.value
-            )
-        })
-    
-    result = pd.DataFrame(rows)
-    
-    # Cache
-    with open(cache_path, 'wb') as f:
-        pickle.dump(result, f)
-    
-    return result
 
 
 def generate_market_data(
