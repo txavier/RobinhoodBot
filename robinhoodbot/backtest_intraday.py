@@ -926,10 +926,6 @@ class IntradayTradingStrategy:
         df['sma_short_take_profit'] = df['close'].rolling(window=self.short_sma_take_profit, min_periods=self.short_sma_take_profit).mean()
         df['sma_long_take_profit'] = df['close'].rolling(window=self.long_sma_take_profit, min_periods=self.long_sma_take_profit).mean()
         
-        # Buy-specific SMA: main.py always uses hardcoded SMA(20)/SMA(50) for buy golden cross
-        df['sma_buy_short'] = df['close'].rolling(window=20, min_periods=20).mean()
-        df['sma_buy_long'] = df['close'].rolling(window=50, min_periods=50).mean()
-        
         return df
     
     def calculate_slope(self, df: pd.DataFrame, current_idx: int, lookback_hours: int = 7) -> float:
@@ -1073,11 +1069,7 @@ class IntradayTradingStrategy:
             return False, None, None
         
         # Get SMA columns based on periods
-        # Buy path always uses hardcoded SMA(20)/SMA(50) matching main.py
-        if n1 == 20 and n2 == 50:
-            sma_short_col = 'sma_buy_short'
-            sma_long_col = 'sma_buy_long'
-        elif n1 == self.short_sma_downtrend and n2 == self.long_sma:
+        if n1 == self.short_sma_downtrend and n2 == self.long_sma:
             sma_short_col = 'sma_short_downtrend'
             sma_long_col = 'sma_long'
         elif n1 == self.short_sma_take_profit and n2 == self.long_sma_take_profit:
@@ -1715,10 +1707,9 @@ class IntradayBacktester:
                         rejected_buys['five_year_check'] += 1
                         continue
                     
-                    # 8. Check golden cross with hardcoded SMA(20)/SMA(50)
-                    # main.py always uses n1=20, n2=50 for buy signals (five_year_check ran inside golden_cross())
+                    # 8. Check golden cross using same SMA as sell (short_sma/long_sma from config)
                     is_golden_cross, cross_price, price_5hr_ago = self.strategy.check_golden_cross(
-                        df, current_idx, n1=20, n2=50
+                        df, current_idx
                     )
                     
                     if not is_golden_cross:

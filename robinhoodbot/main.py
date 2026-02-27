@@ -1920,7 +1920,7 @@ def scan_stocks():
         print("\n----- Scanning watchlist for stocks to buy -----\n")
         for symbol in ordered_watchlist_symbols:
             if(symbol not in portfolio_symbols):
-                cross = golden_cross(symbol, n1=20, n2=50, days=golden_cross_buy_days, direction="above")
+                cross = golden_cross(symbol, n1=short_sma, n2=long_sma, days=golden_cross_buy_days, direction="above")
                 if(cross[0] == 1):
                         # If the current price is greater than the price at cross,
                         # meaning that the price is still rising then buy.
@@ -2051,7 +2051,7 @@ def scan_stocks():
                         "current_price": cross[6] if cross and len(cross) > 6 else None,
                         "sma20": round(cross[4], 4) if cross and len(cross) > 4 and cross[4] else None,
                         "sma50": round(cross[5], 4) if cross and len(cross) > 5 and cross[5] else None,
-                        "need": f"SMA(20) must cross above SMA(50) within {golden_cross_buy_days} days"
+                        "need": f"SMA({short_sma}) must cross above SMA({long_sma}) within {golden_cross_buy_days} days"
                     })
                     
         if(len(potential_buys) > 0):
