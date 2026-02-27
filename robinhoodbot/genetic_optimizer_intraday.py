@@ -331,7 +331,8 @@ class IntradayGeneticOptimizer:
         verbose: bool = True,
         seed: int = None,
         max_positions: int = 5,
-        use_real_data: bool = False
+        use_real_data: bool = False,
+        log_file: Optional[str] = None
     ):
         self.symbols = symbols
         self.days = days
@@ -341,6 +342,12 @@ class IntradayGeneticOptimizer:
         self.seed = seed
         self.max_positions = max_positions
         self.use_real_data = use_real_data
+        self.log_file = log_file
+        self._log_fh = None
+        
+        # Open log file if specified
+        if self.log_file:
+            self._log_fh = open(self.log_file, 'a')
         
         # Real data caches (populated in run() if use_real_data=True)
         self.real_data_cache: Optional[Dict] = None
@@ -355,6 +362,18 @@ class IntradayGeneticOptimizer:
         # Checkpoint/resume support
         self.checkpoint_path: Optional[str] = None
         self._interrupted = False
+    
+    def _log(self, msg: str, **kwargs):
+        """Print to stdout and optionally write to log file (unbuffered)."""
+        print(msg, **kwargs)
+        if self._log_fh:
+            # Handle end='' or flush=True from kwargs
+            end = kwargs.get('end', '\n')
+            try:
+                self._log_fh.write(msg + end)
+                self._log_fh.flush()
+            except Exception:
+                pass  # Don't crash if log file write fails
         
     def save_checkpoint(self, filepath: str, generation: int, population: List[IntradayTradingGene]):
         """Save optimizer state to a checkpoint file after each generation.
@@ -410,7 +429,7 @@ class IntradayGeneticOptimizer:
         os.replace(tmp_path, filepath)
         
         if self.verbose:
-            print(f"  💾 Checkpoint saved: Gen {generation + 1}/{self.config.generations} → {filepath}")
+            self._log(f"  💾 Checkpoint saved: Gen {generation + 1}/{self.config.generations} → {filepath}")
     
     def load_checkpoint(self, filepath: str) -> Optional[dict]:
         """Load a checkpoint file and return the checkpoint data.
@@ -772,13 +791,13 @@ class IntradayGeneticOptimizer:
             
             if self.verbose:
                 for i, gene in enumerate(population):
-                    print(f"    Gene {i+1}: {gene}")
+                    self._log(f"    Gene {i+1}: {gene}")
         else:
             # Sequential evaluation (single worker or small population)
             for i, gene in enumerate(population):
                 self.evaluate_fitness(gene, data_seed)
                 if self.verbose:
-                    print(f"  Evaluating {i+1}/{len(population)}: {gene}")
+                    self._log(f"  Evaluating {i+1}/{len(population)}: {gene}")
         
         # Sort by fitness (descending)
         population.sort(key=lambda g: g.fitness, reverse=True)
@@ -789,7 +808,7 @@ class IntradayGeneticOptimizer:
         if self.verbose:
             ray_info = ray.cluster_resources() if ray.is_initialized() else {}
             num_nodes = int(ray_info.get('CPU', num_workers))
-            print(f"  Evaluating {len(eval_args)} genes using Ray ({num_nodes} CPUs available)...")
+            self._log(f"  Evaluating {len(eval_args)} genes using Ray ({num_nodes} CPUs available)...")
         
         # Initialize Ray if not already done
         if not ray.is_initialized():
@@ -803,7 +822,7 @@ class IntradayGeneticOptimizer:
                     "memory_monitor_refresh_ms": 0,
                 }
                 if self.verbose:
-                    print("  Ray memory monitor disabled (--disable-ray-mem-monitor)")
+                    self._log("  Ray memory monitor disabled (--disable-ray-mem-monitor)")
             
             # ray.init() auto-detects: local CPUs or K8s cluster
             ray.init(**init_kwargs)
@@ -827,7 +846,7 @@ class IntradayGeneticOptimizer:
     def _evaluate_with_multiprocessing(self, eval_args: List[Tuple], num_workers: int) -> List[IntradayTradingGene]:
         """Evaluate genes using multiprocessing.Pool (local only)"""
         if self.verbose:
-            print(f"  Evaluating {len(eval_args)} genes using {num_workers} multiprocessing workers...")
+            self._log(f"  Evaluating {len(eval_args)} genes using {num_workers} multiprocessing workers...")
         
         with Pool(processes=num_workers) as pool:
             evaluated_population = pool.map(_evaluate_gene_worker, eval_args)
@@ -1064,41 +1083,41 @@ class IntradayGeneticOptimizer:
             if checkpoint:
                 completed = checkpoint['completed_generation'] + 1
                 total = checkpoint['total_generations']
-                print(f"\n🔄 RESUMING from checkpoint: Generation {completed}/{total} completed")
-                print(f"   Checkpoint saved at: {checkpoint['saved_at']}")
-                print(f"   Best fitness so far: {checkpoint['best_fitness']:.4f}")
+                self._log(f"\n🔄 RESUMING from checkpoint: Generation {completed}/{total} completed")
+                self._log(f"   Checkpoint saved at: {checkpoint['saved_at']}")
+                self._log(f"   Best fitness so far: {checkpoint['best_fitness']:.4f}")
                 start_gen, population = self.restore_from_checkpoint(checkpoint)
                 resumed = True
                 # Create next generation from the restored population
                 # (the checkpoint saved the population AFTER evaluation but BEFORE next_gen creation)
                 if start_gen < self.config.generations:
                     population = self.create_next_generation(population)
-                    print(f"   Resuming from Generation {start_gen + 1}...\n")
+                    self._log(f"   Resuming from Generation {start_gen + 1}...\n")
         
         if not resumed:
             self.start_time = datetime.now()
         
-        print(f"\n{'='*70}")
-        print("INTRADAY GENETIC ALGORITHM OPTIMIZER")
-        print(f"{'='*70}")
-        print(f"Symbols: {', '.join(self.symbols)}")
-        print(f"Trading Days: {self.days}")
-        print(f"Initial Capital: ${self.initial_capital:,.2f}")
-        print(f"Max Positions: {self.max_positions}")
-        print(f"Population: {self.config.population_size}")
-        print(f"Generations: {self.config.generations}")
-        print(f"Mutation Rate: {self.config.mutation_rate}")
-        print(f"Crossover Rate: {self.config.crossover_rate}")
-        print(f"Optimize Filters: {self.config.optimize_filters}")
+        self._log(f"\n{'='*70}")
+        self._log("INTRADAY GENETIC ALGORITHM OPTIMIZER")
+        self._log(f"{'='*70}")
+        self._log(f"Symbols: {', '.join(self.symbols)}")
+        self._log(f"Trading Days: {self.days}")
+        self._log(f"Initial Capital: ${self.initial_capital:,.2f}")
+        self._log(f"Max Positions: {self.max_positions}")
+        self._log(f"Population: {self.config.population_size}")
+        self._log(f"Generations: {self.config.generations}")
+        self._log(f"Mutation Rate: {self.config.mutation_rate}")
+        self._log(f"Crossover Rate: {self.config.crossover_rate}")
+        self._log(f"Optimize Filters: {self.config.optimize_filters}")
         num_workers = self.config.num_workers if self.config.num_workers > 0 else max(1, cpu_count() - 1)
-        print(f"Workers: {num_workers} {'(auto)' if self.config.num_workers == 0 else ''}")
+        self._log(f"Workers: {num_workers} {'(auto)' if self.config.num_workers == 0 else ''}")
         data_source = "REAL (yfinance)" if self.use_real_data else "SYNTHETIC"
-        print(f"Data Source: {data_source}")
+        self._log(f"Data Source: {data_source}")
         if self.seed:
-            print(f"Random Seed: {self.seed}")
+            self._log(f"Random Seed: {self.seed}")
         if self.checkpoint_path:
-            print(f"Checkpoint: {self.checkpoint_path} {'(resumed)' if resumed else '(enabled)'}")
-        print(f"{'='*70}\n")
+            self._log(f"Checkpoint: {self.checkpoint_path} {'(resumed)' if resumed else '(enabled)'}")
+        self._log(f"{'='*70}\n")
         
         # Set random seed if provided (only on fresh start, not resume)
         if self.seed and not resumed:
@@ -1107,46 +1126,46 @@ class IntradayGeneticOptimizer:
         
         # Initialize population (only on fresh start)
         if population is None:
-            print("Initializing population...")
+            self._log("Initializing population...")
             population = self.initialize_population()
         
         # Pre-download real data once (shared across all generations and genes)
         if self.use_real_data:
-            print(f"\n📥 Downloading real market data for {len(self.symbols)} symbols...")
-            print("   (cached to disk - subsequent runs will be instant)")
+            self._log(f"\n📥 Downloading real market data for {len(self.symbols)} symbols...")
+            self._log("   (cached to disk - subsequent runs will be instant)")
             
             # Download raw market index data (threshold-independent, shared across all genes)
-            print("   Downloading SPY/DIA/QQQ raw index data...")
+            self._log("   Downloading SPY/DIA/QQQ raw index data...")
             self.raw_market_index_data = download_raw_market_index_data(
                 days=self.days,
                 cache_max_age_hours=12
             )
             # Compute with default thresholds just for the summary count
             sample_market = compute_market_conditions(self.raw_market_index_data)
-            print(f"   ✓ Market data: {len(sample_market)} trading days (each gene computes its own thresholds)")
+            self._log(f"   ✓ Market data: {len(sample_market)} trading days (each gene computes its own thresholds)")
             
             # Download each symbol
             self.real_data_cache = {}
             failed_symbols = []
             for i, symbol in enumerate(self.symbols):
                 try:
-                    print(f"   Downloading {symbol} ({i+1}/{len(self.symbols)})...", end="", flush=True)
+                    self._log(f"   Downloading {symbol} ({i+1}/{len(self.symbols)})...", end="", flush=True)
                     df = download_real_data(symbol, self.days, cache_max_age_hours=12)
                     self.real_data_cache[symbol] = df
                     trading_days = df['date'].nunique()
-                    print(f" ✓ {len(df)} bars ({trading_days} days)")
+                    self._log(f" ✓ {len(df)} bars ({trading_days} days)")
                 except Exception as e:
-                    print(f" ✗ FAILED: {e}")
+                    self._log(f" ✗ FAILED: {e}")
                     failed_symbols.append(symbol)
             
             # Remove failed symbols
             if failed_symbols:
-                print(f"\n   ⚠️  Removing {len(failed_symbols)} failed symbols: {', '.join(failed_symbols)}")
+                self._log(f"\n   ⚠️  Removing {len(failed_symbols)} failed symbols: {', '.join(failed_symbols)}")
                 self.symbols = [s for s in self.symbols if s not in failed_symbols]
                 if not self.symbols:
                     raise ValueError("All symbols failed to download. Check internet connection and symbol names.")
             
-            print(f"\n   ✓ Real data ready: {len(self.symbols)} symbols, {len(sample_market)} market days\n")
+            self._log(f"\n   ✓ Real data ready: {len(self.symbols)} symbols, {len(sample_market)} market days\n")
         
         # Set up signal handler for graceful shutdown
         if self.checkpoint_path:
@@ -1155,7 +1174,16 @@ class IntradayGeneticOptimizer:
         # Evolution loop
         try:
             for gen in range(start_gen, self.config.generations):
-                print(f"\n--- Generation {gen + 1}/{self.config.generations} ---")
+                # Check if SIGTERM was received — save checkpoint and exit cleanly
+                if self._interrupted:
+                    self._log(f"\n  🛑 SIGTERM detected before Generation {gen + 1}. Saving checkpoint and exiting cleanly...")
+                    if self.checkpoint_path and self.generation_history:
+                        # Checkpoint was already saved after last completed generation
+                        self._log(f"     Checkpoint saved after Gen {len(self.generation_history)}.")
+                        self._log(f"     Resume with: --resume to continue from Gen {len(self.generation_history) + 1}")
+                    break
+                
+                self._log(f"\n--- Generation {gen + 1}/{self.config.generations} ---")
                 
                 # Evaluate fitness
                 population = self.evaluate_population(population, gen)
@@ -1182,17 +1210,23 @@ class IntradayGeneticOptimizer:
                     'best_trades_per_day': gen_best.trades_per_day,
                 })
                 
-                print(f"\n  Best:  {gen_best}")
-                print(f"  Avg Fitness: {gen_avg:.4f} | Worst: {gen_worst:.4f}")
-                print(f"  Return: {gen_best.total_return_pct:+.2f}% | "
+                self._log(f"\n  Best:  {gen_best}")
+                self._log(f"  Avg Fitness: {gen_avg:.4f} | Worst: {gen_worst:.4f}")
+                self._log(f"  Return: {gen_best.total_return_pct:+.2f}% | "
                       f"Sharpe: {gen_best.sharpe_ratio:.2f} | "
                       f"Win Rate: {gen_best.win_rate:.1f}% | "
                       f"Trades/Day: {gen_best.trades_per_day:.2f}")
-                print(f"  ⏱️  Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                self._log(f"  ⏱️  Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 
                 # Save checkpoint after each completed generation
                 if self.checkpoint_path:
                     self.save_checkpoint(self.checkpoint_path, gen, population)
+                
+                # Check if SIGTERM was received during evaluation — exit after saving checkpoint
+                if self._interrupted:
+                    self._log(f"\n  🛑 SIGTERM received during Generation {gen + 1}. Checkpoint saved. Exiting cleanly...")
+                    self._log(f"     Resume with: --resume to continue from Gen {gen + 2}")
+                    break
                 
                 # Create next generation (skip on last iteration)
                 if gen < self.config.generations - 1:
@@ -1203,10 +1237,10 @@ class IntradayGeneticOptimizer:
             if self.checkpoint_path and self.generation_history:
                 last_completed_gen = len(self.generation_history) - 1 + start_gen
                 # Only save if we haven't already (the per-generation save may have caught it)
-                print(f"\n  🛑 Interrupted! Checkpoint was saved after Gen {len(self.generation_history)}.")
-                print(f"     Resume with: --resume to continue from Gen {len(self.generation_history) + 1}")
+                self._log(f"\n  🛑 Interrupted! Checkpoint was saved after Gen {len(self.generation_history)}.")
+                self._log(f"     Resume with: --resume to continue from Gen {len(self.generation_history) + 1}")
             else:
-                print(f"\n  🛑 Interrupted before any generation completed. No checkpoint to save.")
+                self._log(f"\n  🛑 Interrupted before any generation completed. No checkpoint to save.")
             
             # Restore signal handlers
             if self.checkpoint_path:
@@ -1222,17 +1256,24 @@ class IntradayGeneticOptimizer:
             # Restore signal handlers
             if self.checkpoint_path:
                 self._restore_signal_handlers()
+            # Close log file
+            if self._log_fh:
+                try:
+                    self._log_fh.close()
+                except Exception:
+                    pass
+                self._log_fh = None
         
         self.end_time = datetime.now()
         
         # Clean up checkpoint file on successful completion
         if self.checkpoint_path and os.path.exists(self.checkpoint_path):
             os.remove(self.checkpoint_path)
-            print(f"  🧹 Checkpoint file removed (optimization complete)")
+            self._log(f"  🧹 Checkpoint file removed (optimization complete)")
         
-        print(f"\n{'='*70}")
-        print("OPTIMIZATION COMPLETE")
-        print(f"{'='*70}")
+        self._log(f"\n{'='*70}")
+        self._log("OPTIMIZATION COMPLETE")
+        self._log(f"{'='*70}")
         
         return self.best_gene
     
@@ -1269,76 +1310,76 @@ class IntradayGeneticOptimizer:
         with open(filepath, 'w') as f:
             json.dump(results, f, indent=2)
         
-        print(f"\nResults saved to {filepath}")
+        self._log(f"\nResults saved to {filepath}")
     
     def print_best_config(self):
         """Print the best configuration found in a copyable format"""
         if not self.best_gene:
-            print("No optimization results available")
+            self._log("No optimization results available")
             return
         
         gene = self.best_gene
-        print(f"\n{'='*70}")
-        print("BEST INTRADAY CONFIGURATION FOUND")
-        print(f"{'='*70}")
-        print(f"\n# Add these to your config.py:")
-        print(f"# Note: SMA values are in HOURS (for hourly data)")
-        print(f"\n# SMA Settings (Hourly)")
-        print(f"short_sma = {gene.short_sma}  # ~{gene.short_sma/7:.1f} trading days")
-        print(f"long_sma = {gene.long_sma}   # ~{gene.long_sma/7:.1f} trading days")
-        print(f"golden_cross_buy_days = {gene.golden_cross_buy_days}  # trading days (1 day = 7 hourly bars)")
-        print(f"\n# Dynamic SMA Settings (used when use_dynamic_sma=True)")
-        print(f"short_sma_downtrend = {gene.short_sma_downtrend}  # Used when market not in uptrend")
-        print(f"short_sma_take_profit = {gene.short_sma_take_profit}  # Used after take profit (only if balance < $25k PDT limit)")
-        print(f"long_sma_take_profit = {gene.long_sma_take_profit}   # Used after take profit (only if balance < $25k PDT limit)")
-        print(f"\n# Risk Management")
-        print(f"use_stop_loss = {gene.use_stop_loss}")
-        print(f"stop_loss_percent = {gene.stop_loss_pct}")
-        print(f"take_profit_percent = {gene.take_profit_pct}")
-        print(f"\n# Position Sizing")
-        print(f"purchase_limit_percentage = {gene.position_size_pct}")
-        print(f"\n# Main.py Specific Settings")
-        print(f"# slope_threshold = {gene.slope_threshold}  # For order_symbols_by_slope")
-        print(f"price_cap = {int(gene.price_cap_value)}")
-        print(f"\n# Market Trend Detection")
-        print(f"uptrend_threshold_pct = {gene.uptrend_threshold_pct}")
-        print(f"major_downtrend_threshold_pct = {gene.major_downtrend_threshold_pct}")
-        print(f"use_momentum_check = {gene.use_momentum_check}")
-        print(f"momentum_lookback_bars = {gene.momentum_lookback_bars}  # {gene.momentum_lookback_bars * 5} minutes")
+        self._log(f"\n{'='*70}")
+        self._log("BEST INTRADAY CONFIGURATION FOUND")
+        self._log(f"{'='*70}")
+        self._log(f"\n# Add these to your config.py:")
+        self._log(f"# Note: SMA values are in HOURS (for hourly data)")
+        self._log(f"\n# SMA Settings (Hourly)")
+        self._log(f"short_sma = {gene.short_sma}  # ~{gene.short_sma/7:.1f} trading days")
+        self._log(f"long_sma = {gene.long_sma}   # ~{gene.long_sma/7:.1f} trading days")
+        self._log(f"golden_cross_buy_days = {gene.golden_cross_buy_days}  # trading days (1 day = 7 hourly bars)")
+        self._log(f"\n# Dynamic SMA Settings (used when use_dynamic_sma=True)")
+        self._log(f"short_sma_downtrend = {gene.short_sma_downtrend}  # Used when market not in uptrend")
+        self._log(f"short_sma_take_profit = {gene.short_sma_take_profit}  # Used after take profit (only if balance < $25k PDT limit)")
+        self._log(f"long_sma_take_profit = {gene.long_sma_take_profit}   # Used after take profit (only if balance < $25k PDT limit)")
+        self._log(f"\n# Risk Management")
+        self._log(f"use_stop_loss = {gene.use_stop_loss}")
+        self._log(f"stop_loss_percent = {gene.stop_loss_pct}")
+        self._log(f"take_profit_percent = {gene.take_profit_pct}")
+        self._log(f"\n# Position Sizing")
+        self._log(f"purchase_limit_percentage = {gene.position_size_pct}")
+        self._log(f"\n# Main.py Specific Settings")
+        self._log(f"# slope_threshold = {gene.slope_threshold}  # For order_symbols_by_slope")
+        self._log(f"price_cap = {int(gene.price_cap_value)}")
+        self._log(f"\n# Market Trend Detection")
+        self._log(f"uptrend_threshold_pct = {gene.uptrend_threshold_pct}")
+        self._log(f"major_downtrend_threshold_pct = {gene.major_downtrend_threshold_pct}")
+        self._log(f"use_momentum_check = {gene.use_momentum_check}")
+        self._log(f"momentum_lookback_bars = {gene.momentum_lookback_bars}  # {gene.momentum_lookback_bars * 5} minutes")
         
         if self.config.optimize_filters:
-            print(f"\n# Filter Settings (optimized)")
-            print(f"# use_market_filter = {gene.use_market_filter}")
-            print(f"# use_eod_filter = {gene.use_eod_filter}")
-            print(f"# use_profit_before_eod = {gene.use_profit_before_eod}")
-            print(f"# use_price_5hr_check = {gene.use_price_5hr_check}")
-            print(f"# use_dynamic_sma = {gene.use_dynamic_sma}")
-            print(f"# use_slope_ordering = {gene.use_slope_ordering}")
-            print(f"# use_price_cap = {gene.use_price_cap}")
+            self._log(f"\n# Filter Settings (optimized)")
+            self._log(f"# use_market_filter = {gene.use_market_filter}")
+            self._log(f"# use_eod_filter = {gene.use_eod_filter}")
+            self._log(f"# use_profit_before_eod = {gene.use_profit_before_eod}")
+            self._log(f"# use_price_5hr_check = {gene.use_price_5hr_check}")
+            self._log(f"# use_dynamic_sma = {gene.use_dynamic_sma}")
+            self._log(f"# use_slope_ordering = {gene.use_slope_ordering}")
+            self._log(f"# use_price_cap = {gene.use_price_cap}")
         
-        print(f"\n# Performance Metrics:")
-        print(f"# Total Return: {gene.total_return_pct:+.2f}%")
-        print(f"# Win Rate: {gene.win_rate:.1f}%")
-        print(f"# Sharpe Ratio: {gene.sharpe_ratio:.4f}")
-        print(f"# Max Drawdown: {gene.max_drawdown_pct:.2f}%")
-        print(f"# Profit Factor: {gene.profit_factor:.2f}")
-        print(f"# Total Trades: {gene.total_trades}")
-        print(f"# Trades/Day: {gene.trades_per_day:.2f}")
-        print(f"# Avg Win: ${gene.avg_win:.2f}")
-        print(f"# Avg Loss: ${gene.avg_loss:.2f}")
-        print(f"# Fitness Score: {gene.fitness:.4f}")
+        self._log(f"\n# Performance Metrics:")
+        self._log(f"# Total Return: {gene.total_return_pct:+.2f}%")
+        self._log(f"# Win Rate: {gene.win_rate:.1f}%")
+        self._log(f"# Sharpe Ratio: {gene.sharpe_ratio:.4f}")
+        self._log(f"# Max Drawdown: {gene.max_drawdown_pct:.2f}%")
+        self._log(f"# Profit Factor: {gene.profit_factor:.2f}")
+        self._log(f"# Total Trades: {gene.total_trades}")
+        self._log(f"# Trades/Day: {gene.trades_per_day:.2f}")
+        self._log(f"# Avg Win: ${gene.avg_win:.2f}")
+        self._log(f"# Avg Loss: ${gene.avg_loss:.2f}")
+        self._log(f"# Fitness Score: {gene.fitness:.4f}")
         
         # Enhancement #10: Display exit reason breakdown
         if gene.exit_reasons:
-            print(f"\n# Exit Reason Breakdown (Enhancement #10):")
+            self._log(f"\n# Exit Reason Breakdown (Enhancement #10):")
             total_exits = sum(r['count'] for r in gene.exit_reasons.values())
             for reason, stats in sorted(gene.exit_reasons.items(), key=lambda x: -x[1]['count']):
                 pct = (stats['count'] / total_exits * 100) if total_exits > 0 else 0
                 win_rate = (stats['wins'] / stats['count'] * 100) if stats['count'] > 0 else 0
                 avg_pnl = stats['total_pnl'] / stats['count'] if stats['count'] > 0 else 0
-                print(f"#   {reason:20}: {stats['count']:>3} ({pct:5.1f}%) | Win: {win_rate:5.1f}% | Avg: ${avg_pnl:>+7.2f}")
+                self._log(f"#   {reason:20}: {stats['count']:>3} ({pct:5.1f}%) | Win: {win_rate:5.1f}% | Avg: ${avg_pnl:>+7.2f}")
         
-        print(f"{'='*70}\n")
+        self._log(f"{'='*70}\n")
 
 
 def validate_against_real_trades(gene: IntradayTradingGene, tradehistory_path: str = "tradehistory-real.json") -> Dict:
@@ -1606,6 +1647,10 @@ def main():
         '--checkpoint-file', type=str, default=None,
         help='Checkpoint file path (default: <output>.checkpoint.json). Used with --resume.'
     )
+    parser.add_argument(
+        '--log-file', type=str, default=None,
+        help='Write all output to this log file in addition to stdout (unbuffered, survives broken pipes)'
+    )
     
     args = parser.parse_args()
     
@@ -1643,7 +1688,8 @@ def main():
         verbose=not args.quiet,
         seed=args.seed,
         max_positions=args.max_positions,
-        use_real_data=args.real_data
+        use_real_data=args.real_data,
+        log_file=args.log_file
     )
     
     # Set up checkpoint/resume
