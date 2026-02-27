@@ -16,6 +16,18 @@ With script for running in vscode terminal.
   --max-positions 10 --generations 20 --population 30 \
   --validate-real --real-data
 
+/> cd /home/theo/dev/RobinhoodBot/robinhoodbot && \
+LOG_FILE=/tmp/optimizer_run_1000.log ./run_optimizer.sh \
+  --num-stocks 570 \
+  --max-positions 10 \
+  --generations 20 \
+  --population 30 \
+  --real-data \
+  --resume \
+  --validate-real
+
+/> give me the command to run the genetic optimizer with 50 stocks with max positions of 10 generations 20, population 30 --resume and --validate-real
+
 /> Give me the best configuration found in a table compared to the current config values and also give me your recomendation based on your analysis of the genetic optimizers best intraday configuration and all the logs, ai_suggested_config_changelog.json, buy_reasons.json, genetic_optimization_intraday_result.json, log.json, tradehistory-real.json, that have been taken thus far.
 /> log these changes in the ai_changelog
 

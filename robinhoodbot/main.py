@@ -499,6 +499,26 @@ def get_portfolio_symbols():
         symbols.append(symbol)
     return symbols
 
+def add_symbol_to_optimizer_universe(symbol):
+    """Add a symbol to the top of genetic_optimizer_test_symbols.json if not already present."""
+    try:
+        symbols_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'genetic_optimizer_test_symbols.json')
+        if os.path.exists(symbols_file):
+            with open(symbols_file, 'r') as f:
+                data = json.load(f)
+        else:
+            data = {"_comment": "Genetic optimizer stock/ETF universe. Symbols added automatically by the trading bot.", "symbols": []}
+        symbols = data.get('symbols', [])
+        if symbol not in symbols:
+            symbols.insert(0, symbol)
+            data['symbols'] = symbols
+            with open(symbols_file, 'w') as f:
+                json.dump(data, f, indent=4)
+                f.write('\n')
+            print(f"Added {symbol} to top of genetic optimizer universe ({len(symbols)} total)")
+    except Exception as e:
+        print(f"Warning: could not update optimizer symbols file: {e}")
+
 def remove_watchlist_symbols(watchlist_symbols):
     """ Removes all of the symbols from the watchlist.
 
@@ -1500,6 +1520,7 @@ def auto_invest(stock_array, portfolio_symbols, watchlist_symbols):
             print(message)
             if not debug:
                 rr.post_symbols_to_watchlist(selected_symbol, watch_list_name)
+            add_symbol_to_optimizer_universe(selected_symbol)
 
     except IOError as e:
         print(e)
@@ -2209,6 +2230,7 @@ def genetic_generation_add(symbol, is_take_profit):
     if(is_take_profit):
         if not debug:
             rr.post_symbols_to_watchlist(symbol, watch_list_name)
+        add_symbol_to_optimizer_universe(symbol)
         message = symbol + " has survived the take profit limit and has been added to the current genetic generation."
         print(message)
         send_text(message)
