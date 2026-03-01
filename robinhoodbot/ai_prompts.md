@@ -18,13 +18,14 @@ With script for running in vscode terminal.
 
 /> cd /home/theo/dev/RobinhoodBot/robinhoodbot && \
 LOG_FILE=/tmp/optimizer_run_1000.log ./run_optimizer.sh \
-  --num-stocks 570 \
+  --num-stocks 125 \
   --max-positions 10 \
   --generations 20 \
   --population 30 \
   --real-data \
   --resume \
-  --validate-real
+  --validate-real \
+  --optimize-filters
 
 /> give me the command to run the genetic optimizer with 50 stocks with max positions of 10 generations 20, population 30 --resume and --validate-real
 
