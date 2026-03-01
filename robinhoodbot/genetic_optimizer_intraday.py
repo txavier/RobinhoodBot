@@ -350,7 +350,8 @@ class IntradayGeneticOptimizer:
         seed: int = None,
         max_positions: int = 5,
         use_real_data: bool = False,
-        log_file: Optional[str] = None
+        log_file: Optional[str] = None,
+        train_test_split: float = 0.0
     ):
         self.symbols = symbols
         self.days = days
@@ -362,6 +363,7 @@ class IntradayGeneticOptimizer:
         self.use_real_data = use_real_data
         self.log_file = log_file
         self._log_fh = None
+        self.train_test_split = train_test_split  # 0.0 = disabled, 0.7 = 70% train / 30% test
         
         # Open log file if specified
         if self.log_file:
@@ -371,6 +373,15 @@ class IntradayGeneticOptimizer:
         self.real_data_cache: Optional[Dict] = None
         self.real_market_cache = None  # Legacy - kept for compatibility
         self.raw_market_index_data = None  # Raw SPY/DIA/QQQ OHLC for per-gene threshold computation
+        
+        # Train/test split caches (populated if train_test_split > 0)
+        self._full_real_data_cache: Optional[Dict] = None   # All dates (for test evaluation)
+        self._full_raw_market_index_data = None              # All dates (for test evaluation)
+        self._test_real_data_cache: Optional[Dict] = None    # Test-only dates
+        self._test_raw_market_index_data = None              # Test-only dates
+        self._train_dates: Optional[List] = None
+        self._test_dates: Optional[List] = None
+        self.test_set_metrics: Optional[Dict] = None         # Best gene's test-set performance
         
         # Track evolution history
         self.generation_history: List[Dict] = []
@@ -546,6 +557,119 @@ class IntradayGeneticOptimizer:
         
         return start_gen, population
     
+    def _split_data_by_dates(self):
+        """Split real data caches into train/test sets based on train_test_split ratio.
+        
+        Anti-overfitting: Evolution only sees train data. After optimization,
+        the best gene is re-evaluated on unseen test data to verify generalization.
+        """
+        if self.train_test_split <= 0 or self.train_test_split >= 1.0:
+            return
+        if not self.real_data_cache:
+            self._log("  ⚠️  Train/test split requires --real-data. Skipping split.")
+            self.train_test_split = 0.0
+            return
+        
+        # Collect all unique trading dates across all symbols
+        all_dates = set()
+        for df in self.real_data_cache.values():
+            all_dates.update(df['date'].unique())
+        all_dates = sorted(all_dates)
+        
+        if len(all_dates) < 10:
+            self._log(f"  ⚠️  Only {len(all_dates)} trading days — too few for train/test split. Disabling.")
+            self.train_test_split = 0.0
+            return
+        
+        # Split dates
+        split_idx = int(len(all_dates) * self.train_test_split)
+        split_idx = max(5, min(split_idx, len(all_dates) - 3))  # Ensure at least 3 test days
+        self._train_dates = all_dates[:split_idx]
+        self._test_dates = all_dates[split_idx:]
+        train_date_set = set(self._train_dates)
+        test_date_set = set(self._test_dates)
+        
+        self._log(f"\n🔀 TRAIN/TEST SPLIT: {self.train_test_split:.0%}")
+        self._log(f"   Train: {len(self._train_dates)} days ({self._train_dates[0]} → {self._train_dates[-1]})")
+        self._log(f"   Test:  {len(self._test_dates)} days ({self._test_dates[0]} → {self._test_dates[-1]})")
+        self._log(f"   Evolution fitness uses TRAIN data only. Test data is held out.")
+        
+        # Save full data for later test evaluation
+        self._full_real_data_cache = self.real_data_cache
+        self._full_raw_market_index_data = self.raw_market_index_data
+        
+        # Create train-only data cache (filter DataFrames to train dates)
+        train_data_cache = {}
+        for symbol, df in self.real_data_cache.items():
+            train_df = df[df['date'].isin(train_date_set)].copy()
+            if not train_df.empty:
+                train_data_cache[symbol] = train_df
+        
+        # Create test-only data cache
+        test_data_cache = {}
+        for symbol, df in self.real_data_cache.items():
+            test_df = df[df['date'].isin(test_date_set)].copy()
+            if not test_df.empty:
+                test_data_cache[symbol] = test_df
+        
+        # Create train-only raw market index data: {symbol: {date: {open, close}}}
+        train_raw_market = {}
+        for idx_sym, date_dict in self.raw_market_index_data.items():
+            train_raw_market[idx_sym] = {d: v for d, v in date_dict.items() if d in train_date_set}
+        
+        # Create test-only raw market index data
+        test_raw_market = {}
+        for idx_sym, date_dict in self.raw_market_index_data.items():
+            test_raw_market[idx_sym] = {d: v for d, v in date_dict.items() if d in test_date_set}
+        
+        # Store test caches
+        self._test_real_data_cache = test_data_cache
+        self._test_raw_market_index_data = test_raw_market
+        
+        # Replace active caches with train-only data (evolution will only see these)
+        self.real_data_cache = train_data_cache
+        self.raw_market_index_data = train_raw_market
+        
+        self._log(f"   Train symbols with data: {len(train_data_cache)}")
+        self._log(f"   Test symbols with data:  {len(test_data_cache)}")
+    
+    def evaluate_on_test_set(self, gene: IntradayTradingGene) -> Dict:
+        """Re-evaluate a gene on the held-out test data (unseen during evolution).
+        
+        Returns dict with test-set performance metrics.
+        """
+        if not self._test_real_data_cache or not self._test_raw_market_index_data:
+            return {}
+        
+        # Evaluate using the same impl but with test data
+        test_gene = copy.deepcopy(gene)
+        test_gene = _evaluate_gene_impl(
+            test_gene,
+            self.symbols,
+            self.days,  # days param is used for synthetic data sizing; real data uses actual dates
+            self.initial_capital,
+            dict(self.config.fitness_weights),
+            data_seed=None,
+            max_positions=self.max_positions,
+            use_real_data=True,
+            real_data_cache=self._test_real_data_cache,
+            raw_market_index_data=self._test_raw_market_index_data
+        )
+        
+        return {
+            'total_return_pct': test_gene.total_return_pct,
+            'win_rate': test_gene.win_rate,
+            'sharpe_ratio': test_gene.sharpe_ratio,
+            'max_drawdown_pct': test_gene.max_drawdown_pct,
+            'profit_factor': test_gene.profit_factor,
+            'total_trades': test_gene.total_trades,
+            'trades_per_day': test_gene.trades_per_day,
+            'avg_win': test_gene.avg_win,
+            'avg_loss': test_gene.avg_loss,
+            'fitness': test_gene.fitness,
+            'exit_reasons': test_gene.exit_reasons,
+        }
+
     def _setup_signal_handler(self):
         """Set up signal handlers to save checkpoint on interrupt."""
         self._original_sigint = signal.getsignal(signal.SIGINT)
@@ -1143,6 +1267,8 @@ class IntradayGeneticOptimizer:
         self._log(f"Workers: {num_workers} {'(auto)' if self.config.num_workers == 0 else ''}")
         data_source = "REAL (yfinance)" if self.use_real_data else "SYNTHETIC"
         self._log(f"Data Source: {data_source}")
+        if self.train_test_split > 0:
+            self._log(f"Train/Test Split: {self.train_test_split:.0%} train / {1 - self.train_test_split:.0%} test (anti-overfitting)")
         if self.seed:
             self._log(f"Random Seed: {self.seed}")
         if self.checkpoint_path:
@@ -1196,6 +1322,10 @@ class IntradayGeneticOptimizer:
                     raise ValueError("All symbols failed to download. Check internet connection and symbol names.")
             
             self._log(f"\n   ✓ Real data ready: {len(self.symbols)} symbols, {len(sample_market)} market days\n")
+        
+        # Apply train/test split if requested (must happen after data download)
+        if self.train_test_split > 0:
+            self._split_data_by_dates()
         
         # Set up signal handler for graceful shutdown
         if self.checkpoint_path:
@@ -1301,6 +1431,66 @@ class IntradayGeneticOptimizer:
             os.remove(self.checkpoint_path)
             self._log(f"  🧹 Checkpoint file removed (optimization complete)")
         
+        # Evaluate best gene on held-out test set (if train/test split was used)
+        if self.train_test_split > 0 and self.best_gene and self._test_real_data_cache:
+            self._log(f"\n{'='*70}")
+            self._log("TEST SET EVALUATION (unseen data)")
+            self._log(f"{'='*70}")
+            self._log(f"Evaluating best gene on {len(self._test_dates)} held-out test days...")
+            self._log(f"Test period: {self._test_dates[0]} → {self._test_dates[-1]}")
+            
+            self.test_set_metrics = self.evaluate_on_test_set(self.best_gene)
+            
+            self._log(f"\n  {'Metric':<22} {'Train':>10} {'Test':>10} {'Delta':>10}")
+            self._log(f"  {'-'*52}")
+            
+            train_return = self.best_gene.total_return_pct
+            test_return = self.test_set_metrics['total_return_pct']
+            self._log(f"  {'Return %':<22} {train_return:>+9.2f}% {test_return:>+9.2f}% {test_return - train_return:>+9.2f}%")
+            
+            train_wr = self.best_gene.win_rate
+            test_wr = self.test_set_metrics['win_rate']
+            self._log(f"  {'Win Rate %':<22} {train_wr:>9.1f}% {test_wr:>9.1f}% {test_wr - train_wr:>+9.1f}%")
+            
+            train_sharpe = self.best_gene.sharpe_ratio
+            test_sharpe = self.test_set_metrics['sharpe_ratio']
+            self._log(f"  {'Sharpe Ratio':<22} {train_sharpe:>10.2f} {test_sharpe:>10.2f} {test_sharpe - train_sharpe:>+10.2f}")
+            
+            train_dd = self.best_gene.max_drawdown_pct
+            test_dd = self.test_set_metrics['max_drawdown_pct']
+            self._log(f"  {'Max Drawdown %':<22} {train_dd:>9.2f}% {test_dd:>9.2f}% {test_dd - train_dd:>+9.2f}%")
+            
+            train_pf = self.best_gene.profit_factor
+            test_pf = self.test_set_metrics['profit_factor']
+            self._log(f"  {'Profit Factor':<22} {train_pf:>10.2f} {test_pf:>10.2f} {test_pf - train_pf:>+10.2f}")
+            
+            train_trades = self.best_gene.total_trades
+            test_trades = self.test_set_metrics['total_trades']
+            self._log(f"  {'Total Trades':<22} {train_trades:>10} {test_trades:>10} {test_trades - train_trades:>+10}")
+            
+            train_fit = self.best_gene.fitness
+            test_fit = self.test_set_metrics['fitness']
+            self._log(f"  {'Fitness':<22} {train_fit:>10.4f} {test_fit:>10.4f} {test_fit - train_fit:>+10.4f}")
+            
+            # Overfitting assessment
+            self._log(f"\n  📊 Overfitting Assessment:")
+            if test_return <= 0 and train_return > 0:
+                self._log(f"  ⚠️  OVERFIT: Train profitable but test negative. Strategy does not generalize.")
+            elif train_return > 0 and test_return > 0 and test_return < train_return * 0.3:
+                self._log(f"  ⚠️  LIKELY OVERFIT: Test return is <30% of train return ({test_return/train_return:.0%}).")
+            elif train_return > 0 and test_return > 0 and test_return < train_return * 0.5:
+                self._log(f"  ⚠️  MILD OVERFIT: Test return is {test_return/train_return:.0%} of train. Consider more generations or larger dataset.")
+            elif test_return >= train_return * 0.5 or (train_return <= 0 and test_return >= train_return):
+                self._log(f"  ✅ GOOD: Test performance is consistent with train ({test_return/train_return:.0%} retention)." if train_return > 0 else f"  ✅ Test performance consistent with train.")
+            
+            if abs(test_wr - train_wr) > 15:
+                self._log(f"  ⚠️  Win rate dropped {abs(test_wr - train_wr):.1f}pp on test set — strategy may be curve-fit.")
+            
+            if test_sharpe < 0 and train_sharpe > 1:
+                self._log(f"  ⚠️  Sharpe collapsed from {train_sharpe:.2f} to {test_sharpe:.2f} — strong overfitting signal.")
+            
+            self._log(f"{'='*70}")
+        
         self._log(f"\n{'='*70}")
         self._log("OPTIMIZATION COMPLETE")
         self._log(f"{'='*70}")
@@ -1324,6 +1514,11 @@ class IntradayGeneticOptimizer:
             'symbols': self.symbols,
             'days': self.days,
             'initial_capital': self.initial_capital,
+            'train_test_split': self.train_test_split if self.train_test_split > 0 else None,
+            'train_days': len(self._train_dates) if self._train_dates else None,
+            'test_days': len(self._test_dates) if self._test_dates else None,
+            'train_period': f"{self._train_dates[0]} → {self._train_dates[-1]}" if self._train_dates else None,
+            'test_period': f"{self._test_dates[0]} → {self._test_dates[-1]}" if self._test_dates else None,
             'config': {
                 'population_size': self.config.population_size,
                 'generations': self.config.generations,
@@ -1334,6 +1529,7 @@ class IntradayGeneticOptimizer:
             },
             'best_gene': self.best_gene.to_dict() if self.best_gene else None,
             'best_fitness': self.best_fitness,
+            'test_set_metrics': self.test_set_metrics if self.test_set_metrics else None,
             'generation_history': self.generation_history,
         }
         
@@ -1385,7 +1581,7 @@ class IntradayGeneticOptimizer:
             self._log(f"# use_dynamic_sma = {gene.use_dynamic_sma}")
             self._log(f"# use_slope_ordering = {gene.use_slope_ordering}")
         
-        self._log(f"\n# Performance Metrics:")
+        self._log(f"\n# Performance Metrics (TRAIN{' — evolution saw this data' if self.train_test_split > 0 else ''}):")
         self._log(f"# Total Return: {gene.total_return_pct:+.2f}%")
         self._log(f"# Win Rate: {gene.win_rate:.1f}%")
         self._log(f"# Sharpe Ratio: {gene.sharpe_ratio:.4f}")
@@ -1396,6 +1592,19 @@ class IntradayGeneticOptimizer:
         self._log(f"# Avg Win: ${gene.avg_win:.2f}")
         self._log(f"# Avg Loss: ${gene.avg_loss:.2f}")
         self._log(f"# Fitness Score: {gene.fitness:.4f}")
+        
+        # Show test-set metrics if available
+        if self.test_set_metrics:
+            tm = self.test_set_metrics
+            self._log(f"\n# Performance Metrics (TEST — unseen holdout data):")
+            self._log(f"# Total Return: {tm['total_return_pct']:+.2f}%")
+            self._log(f"# Win Rate: {tm['win_rate']:.1f}%")
+            self._log(f"# Sharpe Ratio: {tm['sharpe_ratio']:.4f}")
+            self._log(f"# Max Drawdown: {tm['max_drawdown_pct']:.2f}%")
+            self._log(f"# Profit Factor: {tm['profit_factor']:.2f}")
+            self._log(f"# Total Trades: {tm['total_trades']}")
+            self._log(f"# Trades/Day: {tm['trades_per_day']:.2f}")
+            self._log(f"# Fitness Score: {tm['fitness']:.4f}")
         
         # Enhancement #10: Display exit reason breakdown
         if gene.exit_reasons:
@@ -1684,6 +1893,12 @@ def main():
         '--log-file', type=str, default=None,
         help='Write all output to this log file in addition to stdout (unbuffered, survives broken pipes)'
     )
+    parser.add_argument(
+        '--train-test-split', type=float, default=0.0,
+        help='Train/test split ratio for overfitting prevention (default: 0.0 = disabled). '
+             'E.g., 0.7 = train on first 70%% of days, evaluate best gene on remaining 30%% as holdout. '
+             'Requires --real-data. Recommended: 0.7'
+    )
     
     args = parser.parse_args()
     
@@ -1725,6 +1940,14 @@ def main():
         print("❌ --real-data requires yfinance. Install with: pip install yfinance")
         sys.exit(1)
     
+    # Validate train-test-split
+    if args.train_test_split > 0 and not args.real_data:
+        print("⚠️  --train-test-split requires --real-data. Disabling split.")
+        args.train_test_split = 0.0
+    if args.train_test_split > 0 and (args.train_test_split < 0.5 or args.train_test_split > 0.95):
+        print(f"⚠️  --train-test-split should be between 0.5 and 0.95 (got {args.train_test_split}). Using 0.7.")
+        args.train_test_split = 0.7
+    
     optimizer = IntradayGeneticOptimizer(
         symbols=symbols,
         days=args.days,
@@ -1734,7 +1957,8 @@ def main():
         seed=args.seed,
         max_positions=args.max_positions,
         use_real_data=args.real_data,
-        log_file=args.log_file
+        log_file=args.log_file,
+        train_test_split=args.train_test_split
     )
     
     # Set up checkpoint/resume

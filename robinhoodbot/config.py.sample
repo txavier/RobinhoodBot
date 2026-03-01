@@ -112,5 +112,11 @@ use_momentum_check=True
 # momentum_lookback_bars: Number of 5-minute bars to compare for momentum direction (e.g., 8 = 40 min ago)
 momentum_lookback_bars=11
 
+# Slope ordering settings
+# slope_threshold: Minimum price slope (from linear regression on 5-min bars) for a stock to be considered for buying.
+# Stocks with slope below this value are filtered out by order_symbols_by_slope().
+# Higher = more selective (fewer buys), Lower = more permissive.
+slope_threshold=0.0005
+
 # Version number for tracking
 version="0.9.25"

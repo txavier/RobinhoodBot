@@ -1652,7 +1652,7 @@ def order_symbols_by_slope(portfolio_symbols):
         for row in sorted_matrix:
             # Only return rows that have a positive slope. We dont need to invest 
             # in stocks that have a negative slope in the current trading day.
-            if row[1] > 0.0008:
+            if row[1] > slope_threshold:
                 result_matrix.append(row)
 
         just_first_column = [row[0] for row in result_matrix]

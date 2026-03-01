@@ -25,7 +25,9 @@ LOG_FILE=/tmp/optimizer_run_1000.log ./run_optimizer.sh \
   --real-data \
   --resume \
   --validate-real \
-  --optimize-filters
+  --train-test-split 0.7 \
+  --optimize-filters \
+  
 
 /> give me the command to run the genetic optimizer with 50 stocks with max positions of 10 generations 20, population 30 --resume and --validate-real
 
@@ -39,3 +41,11 @@ Tuning the optimizer.
 /> what are ranges for the values evaluated inthe genetic optimizer?
 /> Based on the optimizer best values which ranges should be adjusted in order to theoretically give a possibility for better results?
 /> Which parameters converged and which did not?
+/> Besides generations going to 30 generations are there any other flags that should be modified for better results?
+
+  --num-stocks 125 \
+  --max-positions 10 \
+  --generations 20 \
+  --population 30 \
+  --real-data \why 
+/> how to prevent overfitting?
