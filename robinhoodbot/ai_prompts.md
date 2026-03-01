@@ -20,8 +20,8 @@ With script for running in vscode terminal.
 LOG_FILE=/tmp/optimizer_run_1000.log ./run_optimizer.sh \
   --num-stocks 125 \
   --max-positions 10 \
-  --generations 20 \
-  --population 30 \
+  --generations 30 \
+  --population 40 \
   --real-data \
   --resume \
   --validate-real \
@@ -38,3 +38,4 @@ LOG_FILE=/tmp/optimizer_run_1000.log ./run_optimizer.sh \
 Tuning the optimizer.
 /> what are ranges for the values evaluated inthe genetic optimizer?
 /> Based on the optimizer best values which ranges should be adjusted in order to theoretically give a possibility for better results?
+/> Which parameters converged and which did not?
