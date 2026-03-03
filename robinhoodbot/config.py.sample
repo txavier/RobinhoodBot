@@ -115,10 +115,21 @@ use_momentum_check=True
 momentum_lookback_bars=11
 
 # Slope ordering settings
+# use_slope_ordering: When True, stocks are sorted by price slope and only those above slope_threshold are bought.
+# When False, slope is not used to filter or order buy candidates.
+use_slope_ordering=True
 # slope_threshold: Minimum price slope (from linear regression on 5-min bars) for a stock to be considered for buying.
 # Stocks with slope below this value are filtered out by order_symbols_by_slope().
 # Higher = more selective (fewer buys), Lower = more permissive.
 slope_threshold=0.0001
+
+# Intraday filter toggles
+# use_eod_filter: When True, no new buys after 1:30pm ET (end-of-day filter)
+use_eod_filter=True
+# use_profit_before_eod: When True, sell profitable positions after 1:30pm ET before market close
+use_profit_before_eod=True
+# use_price_5hr_check: When True, only buy if current price > price 5 hours ago
+use_price_5hr_check=True
 
 # Version number for tracking
 version="0.9.26"

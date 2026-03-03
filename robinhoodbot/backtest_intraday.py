@@ -49,7 +49,9 @@ try:
         golden_cross_buy_days, price_cap, use_price_cap,
         min_volume, min_market_cap, purchase_limit_percentage,
         use_purchase_limit_percentage, investing, version,
-        purchase_limit_mode
+        purchase_limit_mode,
+        use_eod_filter, use_profit_before_eod, use_price_5hr_check,
+        use_slope_ordering
     )
 except ImportError:
     stop_loss_percent = 5
@@ -65,6 +67,10 @@ except ImportError:
     investing = 10000
     version = "backtest"
     purchase_limit_mode = 1
+    use_eod_filter = True
+    use_profit_before_eod = True
+    use_price_5hr_check = True
+    use_slope_ordering = True
 
 
 # US Stock Market Holidays (fixed dates and floating holidays)
