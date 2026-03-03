@@ -919,6 +919,7 @@ def buy_holdings(potential_buys, cash, equity, holdings_data_length, buy_reasons
     cash = float(cash)
     equity = float(equity)
     portfolio_value = equity - cash
+    currently_invested = portfolio_value  # Track total invested value across all buys this cycle
     ideal_position_size = (safe_division(portfolio_value, holdings_data_length)+cash/len(potential_buys))/2
     prices = rr.get_latest_price(potential_buys)
     for i in range(0, len(potential_buys)):
@@ -954,8 +955,9 @@ def buy_holdings(potential_buys, cash, equity, holdings_data_length, buy_reasons
                     ideal_position_size = (safe_division(portfolio_value, holdings_data_length)+cash/(len(potential_buys)-1))/2
                 continue
 
-        # Limit the amount of shares if the purchase price is above the limit set in the config file.
-        num_shares = purchase_limiter(num_shares, stock_price, equity)
+        # Limit the amount of shares so total invested stays within purchase_limit_percentage of equity.
+        # If budget is exceeded, allows 1 share as exception for good buy signals.
+        num_shares = purchase_limiter(num_shares, stock_price, equity, currently_invested)
 
         print("####### Buying " + str(num_shares) +
                 " shares of " + potential_buys[i] + " at " + str(stock_price) + " costing ${:.2f}".format(stock_price * num_shares) +  " with ${:.2f}".format(cash) + " in cash. #######")
@@ -985,17 +987,60 @@ def buy_holdings(potential_buys, cash, equity, holdings_data_length, buy_reasons
                     "cash_available": cash,
                     "reason": buy_reasons.get(potential_buys[i]) if buy_reasons else None
                 })
+        # Track the investment for the budget limiter (even in debug mode, track the intent)
+        currently_invested += num_shares * stock_price
+        cash -= num_shares * stock_price
         send_text(message)
 
-def purchase_limiter(num_shares, stock_price, equity):
+def purchase_limiter(num_shares, stock_price, equity, currently_invested):
+    """Limit purchases based on purchase_limit_percentage.
+    
+    Three modes controlled by purchase_limit_mode:
+      0 (legacy):  Per-stock cap using flawed formula (limit = equity / pct).
+      1 (total):   purchase_limit_percentage caps TOTAL invested across all stocks.
+                   1-share exception when budget exceeded.
+      2 (per-stock pct): Each stock purchase capped at equity * (pct / 100).
+    """
     result = num_shares
     if use_purchase_limit_percentage:
-        purchase = num_shares * stock_price
-        limit = equity/purchase_limit_percentage
+        if purchase_limit_mode == 1:
+            # Mode 1: Total investment cap across all positions
+            investment_limit = equity * (purchase_limit_percentage / 100)
+            remaining_budget = investment_limit - currently_invested
+            purchase = num_shares * stock_price
 
-        if purchase > limit:
-            result = int(limit/stock_price)
-            print("Purchase limited: purchase was " + str(num_shares) + " shares at " + str(stock_price) + " coming to " + str((num_shares * stock_price)) + ". Now the purchase is " + str(result) + " shares coming to " + str((result * stock_price))) 
+            if remaining_budget <= 0:
+                # Already at or over the investment limit — allow exactly 1 share as exception
+                result = 1
+                print(f"Purchase limited (budget exhausted): {currently_invested:.2f}/{investment_limit:.2f} invested "
+                      f"({currently_invested/equity*100:.1f}% of equity). "
+                      f"Allowing 1 share of {stock_price:.2f} as exception.")
+            elif purchase > remaining_budget:
+                # Would exceed limit — buy as many as budget allows, minimum 1
+                result = max(1, int(remaining_budget / stock_price))
+                print(f"Purchase limited: wanted {num_shares} shares at {stock_price} "
+                      f"(${purchase:.2f}) but only ${remaining_budget:.2f} of "
+                      f"${investment_limit:.2f} investment budget remaining. "
+                      f"Now buying {result} shares (${result * stock_price:.2f})")
+        elif purchase_limit_mode == 2:
+            # Mode 2: Per-stock percentage cap (correct percentage math)
+            purchase = num_shares * stock_price
+            limit = equity * (purchase_limit_percentage / 100)
+
+            if purchase > limit:
+                result = int(limit / stock_price)
+                print(f"Purchase limited: purchase was {num_shares} shares at {stock_price} "
+                      f"coming to ${purchase:.2f}. Per-stock limit is ${limit:.2f} "
+                      f"({purchase_limit_percentage}% of equity). "
+                      f"Now buying {result} shares (${result * stock_price:.2f})")
+        else:
+            # Mode 0 (legacy): Per-stock cap using flawed formula
+            purchase = num_shares * stock_price
+            limit = equity / purchase_limit_percentage
+
+            if purchase > limit:
+                result = int(limit / stock_price)
+                print("Purchase limited: purchase was " + str(num_shares) + " shares at " + str(stock_price) + " coming to " + str((num_shares * stock_price)) + ". Now the purchase is " + str(result) + " shares coming to " + str((result * stock_price)))
 
     return result
 

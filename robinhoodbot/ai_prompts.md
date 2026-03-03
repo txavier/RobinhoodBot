@@ -25,8 +25,9 @@ LOG_FILE=/tmp/optimizer_run_1000.log ./run_optimizer.sh \
   --real-data \
   --resume \
   --validate-real \
+  --days 86 \
   --train-test-split 0.7 \
-  --optimize-filters \
+  --optimize-filters 
   
 
 /> give me the command to run the genetic optimizer with 50 stocks with max positions of 10 generations 20, population 30 --resume and --validate-real

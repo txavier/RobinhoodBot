@@ -92,8 +92,8 @@ class IntradayTradingGene:
     stop_loss_pct: float = 5.0   # Range: 1-15%
     take_profit_pct: float = 0.7 # Range: 0.3-3.0%
     
-    # Position sizing (as percentage of portfolio)
-    position_size_pct: float = 20.0  # Range: 5-30%
+    # Position sizing (total investment cap as % of equity; 1-share exception beyond cap)
+    position_size_pct: float = 20.0  # Range: 10-50%
     
     # Main.py specific parameters
     slope_threshold: float = 0.0008  # Range: 0.0001-0.002 (from order_symbols_by_slope)
@@ -111,6 +111,7 @@ class IntradayTradingGene:
     use_price_5hr_check: bool = True
     use_dynamic_sma: bool = True
     use_slope_ordering: bool = True
+    use_total_investment_cap: int = 1  # 0=legacy, 1=total cap, 2=per-stock pct
     
     # Fitness score (set after evaluation)
     fitness: float = 0.0
@@ -170,7 +171,7 @@ class IntradayGeneticConfig:
         'long_sma_take_profit': (2, 20),   # Hours - aggressive SMA after take profit (lower expanded from 5 - best hit 5/5)
         'stop_loss_pct': (0.5, 15.0),  # (lower expanded from 1.0 - best hit 2.1/1.0)
         'take_profit_pct': (0.3, 3.0), # Tighter range for day trading
-        'position_size_pct': (5.0, 30.0),
+        'position_size_pct': (10.0, 50.0),  # Total investment cap (% of equity)
         'slope_threshold': (0.0001, 0.002),
         'uptrend_threshold_pct': (0.0, 0.5),
         'major_downtrend_threshold_pct': (0.3, 3.0),
@@ -268,6 +269,7 @@ def _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, d
         initial_capital=initial_capital,
         max_positions=max_positions,
         max_position_pct=gene.position_size_pct,
+        use_total_investment_cap=gene.use_total_investment_cap,
         strategy=strategy
     )
     
@@ -731,6 +733,7 @@ class IntradayGeneticOptimizer:
             gene.use_price_5hr_check = random.choice([True, False])
             gene.use_dynamic_sma = random.choice([True, False])
             gene.use_slope_ordering = random.choice([True, False])
+            gene.use_total_investment_cap = random.choice([0, 1, 2])
         
         return gene
     
@@ -830,6 +833,7 @@ class IntradayGeneticOptimizer:
             initial_capital=self.initial_capital,
             max_positions=5,
             max_position_pct=gene.position_size_pct,
+            use_total_investment_cap=gene.use_total_investment_cap,
             strategy=strategy
         )
         
@@ -1059,7 +1063,8 @@ class IntradayGeneticOptimizer:
         # Filter toggles (if optimizing)
         if self.config.optimize_filters:
             filter_params = ['use_market_filter', 'use_eod_filter', 'use_profit_before_eod',
-                            'use_price_5hr_check', 'use_dynamic_sma', 'use_slope_ordering']
+                            'use_price_5hr_check', 'use_dynamic_sma', 'use_slope_ordering',
+                            'use_total_investment_cap']
             for param in filter_params:
                 if random.random() < 0.5:
                     setattr(child1, param, getattr(parent1, param))
@@ -1183,6 +1188,8 @@ class IntradayGeneticOptimizer:
                 mutated.use_dynamic_sma = not mutated.use_dynamic_sma
             if random.random() < self.config.mutation_rate:
                 mutated.use_slope_ordering = not mutated.use_slope_ordering
+            if random.random() < self.config.mutation_rate:
+                mutated.use_total_investment_cap = random.choice([m for m in [0, 1, 2] if m != mutated.use_total_investment_cap])
         
         # Ensure long_sma > short_sma
         if mutated.long_sma <= mutated.short_sma:
@@ -1563,6 +1570,7 @@ class IntradayGeneticOptimizer:
         self._log(f"stop_loss_percent = {gene.stop_loss_pct}")
         self._log(f"take_profit_percent = {gene.take_profit_pct}")
         self._log(f"\n# Position Sizing")
+        self._log(f"purchase_limit_mode = {gene.use_total_investment_cap}  # 0=legacy, 1=total cap, 2=per-stock pct")
         self._log(f"purchase_limit_percentage = {gene.position_size_pct}")
         self._log(f"\n# Main.py Specific Settings")
         self._log(f"# slope_threshold = {gene.slope_threshold}  # For order_symbols_by_slope")
@@ -1580,6 +1588,7 @@ class IntradayGeneticOptimizer:
             self._log(f"# use_price_5hr_check = {gene.use_price_5hr_check}")
             self._log(f"# use_dynamic_sma = {gene.use_dynamic_sma}")
             self._log(f"# use_slope_ordering = {gene.use_slope_ordering}")
+            self._log(f"# purchase_limit_mode = {gene.use_total_investment_cap}  # 0=legacy, 1=total cap, 2=per-stock pct")
         
         self._log(f"\n# Performance Metrics (TRAIN{' — evolution saw this data' if self.train_test_split > 0 else ''}):")
         self._log(f"# Total Return: {gene.total_return_pct:+.2f}%")
