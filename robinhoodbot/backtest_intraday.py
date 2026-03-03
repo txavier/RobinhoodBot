@@ -48,7 +48,8 @@ try:
         stop_loss_percent, take_profit_percent, use_stop_loss,
         golden_cross_buy_days, price_cap, use_price_cap,
         min_volume, min_market_cap, purchase_limit_percentage,
-        use_purchase_limit_percentage, investing, version
+        use_purchase_limit_percentage, investing, version,
+        purchase_limit_mode
     )
 except ImportError:
     stop_loss_percent = 5
@@ -63,6 +64,7 @@ except ImportError:
     use_purchase_limit_percentage = True
     investing = 10000
     version = "backtest"
+    purchase_limit_mode = 1
 
 
 # US Stock Market Holidays (fixed dates and floating holidays)
@@ -1234,13 +1236,15 @@ class IntradayBacktester:
         self,
         initial_capital: float = 10000.0,
         max_positions: int = 5,
-        max_position_pct: float = 20.0,  # Max % of portfolio per position
+        max_position_pct: float = 20.0,  # purchase_limit_percentage
+        use_total_investment_cap: int = purchase_limit_mode,  # 0=legacy flawed, 1=total cap, 2=per-stock pct
         strategy: Optional[IntradayTradingStrategy] = None,
         day_trade_limit: int = 3  # Pattern day trader limit
     ):
         self.initial_capital = initial_capital
         self.max_positions = max_positions
         self.max_position_pct = max_position_pct
+        self.use_total_investment_cap = use_total_investment_cap
         self.strategy = strategy or IntradayTradingStrategy()
         self.day_trade_limit = day_trade_limit
         
@@ -1287,15 +1291,49 @@ class IntradayBacktester:
         return self.cash + positions_value
     
     def calculate_position_size(self, price: float) -> int:
-        """Calculate shares to buy based on position sizing"""
-        portfolio_value = self.cash + sum(p.total_cost for p in self.positions.values())
-        max_position_value = portfolio_value * (self.max_position_pct / 100)
+        """Calculate shares to buy based on position sizing.
+        
+        Three modes controlled by use_total_investment_cap:
+          0 (legacy):  Per-stock cap using flawed formula (limit = equity / pct).
+          1 (total):   max_position_pct caps TOTAL invested across all positions.
+                       1-share exception when budget exceeded.
+          2 (per-stock pct): Each position capped at equity * (pct / 100).
+        """
+        equity = self.cash + sum(p.total_cost for p in self.positions.values())
+        currently_invested = sum(p.total_cost for p in self.positions.values())
         max_from_cash = self.cash * 0.95  # Keep 5% reserve
         
-        position_value = min(max_position_value, max_from_cash)
-        shares = int(position_value / price)
-        
-        return max(0, shares)
+        if self.use_total_investment_cap == 1:
+            # Mode 1: Total investment cap across all positions
+            investment_limit = equity * (self.max_position_pct / 100)
+            remaining_budget = investment_limit - currently_invested
+            
+            if remaining_budget <= 0:
+                # Budget exhausted — allow exactly 1 share as exception
+                if price <= max_from_cash:
+                    return 1
+                return 0
+            
+            spendable = min(remaining_budget, max_from_cash)
+            shares = int(spendable / price)
+            
+            # 1-share exception if budget too small for a full share
+            if shares <= 0 and price <= max_from_cash:
+                return 1
+            
+            return max(0, shares)
+        elif self.use_total_investment_cap == 2:
+            # Mode 2: Per-stock percentage cap (correct percentage math)
+            max_position_value = equity * (self.max_position_pct / 100)
+            position_value = min(max_position_value, max_from_cash)
+            shares = int(position_value / price)
+            return max(0, shares)
+        else:
+            # Mode 0 (legacy): Per-stock cap using flawed formula
+            limit = equity / self.max_position_pct
+            max_from_budget = min(limit, max_from_cash)
+            shares = int(max_from_budget / price)
+            return max(0, shares)
     
     def execute_buy(
         self,

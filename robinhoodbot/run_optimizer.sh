@@ -41,10 +41,13 @@ echo "  Started:     $(date)"
 echo "  Arguments:   $@"
 echo "============================================="
 
-# Activate venv if it exists
-if [ -f "/home/theo/dev/.venv/bin/activate" ]; then
-    source /home/theo/dev/.venv/bin/activate
-fi
+# Activate venv if it exists (check common locations)
+for venv_path in "$SCRIPT_DIR/../.venv" "$SCRIPT_DIR/.venv" "$HOME/dev/.venv"; do
+    if [ -f "$venv_path/bin/activate" ]; then
+        source "$venv_path/bin/activate"
+        break
+    fi
+done
 
 # Run with setsid (new session = immune to terminal signals)
 # PYTHONUNBUFFERED=1 ensures real-time stdout

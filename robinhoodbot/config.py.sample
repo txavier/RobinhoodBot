@@ -48,9 +48,11 @@ min_volume=1000000
 min_market_cap=400000
 # Reset the watchlist every week.  Useful for keeping the number of api requests low.
 reset_watchlist=True
-# The limit of purchase per stock as represented by the percentage of the equity.
-# i.e. If you have invested $7,000 and the purchase_limit_percentage is 15 percent
-# then no one stock purchase can exceed $1,050.
+# Purchase limit mode (controls how purchase_limit_percentage is applied)
+#   0 = Legacy: per-stock cap using flawed formula (limit = equity / pct)
+#   1 = Total investment cap: pct caps TOTAL invested across all stocks, 1-share exception
+#   2 = Per-stock percentage: each stock purchase capped at equity * (pct / 100)
+purchase_limit_mode=1
 use_purchase_limit_percentage=True
 purchase_limit_percentage=29.5
 # The below line would be the big "Investing" number on the home view of Robinhood 
