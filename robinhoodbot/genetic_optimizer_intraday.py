@@ -603,14 +603,14 @@ class IntradayGeneticOptimizer:
         # Create train-only data cache (filter DataFrames to train dates)
         train_data_cache = {}
         for symbol, df in self.real_data_cache.items():
-            train_df = df[df['date'].isin(train_date_set)].copy()
+            train_df = df[df['date'].isin(train_date_set)].copy().reset_index(drop=True)
             if not train_df.empty:
                 train_data_cache[symbol] = train_df
         
         # Create test-only data cache
         test_data_cache = {}
         for symbol, df in self.real_data_cache.items():
-            test_df = df[df['date'].isin(test_date_set)].copy()
+            test_df = df[df['date'].isin(test_date_set)].copy().reset_index(drop=True)
             if not test_df.empty:
                 test_data_cache[symbol] = test_df
         
