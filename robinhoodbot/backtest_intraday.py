@@ -66,7 +66,7 @@ except ImportError:
     use_purchase_limit_percentage = True
     investing = 10000
     version = "backtest"
-    purchase_limit_mode = 1
+    purchase_limit_mode = 2
     use_eod_filter = True
     use_profit_before_eod = True
     use_price_5hr_check = True
