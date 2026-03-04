@@ -93,7 +93,7 @@ class IntradayTradingGene:
     take_profit_pct: float = 0.7 # Range: 0.3-3.0%
     
     # Position sizing (per-stock % of equity, mode 2)
-    position_size_pct: float = 2.0  # Range: 1-3%
+    position_size_pct: float = 5.0  # Range: 1-10%
     
     # Main.py specific parameters
     slope_threshold: float = 0.0008  # Range: 0.0001-0.002 (from order_symbols_by_slope)
@@ -171,7 +171,7 @@ class IntradayGeneticConfig:
         'long_sma_take_profit': (2, 20),   # Hours - aggressive SMA after take profit (lower expanded from 5 - best hit 5/5)
         'stop_loss_pct': (0.5, 15.0),  # (lower expanded from 1.0 - best hit 2.1/1.0)
         'take_profit_pct': (0.3, 3.0), # Tighter range for day trading
-        'position_size_pct': (1.0, 3.0),  # Per-stock % of equity (mode 2)
+        'position_size_pct': (1.0, 10.0),  # Per-stock % of equity (mode 2)
         'slope_threshold': (0.0001, 0.002),
         'uptrend_threshold_pct': (0.0, 0.5),
         'major_downtrend_threshold_pct': (0.3, 3.0),
@@ -747,7 +747,7 @@ class IntradayGeneticOptimizer:
             IntradayTradingGene(
                 short_sma=23, long_sma=100, golden_cross_buy_days=4,
                 short_sma_downtrend=45, short_sma_take_profit=14, long_sma_take_profit=5,
-                use_stop_loss=True, stop_loss_pct=7.9, take_profit_pct=1.18, position_size_pct=2.0,
+                use_stop_loss=True, stop_loss_pct=7.9, take_profit_pct=1.18, position_size_pct=5.0,
                 slope_threshold=0.0019,
                 uptrend_threshold_pct=0.1, major_downtrend_threshold_pct=1.0,
                 use_momentum_check=True, momentum_lookback_bars=12
@@ -756,7 +756,7 @@ class IntradayGeneticOptimizer:
             IntradayTradingGene(
                 short_sma=10, long_sma=30, golden_cross_buy_days=2,
                 short_sma_downtrend=8, short_sma_take_profit=3, long_sma_take_profit=5,
-                use_stop_loss=True, stop_loss_pct=3.0, take_profit_pct=1.0, position_size_pct=2.0,
+                use_stop_loss=True, stop_loss_pct=3.0, take_profit_pct=1.0, position_size_pct=5.0,
                 slope_threshold=0.001,
                 uptrend_threshold_pct=0.05, major_downtrend_threshold_pct=0.5,
                 use_momentum_check=True, momentum_lookback_bars=6
@@ -765,7 +765,7 @@ class IntradayGeneticOptimizer:
             IntradayTradingGene(
                 short_sma=30, long_sma=70, golden_cross_buy_days=5,
                 short_sma_downtrend=20, short_sma_take_profit=8, long_sma_take_profit=12,
-                use_stop_loss=True, stop_loss_pct=7.0, take_profit_pct=0.5, position_size_pct=2.5,
+                use_stop_loss=True, stop_loss_pct=7.0, take_profit_pct=0.5, position_size_pct=8.0,
                 slope_threshold=0.0005,
                 uptrend_threshold_pct=0.2, major_downtrend_threshold_pct=1.5,
                 use_momentum_check=True, momentum_lookback_bars=18
@@ -774,7 +774,7 @@ class IntradayGeneticOptimizer:
             IntradayTradingGene(
                 short_sma=5, long_sma=15, golden_cross_buy_days=1,
                 short_sma_downtrend=5, short_sma_take_profit=3, long_sma_take_profit=5,
-                use_stop_loss=True, stop_loss_pct=2.0, take_profit_pct=0.5, position_size_pct=1.5,
+                use_stop_loss=True, stop_loss_pct=2.0, take_profit_pct=0.5, position_size_pct=3.0,
                 slope_threshold=0.0015,
                 uptrend_threshold_pct=0.0, major_downtrend_threshold_pct=2.0,
                 use_momentum_check=False, momentum_lookback_bars=6
@@ -1141,7 +1141,7 @@ class IntradayGeneticOptimizer:
                                                    mutated.take_profit_pct + delta)), 2)
         
         if random.random() < self.config.mutation_rate:
-            delta = random.uniform(-0.5, 0.5)
+            delta = random.uniform(-2.0, 2.0)
             mutated.position_size_pct = round(max(ranges['position_size_pct'][0],
                                                  min(ranges['position_size_pct'][1],
                                                      mutated.position_size_pct + delta)), 1)
