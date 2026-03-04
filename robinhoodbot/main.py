@@ -1991,7 +1991,7 @@ def scan_stocks():
                 if(cross[0] == 1):
                         # If the current price is greater than the price at cross,
                         # meaning that the price is still rising then buy.
-                    if(float(cross[2]) > float(cross[1])):
+                    if(not use_price_cross_check or float(cross[2]) > float(cross[1])):
                         # If use_price_5hr_check is enabled, verify the current price is greater
                         # than the price 5 hours ago, meaning we have less of a chance of
                         # the stock showing a death cross soon.

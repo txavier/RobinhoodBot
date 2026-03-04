@@ -109,6 +109,7 @@ class IntradayTradingGene:
     use_eod_filter: bool = True
     use_profit_before_eod: bool = True
     use_price_5hr_check: bool = True
+    use_price_cross_check: bool = True
     use_dynamic_sma: bool = True
     use_slope_ordering: bool = True
     use_total_investment_cap: int = 2  # Fixed to mode 2 (per-stock pct)
@@ -245,6 +246,7 @@ def _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, d
         use_eod_filter=gene.use_eod_filter,
         use_profit_before_eod=gene.use_profit_before_eod,
         use_price_5hr_check=gene.use_price_5hr_check,
+        use_price_cross_check=gene.use_price_cross_check,
         use_dynamic_sma=gene.use_dynamic_sma,
         use_slope_ordering=gene.use_slope_ordering,
         slope_threshold=gene.slope_threshold,
@@ -731,6 +733,7 @@ class IntradayGeneticOptimizer:
             gene.use_eod_filter = random.choice([True, False])
             gene.use_profit_before_eod = random.choice([True, False])
             gene.use_price_5hr_check = random.choice([True, False])
+            gene.use_price_cross_check = random.choice([True, False])
             gene.use_dynamic_sma = random.choice([True, False])
             gene.use_slope_ordering = random.choice([True, False])
             gene.use_total_investment_cap = 2  # Fixed to mode 2
@@ -809,6 +812,7 @@ class IntradayGeneticOptimizer:
             use_eod_filter=gene.use_eod_filter,
             use_profit_before_eod=gene.use_profit_before_eod,
             use_price_5hr_check=gene.use_price_5hr_check,
+            use_price_cross_check=gene.use_price_cross_check,
             use_dynamic_sma=gene.use_dynamic_sma,
             use_slope_ordering=gene.use_slope_ordering,
             slope_threshold=gene.slope_threshold,
@@ -1063,7 +1067,7 @@ class IntradayGeneticOptimizer:
         # Filter toggles (if optimizing)
         if self.config.optimize_filters:
             filter_params = ['use_market_filter', 'use_eod_filter', 'use_profit_before_eod',
-                            'use_price_5hr_check', 'use_dynamic_sma', 'use_slope_ordering',
+                            'use_price_5hr_check', 'use_price_cross_check', 'use_dynamic_sma', 'use_slope_ordering',
                             'use_total_investment_cap']
             for param in filter_params:
                 if random.random() < 0.5:
@@ -1184,6 +1188,8 @@ class IntradayGeneticOptimizer:
                 mutated.use_profit_before_eod = not mutated.use_profit_before_eod
             if random.random() < self.config.mutation_rate:
                 mutated.use_price_5hr_check = not mutated.use_price_5hr_check
+            if random.random() < self.config.mutation_rate:
+                mutated.use_price_cross_check = not mutated.use_price_cross_check
             if random.random() < self.config.mutation_rate:
                 mutated.use_dynamic_sma = not mutated.use_dynamic_sma
             if random.random() < self.config.mutation_rate:
@@ -1586,6 +1592,7 @@ class IntradayGeneticOptimizer:
             self._log(f"# use_eod_filter = {gene.use_eod_filter}")
             self._log(f"# use_profit_before_eod = {gene.use_profit_before_eod}")
             self._log(f"# use_price_5hr_check = {gene.use_price_5hr_check}")
+            self._log(f"# use_price_cross_check = {gene.use_price_cross_check}")
             self._log(f"# use_dynamic_sma = {gene.use_dynamic_sma}")
             self._log(f"# use_slope_ordering = {gene.use_slope_ordering}")
             self._log(f"# purchase_limit_mode = {gene.use_total_investment_cap}  # 0=legacy, 1=total cap, 2=per-stock pct")

@@ -130,6 +130,8 @@ use_eod_filter=False
 use_profit_before_eod=True
 # use_price_5hr_check: When True, only buy if current price > price 5 hours ago
 use_price_5hr_check=False
+# use_price_cross_check: When True, only buy if current price > price at golden cross formation
+use_price_cross_check=True
 
 # Version number for tracking
 version="0.9.27"

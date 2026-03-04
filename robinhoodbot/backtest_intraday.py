@@ -51,7 +51,7 @@ try:
         use_purchase_limit_percentage, investing, version,
         purchase_limit_mode,
         use_eod_filter, use_profit_before_eod, use_price_5hr_check,
-        use_slope_ordering
+        use_slope_ordering, use_price_cross_check
     )
 except ImportError:
     stop_loss_percent = 5
@@ -71,6 +71,7 @@ except ImportError:
     use_profit_before_eod = True
     use_price_5hr_check = True
     use_slope_ordering = True
+    use_price_cross_check = True
 
 
 # US Stock Market Holidays (fixed dates and floating holidays)
@@ -844,6 +845,7 @@ class IntradayTradingStrategy:
         use_eod_filter: bool = True,  # No buying after 1:30pm
         use_profit_before_eod: bool = True,  # Sell profitable positions after 1:30pm
         use_price_5hr_check: bool = True,  # Price must be > 5hr ago
+        use_price_cross_check: bool = True,  # Price must be > price at golden cross
         use_dynamic_sma: bool = True,  # Adjust SMA based on conditions
         use_slope_ordering: bool = True,  # Prioritize by price slope
         use_price_cap: bool = True,  # Max price filter
@@ -873,6 +875,7 @@ class IntradayTradingStrategy:
         self.use_eod_filter = use_eod_filter
         self.use_profit_before_eod = use_profit_before_eod
         self.use_price_5hr_check = use_price_5hr_check
+        self.use_price_cross_check = use_price_cross_check
         self.use_dynamic_sma = use_dynamic_sma
         self.use_slope_ordering = use_slope_ordering
         self.use_price_cap = use_price_cap
@@ -1122,7 +1125,7 @@ class IntradayTradingStrategy:
                         
                         # Only buy if price is still rising (current > cross price)
                         # Strict > matches main.py: float(cross[2]) > float(cross[1])
-                        if current_price > cross_price:
+                        if not self.use_price_cross_check or current_price > cross_price:
                             return True, cross_price, price_5hr_ago
             
             i -= 1
@@ -1474,6 +1477,7 @@ class IntradayBacktester:
             print(f"   EOD Filter (no buy after 1:30pm): {'ON' if self.strategy.use_eod_filter else 'OFF'}")
             print(f"   Profit Before EOD Sell: {'ON' if self.strategy.use_profit_before_eod else 'OFF'}")
             print(f"   Price > 5hr Ago Check: {'ON' if self.strategy.use_price_5hr_check else 'OFF'}")
+            print(f"   Price > Cross Price Check: {'ON' if self.strategy.use_price_cross_check else 'OFF'}")
             print(f"   Dynamic SMA: {'ON' if self.strategy.use_dynamic_sma else 'OFF'}")
             print(f"   Slope Ordering: {'ON' if self.strategy.use_slope_ordering else 'OFF'}")
             print(f"   Price Cap (${self.strategy.price_cap_value}): {'ON' if self.strategy.use_price_cap else 'OFF'}")
@@ -1804,6 +1808,7 @@ class IntradayBacktester:
             'eod_filter': self.strategy.use_eod_filter,
             'profit_before_eod': self.strategy.use_profit_before_eod,
             'price_5hr_check': self.strategy.use_price_5hr_check,
+            'price_cross_check': self.strategy.use_price_cross_check,
             'dynamic_sma': self.strategy.use_dynamic_sma,
             'slope_ordering': self.strategy.use_slope_ordering,
             'price_cap': self.strategy.use_price_cap
@@ -2137,6 +2142,7 @@ def main():
         use_eod_filter = False
         use_profit_before_eod = False
         use_price_5hr_check = False
+        use_price_cross_check = False
         use_dynamic_sma = False
         use_slope_ordering = False
         use_price_cap_filter = False
@@ -2145,6 +2151,7 @@ def main():
         use_eod_filter = not args.no_eod_filter
         use_profit_before_eod = not args.no_profit_before_eod
         use_price_5hr_check = not args.no_price_5hr_check
+        use_price_cross_check = True  # Always on unless simple_mode
         use_dynamic_sma = not args.no_dynamic_sma
         use_slope_ordering = not args.no_slope_ordering
         use_price_cap_filter = not args.no_price_cap
@@ -2162,6 +2169,7 @@ def main():
         use_eod_filter=use_eod_filter,
         use_profit_before_eod=use_profit_before_eod,
         use_price_5hr_check=use_price_5hr_check,
+        use_price_cross_check=use_price_cross_check,
         use_dynamic_sma=use_dynamic_sma,
         use_slope_ordering=use_slope_ordering,
         use_price_cap=use_price_cap_filter,
