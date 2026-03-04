@@ -1845,8 +1845,9 @@ def scan_stocks():
                 is_take_profit = False
                 print("For " + symbol + " setting the short term period to " + str(n1) + " and setting the long term period to " + str(n2) + ".")
             is_sudden_drop = sudden_drop(symbol, 10, 2) or sudden_drop(symbol, 15, 1)
-            # If there is a profit before the end of day then sell because there is usually an inflection point after 2pm.
-            is_profit_before_eod = profit_before_eod(symbol, holdings_data)
+            # If use_profit_before_eod is enabled and there is a profit before the end of day then sell
+            # because there is usually an inflection point after 2pm.
+            is_profit_before_eod = profit_before_eod(symbol, holdings_data) if use_profit_before_eod else False
             cross = golden_cross(symbol, n1=n1, n2=n2, days=10, direction="below")
             
             # Check stop-loss
@@ -1982,7 +1983,7 @@ def scan_stocks():
                 json_logger.log("hold", f"Holding {symbol}", hold_data)
         profile_data_with_dividend_total = rr.build_user_profile()
         profile_data = build_pheonix_profile_data(profile_data_with_dividend_total)
-        ordered_watchlist_symbols = order_symbols_by_slope(watchlist_symbols)
+        ordered_watchlist_symbols = order_symbols_by_slope(watchlist_symbols) if use_slope_ordering else watchlist_symbols
         print("\n----- Scanning watchlist for stocks to buy -----\n")
         for symbol in ordered_watchlist_symbols:
             if(symbol not in portfolio_symbols):
@@ -1991,20 +1992,18 @@ def scan_stocks():
                         # If the current price is greater than the price at cross,
                         # meaning that the price is still rising then buy.
                     if(float(cross[2]) > float(cross[1])):
-                        # If the current price is greater than the price 5 hours ago,
-                        # meaning we have less of a chance of the stock showing a 
-                        # death cross soon then buy.
-                        if(float(cross[2]) > float(cross[3])):
+                        # If use_price_5hr_check is enabled, verify the current price is greater
+                        # than the price 5 hours ago, meaning we have less of a chance of
+                        # the stock showing a death cross soon.
+                        if(not use_price_5hr_check or float(cross[2]) > float(cross[3])):
                             if(not use_market_filter or (market_uptrend and not market_in_major_downtrend)):
                                 day_trades = get_day_trades(profileData)
                                 if day_trades <= 1 or not traded_today(symbol, profileData):
                                     if is_market_open or premium_account:
-                                        eod = is_eod()
-                                        # If it is not after 2:30pm then we can buy.
-                                        # Buying after 2:30pm may not be a good ideas as 
-                                        # inflection in the price usually occurs at the 
-                                        # end of the day.  Possibly day traders start
-                                        # exiting their positions.
+                                        eod = is_eod() if use_eod_filter else False
+                                        # If use_eod_filter is enabled and it is after 1:30pm then
+                                        # buying is paused as inflection in the price usually occurs
+                                        # at the end of the day.
                                         if (not eod):
                                             potential_buys.append(symbol)
                                             buy_reasons[symbol] = "golden_cross"
