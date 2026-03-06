@@ -5,7 +5,11 @@ ta~=0.5.25
 scipy~=1.11.0
 retry~=0.9.2
 certifi~=2025.8.3
-robin_stocks
+# robin_stocks removed from pip — using local fork at robinhoodbot/robin_stocks/
+# with bonfire.robinhood.com URL fix (phoenix.robinhood.com SSL cert expired)
+# These were transitive deps of robin_stocks, now explicit:
+requests
+cryptography
 # Yahoo Finance data for backtesting with real market data
 yfinance
 # Ray for distributed genetic optimization (local or Kubernetes)
