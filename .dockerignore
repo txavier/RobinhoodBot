@@ -45,7 +45,6 @@ robinhoodbot/ai_suggested_config_changelog.json
 robinhoodbot/ai_prompts.md
 robinhoodbot/genetic_optimization_intraday_result.json
 robinhoodbot/genetic_optimization_intraday_result.checkpoint.json
-robinhoodbot/genetic_optimizer_test_symbols.json
 
 # Cache
 robinhoodbot/.yfinance_cache
