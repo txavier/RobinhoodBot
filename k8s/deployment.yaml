@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: robinhoodbot
+  namespace: robinhoodbot
+  labels:
+    app: robinhoodbot
+spec:
+  replicas: 1  # IMPORTANT: Never run more than 1 replica — duplicate trades!
+  strategy:
+    type: Recreate  # Don't run two pods simultaneously during updates
+  selector:
+    matchLabels:
+      app: robinhoodbot
+  template:
+    metadata:
+      labels:
+        app: robinhoodbot
+    spec:
+      containers:
+        - name: bot
+          image: robinhoodbot:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TZ
+              value: "America/New_York"
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.py
+              subPath: config.py
+              readOnly: true
+            - name: data
+              mountPath: /app/data
+          livenessProbe:
+            exec:
+              command: ["pgrep", "-f", "main.py"]
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: config
+          secret:
+            secretName: robinhoodbot-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: robinhoodbot-data
