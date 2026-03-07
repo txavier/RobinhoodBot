@@ -14,8 +14,11 @@ def update_trade_history(symbols, holdings_data, file_name, sell_reasons=None):
                         If you want to write to another file, create a new text file with two empty brackets with an empty line between them, to meet JSON formatting standards.
         sell_reasons(dict): Optional dictionary mapping symbols to their sell reasons (e.g., {"AAPL": "death_cross", "TSLA": "take_profit"})
     """
-    with open(file_name) as json_file:
-        data = json.load(json_file)
+    try:
+        with open(file_name) as json_file:
+            data = json.load(json_file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = {}
     current_time = str(pd.Timestamp("now"))
     data[current_time] = ({})
     for symbol in symbols:
@@ -34,8 +37,12 @@ def read_trade_history(file_name):
     Args:
         file_name(str): name of the file we are reading from. Should be "tradehistory.txt" by default
     """
-    with open(file_name) as json_file:
-        data = json.load(json_file)
+    try:
+        with open(file_name) as json_file:
+            data = json.load(json_file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        print(f"No trade history found at {file_name}")
+        return
     for sell_date, event in data.items():
         print(sell_date + ": ")
         for symbol, dict in event.items():
