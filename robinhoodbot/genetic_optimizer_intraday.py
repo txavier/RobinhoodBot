@@ -2090,7 +2090,7 @@ class IntradayGeneticOptimizer:
         self._log(f"{'='*70}\n")
 
 
-def validate_against_real_trades(gene: IntradayTradingGene, tradehistory_path: str = "tradehistory-real.json") -> Dict:
+def validate_against_real_trades(gene: IntradayTradingGene, tradehistory_path: str = "logs/tradehistory-real.json") -> Dict:
     """
     Enhancement #6: Validate optimized parameters against real trading history.
     
@@ -2124,7 +2124,7 @@ def validate_against_real_trades(gene: IntradayTradingGene, tradehistory_path: s
                 real_losses.append(abs(pct_change))
     
     # Load buy_reasons.json for exit reason analysis
-    buy_reasons_path = "buy_reasons.json"
+    buy_reasons_path = "logs/buy_reasons.json"
     if os.path.exists(buy_reasons_path):
         with open(buy_reasons_path, 'r') as f:
             buy_reasons = json.load(f)

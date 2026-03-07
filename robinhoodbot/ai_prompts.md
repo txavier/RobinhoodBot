@@ -32,11 +32,11 @@ LOG_FILE=/tmp/optimizer_run_1000.log ./run_optimizer.sh \
 
 /> give me the command to run the genetic optimizer with 50 stocks with max positions of 10 generations 20, population 30 --resume and --validate-real
 
-/> Give me the best configuration found in a table compared to the current config values and also give me your recomendation based on your analysis of the genetic optimizers best intraday configuration and all the logs, ai_suggested_config_changelog.json, buy_reasons.json, genetic_optimization_intraday_result.json, log.json, tradehistory-real.json, that have been taken thus far.
+/> Give me the best configuration found in a table compared to the current config values and also give me your recomendation based on your analysis of the genetic optimizers best intraday configuration and all the logs, logs/ai_suggested_config_changelog.json, logs/buy_reasons.json, genetic_optimization_intraday_result.json, logs/log.json, logs/tradehistory-real.json, that have been taken thus far.
 
 /> log these changes in the ai_changelog
 
-/> Analyze all the logs, including  ai_suggested_config_changelog.json, buy_reasons.json, genetic_optimization_intraday_result.json, log.json, tradehistory-real.json.  Analyze today's entries to find the effect of the config modifications recommended by the genetic_optimizer.  Compare it to previous logs to find out all of the positive effects and negative effects.
+/> Analyze all the logs, including  logs/ai_suggested_config_changelog.json, logs/buy_reasons.json, genetic_optimization_intraday_result.json, logs/log.json, logs/tradehistory-real.json.  Analyze today's entries to find the effect of the config modifications recommended by the genetic_optimizer.  Compare it to previous logs to find out all of the positive effects and negative effects.
 
 Tuning the optimizer.
 /> what are ranges for the values evaluated inthe genetic optimizer?

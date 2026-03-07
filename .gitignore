@@ -125,14 +125,15 @@ dmypy.json
 # environmental ignore
 .vscode/
 robinhoodbot/deploy.ps1
-robinhoodbot/tradehistory-real.json
-robinhoodbot/buy_reasons.json
-robinhoodbot/log.json
-robinhoodbot/ai_changelog.json
+robinhoodbot/logs/tradehistory-real.json
+robinhoodbot/logs/buy_reasons.json
+robinhoodbot/logs/log.json
+robinhoodbot/logs/ai_changelog.json
 
 # Log files
-robinhoodbot/console_log.json
-robinhoodbot/log.json
+robinhoodbot/logs/console_log.json
+robinhoodbot/logs/optimizer_output.log
+robinhoodbot/logs/tradehistory.json
 
 # Backtesting generated data
 robinhoodbot/sample_data/
@@ -140,7 +141,7 @@ robinhoodbot/backtest_cache/
 robinhoodbot/backtest_result.json
 robinhoodbot/genetic_optimization_result.json
 robinhoodbot/genetic_optimization_intraday_result.json
-robinhoodbot/ai_suggested_config_changelog.json
+robinhoodbot/logs/ai_suggested_config_changelog.json
 robinhoodbot/genetic_optimization_intraday_result.checkpoint.json
 robinhoodbot/.yfinance_cache/
 robinhoodbot/genetic_optimizer_test_symbols.json
