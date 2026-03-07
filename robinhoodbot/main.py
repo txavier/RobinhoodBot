@@ -26,6 +26,9 @@ from scipy.stats import linregress
 from pyotp import TOTP as otp
 from robin_stocks_adapter import rsa, api_tracker, clear_all_caches, cache_stats
 
+# Ensure logs directory exists
+os.makedirs('logs', exist_ok=True)
+
 # SMS notification state
 sms_enabled = False
 
@@ -168,7 +171,7 @@ getpass.getpass = _getpass_intercept
 
 # JSON Logger for monitor output
 class JSONLogger:
-    def __init__(self, log_file="log.json"):
+    def __init__(self, log_file="logs/log.json"):
         self.log_file = log_file
         self.session_id = str(pd.Timestamp("now"))
         self.logs = []
@@ -216,7 +219,7 @@ json_logger = JSONLogger()
 
 # Console Logger - captures all print output to console_log.json
 class ConsoleLogger:
-    def __init__(self, log_file="console_log.json"):
+    def __init__(self, log_file="logs/console_log.json"):
         self.log_file = log_file
         self.session_id = str(pd.Timestamp("now"))
         self.original_stdout = sys.stdout
@@ -578,7 +581,7 @@ def save_trade_reason(symbol, reason, action="buy", holdings_data=None, price=No
         quantity(int): Optional quantity for buys
         equity(float): Optional total equity for buys
     """
-    buy_reasons_file = "buy_reasons.json"
+    buy_reasons_file = "logs/buy_reasons.json"
     try:
         with open(buy_reasons_file, 'r') as f:
             buy_reasons_data = json.load(f)
@@ -650,7 +653,7 @@ def get_trade_reason(symbol):
     Returns:
         dict: The trade data including reason, action, timestamp, version, or None if not found
     """
-    buy_reasons_file = "buy_reasons.json"
+    buy_reasons_file = "logs/buy_reasons.json"
     try:
         with open(buy_reasons_file, 'r') as f:
             buy_reasons_data = json.load(f)

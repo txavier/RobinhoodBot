@@ -26,7 +26,7 @@ rh_phone="5551234567"
 # rh_company_url: Your carrier's email-to-SMS gateway domain
 # Common carriers: vtext.com (Verizon), txt.att.net (AT&T), tmomail.net (T-Mobile), messaging.sprintpcs.com (Sprint)
 rh_company_url="vtext.com"
-trade_history_file_name="tradehistory-real.json"
+trade_history_file_name="logs/tradehistory-real.json"
 # watch_list_name: Name of your Robinhood watchlist to monitor for potential buys
 watch_list_name="Default"
 # caution here, if the market tag returns too much data this
