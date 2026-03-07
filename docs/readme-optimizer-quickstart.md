@@ -121,3 +121,12 @@ kubectl delete job robinhoodbot-optimizer -n robinhoodbot
 # Delete everything (namespace and all resources)
 kubectl delete namespace robinhoodbot
 ```
+
+## Quick Reference
+
+```bash
+docker build -t robinhoodbot:latest .
+kubectl delete job robinhoodbot-optimizer -n robinhoodbot
+kubectl apply -f k8s/optimizer-job.yaml
+kubectl logs -f -n robinhoodbot job/robinhoodbot-optimizer
+```
