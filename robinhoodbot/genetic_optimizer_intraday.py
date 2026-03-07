@@ -21,6 +21,7 @@ import json
 import os
 import random
 import copy
+import shutil
 import signal
 import sys
 from datetime import datetime, timedelta
@@ -408,6 +409,29 @@ class IntradayGeneticOptimizer:
             except Exception:
                 pass  # Don't crash if log file write fails
         
+    @staticmethod
+    def _archive_file(filepath: str):
+        """Archive an existing file by copying it to a timestamped version.
+        
+        Creates a copy like:
+          genetic_optimization_intraday_result.json
+          → genetic_optimization_intraday_result.2026-03-07_143022.json
+        
+        Only archives if the file exists and is non-empty.
+        """
+        if not os.path.isfile(filepath) or os.path.getsize(filepath) == 0:
+            return
+        try:
+            mtime = os.path.getmtime(filepath)
+            ts = datetime.fromtimestamp(mtime).strftime('%Y-%m-%d_%H%M%S')
+            base, ext = os.path.splitext(filepath)
+            archive_path = f"{base}.{ts}{ext}"
+            # Don't overwrite an existing archive with the same timestamp
+            if not os.path.exists(archive_path):
+                shutil.copy2(filepath, archive_path)
+        except OSError:
+            pass  # Don't crash if archiving fails
+
     def save_checkpoint(self, filepath: str, generation: int, population: List[IntradayTradingGene]):
         """Save optimizer state to a checkpoint file after each generation.
         
@@ -1263,6 +1287,9 @@ class IntradayGeneticOptimizer:
         
         if not resumed:
             self.start_time = datetime.now()
+            # Archive previous result/checkpoint files before a fresh run overwrites them
+            if self.checkpoint_path:
+                self._archive_file(self.checkpoint_path)
         
         self._log(f"\n{'='*70}")
         self._log("INTRADAY GENETIC ALGORITHM OPTIMIZER")
@@ -1511,7 +1538,11 @@ class IntradayGeneticOptimizer:
         return self.best_gene
     
     def save_results(self, filepath: str = "genetic_optimization_intraday_result.json"):
-        """Save optimization results to JSON file"""
+        """Save optimization results to JSON file.
+        
+        Archives the previous result file (if any) before overwriting.
+        """
+        self._archive_file(filepath)
         # Calculate runtime
         start_time = getattr(self, 'start_time', None)
         end_time = getattr(self, 'end_time', None)
