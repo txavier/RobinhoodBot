@@ -26,6 +26,8 @@ spec:
             - "--train-test-split=0.7"
             - "--optimize-filters"
             - "--use-ray"
+            - "--output=/app/data/genetic_optimization_intraday_result.json"
+            - "--checkpoint-file=/app/data/genetic_optimization_intraday_result.checkpoint.json"
           env:
             - name: TZ
               value: "America/New_York"
