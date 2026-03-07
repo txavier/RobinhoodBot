@@ -163,6 +163,13 @@ class IntradayGeneticConfig:
     # Whether to optimize filter settings (True = can toggle filters on/off)
     optimize_filters: bool = False
     
+    # Cross-validation settings (anti-overfitting)
+    # validation_mode: 'kfold' = K-fold CV, 'walkforward' = walk-forward, 'both' = combined,
+    #                  'simple' = legacy train/test split, 'none' = disabled
+    validation_mode: str = 'both'  # Default: use both K-fold and walk-forward
+    kfold_splits: int = 5          # Number of folds for K-fold CV
+    walkforward_windows: int = 3   # Number of expanding windows for walk-forward validation
+    
     # Parameter ranges for random generation and mutation
     param_ranges: Dict = field(default_factory=lambda: {
         'short_sma': (5, 80),         # Hours (upper expanded from 50 - best hit 46/50)
@@ -201,6 +208,9 @@ class IntradayGeneticConfig:
 # no pickling/piping needed. Set before Pool creation in _evaluate_with_multiprocessing().
 _shared_real_data_cache = None
 _shared_raw_market_index_data = None
+# Cross-validation fold data (also copy-on-write via fork)
+_shared_cv_folds = None    # List of (train_cache, train_market, test_cache, test_market) tuples
+_shared_wf_windows = None  # List of (train_cache, train_market, test_cache, test_market) tuples
 
 
 def _init_worker():
@@ -208,18 +218,114 @@ def _init_worker():
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
 
+def _evaluate_gene_cv_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed,
+                            max_positions, cv_folds, wf_windows) -> IntradayTradingGene:
+    """
+    Module-level CV evaluation for multiprocessing compatibility.
+    Evaluates a gene across all K-fold and/or walk-forward splits.
+    Fitness = 70% average + 30% minimum across all splits (rewards consistency).
+    """
+    all_fitnesses = []
+
+    # K-fold evaluations
+    if cv_folds:
+        for train_cache, train_market, test_cache, test_market in cv_folds:
+            fold_gene = copy.deepcopy(gene)
+            fold_gene = _evaluate_gene_impl(
+                fold_gene, symbols, days, initial_capital,
+                dict(fitness_weights), data_seed,
+                max_positions, use_real_data=True,
+                real_data_cache=test_cache,
+                raw_market_index_data=test_market
+            )
+            all_fitnesses.append(fold_gene.fitness)
+
+    # Walk-forward evaluations
+    if wf_windows:
+        for train_cache, train_market, test_cache, test_market in wf_windows:
+            wf_gene = copy.deepcopy(gene)
+            wf_gene = _evaluate_gene_impl(
+                wf_gene, symbols, days, initial_capital,
+                dict(fitness_weights), data_seed,
+                max_positions, use_real_data=True,
+                real_data_cache=test_cache,
+                raw_market_index_data=test_market
+            )
+            all_fitnesses.append(wf_gene.fitness)
+
+    if not all_fitnesses:
+        # Fallback to standard evaluation
+        return _evaluate_gene_impl(
+            gene, symbols, days, initial_capital,
+            dict(fitness_weights), data_seed,
+            max_positions, False, None, None
+        )
+
+    # Fitness: 70% average + 30% minimum (rewards consistency across folds)
+    avg_fitness = sum(all_fitnesses) / len(all_fitnesses)
+    min_fitness = min(all_fitnesses)
+    gene.fitness = 0.7 * avg_fitness + 0.3 * min_fitness
+
+    # Get representative metrics from median fold for display
+    median_idx = sorted(range(len(all_fitnesses)), key=lambda i: all_fitnesses[i])[len(all_fitnesses) // 2]
+    n_cv = len(cv_folds) if cv_folds else 0
+    if cv_folds and median_idx < n_cv:
+        rep_cache = cv_folds[median_idx][2]  # test cache
+        rep_market = cv_folds[median_idx][3]  # test market
+    elif wf_windows:
+        wf_idx = median_idx - n_cv
+        rep_cache = wf_windows[wf_idx][2]
+        rep_market = wf_windows[wf_idx][3]
+    else:
+        rep_cache = None
+        rep_market = None
+
+    if rep_cache:
+        rep_gene = _evaluate_gene_impl(
+            copy.deepcopy(gene), symbols, days, initial_capital,
+            dict(fitness_weights), data_seed,
+            max_positions, use_real_data=True,
+            real_data_cache=rep_cache,
+            raw_market_index_data=rep_market
+        )
+        gene.total_return_pct = rep_gene.total_return_pct
+        gene.win_rate = rep_gene.win_rate
+        gene.sharpe_ratio = rep_gene.sharpe_ratio
+        gene.max_drawdown_pct = rep_gene.max_drawdown_pct
+        gene.profit_factor = rep_gene.profit_factor
+        gene.total_trades = rep_gene.total_trades
+        gene.trades_per_day = rep_gene.trades_per_day
+        gene.avg_win = rep_gene.avg_win
+        gene.avg_loss = rep_gene.avg_loss
+        gene.exit_reasons = rep_gene.exit_reasons
+
+    return gene
+
+
 def _evaluate_gene_worker(args: Tuple) -> IntradayTradingGene:
     """
     Module-level function for parallel gene evaluation.
     Must be at module level for multiprocessing to pickle it.
     
-    Large data (real_data_cache, raw_market_index_data) is read from module-level
-    globals set before Pool creation — avoids pickling ~4 MB per gene through pipes.
+    When CV mode is active (_shared_cv_folds/_shared_wf_windows are set),
+    evaluates across all folds/windows. Otherwise uses standard single evaluation.
+    
+    Large data is read from module-level globals set before Pool creation —
+    avoids pickling ~4 MB per gene through pipes.
     
     Args is a tuple of (gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
                          use_real_data)
     """
     gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions, use_real_data = args
+
+    # CV mode: evaluate across all folds/windows
+    if _shared_cv_folds or _shared_wf_windows:
+        return _evaluate_gene_cv_impl(
+            gene, symbols, days, initial_capital, fitness_weights, data_seed,
+            max_positions, _shared_cv_folds, _shared_wf_windows
+        )
+
+    # Standard single evaluation
     return _evaluate_gene_impl(
         gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
         use_real_data, _shared_real_data_cache, _shared_raw_market_index_data
@@ -387,6 +493,12 @@ class IntradayGeneticOptimizer:
         self._train_dates: Optional[List] = None
         self._test_dates: Optional[List] = None
         self.test_set_metrics: Optional[Dict] = None         # Best gene's test-set performance
+        
+        # Cross-validation data splits (populated by _create_cv_splits())
+        self._cv_folds: Optional[List] = None                 # List of (train_cache, train_market, test_cache, test_market) tuples
+        self._wf_windows: Optional[List] = None               # List of (train_cache, train_market, test_cache, test_market) tuples
+        self._cv_fold_info: Optional[List] = None             # Metadata about each fold (dates, sizes)
+        self._wf_window_info: Optional[List] = None           # Metadata about each window
         
         # Track evolution history
         self.generation_history: List[Dict] = []
@@ -660,6 +772,270 @@ class IntradayGeneticOptimizer:
         
         self._log(f"   Train symbols with data: {len(train_data_cache)}")
         self._log(f"   Test symbols with data:  {len(test_data_cache)}")
+    
+    def _filter_data_by_dates(self, date_set: set) -> Tuple[Dict, Dict]:
+        """Filter data caches to a specific set of dates.
+        
+        Uses _full_real_data_cache if available (train/test split was done),
+        otherwise falls back to self.real_data_cache (no split).
+        
+        Returns:
+            (filtered_data_cache, filtered_raw_market_index_data)
+        """
+        source_cache = self._full_real_data_cache or self.real_data_cache
+        source_market = self._full_raw_market_index_data or self.raw_market_index_data
+        
+        data_cache = {}
+        for symbol, df in source_cache.items():
+            filtered = df[df['date'].isin(date_set)].copy().reset_index(drop=True)
+            if not filtered.empty:
+                data_cache[symbol] = filtered
+        
+        raw_market = {}
+        for idx_sym, date_dict in source_market.items():
+            raw_market[idx_sym] = {d: v for d, v in date_dict.items() if d in date_set}
+        
+        return data_cache, raw_market
+    
+    def _create_cv_splits(self):
+        """Create K-fold cross-validation and/or walk-forward validation splits.
+        
+        When train/test split is active, CV folds use only training data
+        (test holdout remains completely unseen during evolution).
+        When no split is active, CV folds use all available data.
+        
+        K-fold: Splits dates into K chronological folds. For each fold,
+               that fold is the validation set and the rest are training.
+               Fitness = average fitness across all K evaluations.
+        
+        Walk-forward: Creates expanding training windows with fixed-size test windows.
+               Window 1: Train on first 40% of dates, test on next 20%
+               Window 2: Train on first 60%, test on next 20%
+               Window 3: Train on first 80%, test on final 20%
+               Fitness = average fitness across all window evaluations.
+        """
+        # Use training data when split is active; otherwise all data
+        source_cache = self.real_data_cache
+        if not source_cache:
+            self._log("  ⚠️  CV splits require real data. Skipping.")
+            return
+        
+        # Collect unique trading dates from the source data
+        all_dates = set()
+        for df in source_cache.values():
+            all_dates.update(df['date'].unique())
+        all_dates = sorted(all_dates)
+        n_dates = len(all_dates)
+        
+        mode = self.config.validation_mode
+        
+        # K-fold cross-validation splits
+        if mode in ('kfold', 'both'):
+            k = self.config.kfold_splits
+            if n_dates < k * 5:
+                self._log(f"  ⚠️  Only {n_dates} dates — too few for {k}-fold CV. Reducing to {max(2, n_dates // 5)} folds.")
+                k = max(2, n_dates // 5)
+                self.config.kfold_splits = k
+            
+            fold_size = n_dates // k
+            self._cv_folds = []
+            self._cv_fold_info = []
+            
+            self._log(f"\n🔀 K-FOLD CROSS-VALIDATION: {k} folds")
+            
+            for i in range(k):
+                # Test fold is the i-th chunk
+                test_start = i * fold_size
+                test_end = (i + 1) * fold_size if i < k - 1 else n_dates
+                test_dates = set(all_dates[test_start:test_end])
+                train_dates = set(all_dates) - test_dates
+                
+                train_cache, train_market = self._filter_data_by_dates(train_dates)
+                test_cache, test_market = self._filter_data_by_dates(test_dates)
+                
+                self._cv_folds.append((train_cache, train_market, test_cache, test_market))
+                
+                sorted_test = sorted(test_dates)
+                sorted_train = sorted(train_dates)
+                fold_info = {
+                    'fold': i + 1,
+                    'train_days': len(train_dates),
+                    'test_days': len(test_dates),
+                    'test_period': f"{sorted_test[0]} → {sorted_test[-1]}",
+                    'train_periods': f"{sorted_train[0]} → {sorted_train[-1]}",
+                }
+                self._cv_fold_info.append(fold_info)
+                self._log(f"   Fold {i+1}: test={len(test_dates)}d ({sorted_test[0]}→{sorted_test[-1]}), "
+                          f"train={len(train_dates)}d")
+        
+        # Walk-forward validation splits
+        if mode in ('walkforward', 'both'):
+            n_windows = self.config.walkforward_windows
+            if n_dates < n_windows * 10:
+                self._log(f"  ⚠️  Only {n_dates} dates — too few for {n_windows} walk-forward windows. Reducing to {max(2, n_dates // 10)}.")
+                n_windows = max(2, n_dates // 10)
+                self.config.walkforward_windows = n_windows
+            
+            # Each window's test period is ~20% of total dates
+            test_size = max(5, n_dates // (n_windows + 1))
+            
+            self._wf_windows = []
+            self._wf_window_info = []
+            
+            self._log(f"\n📈 WALK-FORWARD VALIDATION: {n_windows} expanding windows")
+            
+            for i in range(n_windows):
+                # Training: all dates up to the test window start
+                # Test: the next test_size dates
+                train_end_idx = (i + 1) * test_size  # Expanding window
+                if train_end_idx >= n_dates - test_size:
+                    train_end_idx = n_dates - test_size  # Ensure there's a test window
+                test_end_idx = min(train_end_idx + test_size, n_dates)
+                
+                # Skip if we'd have no test data
+                if train_end_idx >= n_dates or test_end_idx <= train_end_idx:
+                    continue
+                
+                train_dates = set(all_dates[:train_end_idx])
+                test_dates_wf = set(all_dates[train_end_idx:test_end_idx])
+                
+                train_cache, train_market = self._filter_data_by_dates(train_dates)
+                test_cache, test_market = self._filter_data_by_dates(test_dates_wf)
+                
+                self._wf_windows.append((train_cache, train_market, test_cache, test_market))
+                
+                sorted_train = sorted(train_dates)
+                sorted_test = sorted(test_dates_wf)
+                window_info = {
+                    'window': i + 1,
+                    'train_days': len(train_dates),
+                    'test_days': len(test_dates_wf),
+                    'train_period': f"{sorted_train[0]} → {sorted_train[-1]}",
+                    'test_period': f"{sorted_test[0]} → {sorted_test[-1]}",
+                }
+                self._wf_window_info.append(window_info)
+                self._log(f"   Window {i+1}: train={len(train_dates)}d ({sorted_train[0]}→{sorted_train[-1]}) | "
+                          f"test={len(test_dates_wf)}d ({sorted_test[0]}→{sorted_test[-1]})")
+        
+        # Summary
+        total_evals = 0
+        if self._cv_folds:
+            total_evals += len(self._cv_folds)
+        if self._wf_windows:
+            total_evals += len(self._wf_windows)
+        if total_evals > 0:
+            self._log(f"\n   Total evaluations per gene: {total_evals} "
+                      f"(fitness = average across all splits)")
+            self._log(f"   ⚠️  This will make each generation ~{total_evals}x slower but significantly reduces overfitting.\n")
+    
+    def _evaluate_gene_cv(self, gene: IntradayTradingGene, data_seed: Optional[int] = None) -> float:
+        """Evaluate a gene across all cross-validation folds and walk-forward windows.
+        
+        Returns the average fitness across all splits. Also stores per-fold metrics
+        in gene.cv_details for diagnostics.
+        
+        If no CV splits are configured, falls back to standard single evaluation.
+        """
+        has_cv = self._cv_folds is not None and len(self._cv_folds) > 0
+        has_wf = self._wf_windows is not None and len(self._wf_windows) > 0
+        
+        if not has_cv and not has_wf:
+            # No CV configured — use standard evaluation
+            return self.evaluate_fitness(gene, data_seed)
+        
+        all_fitnesses = []
+        all_metrics = []
+        
+        # K-fold evaluations
+        if has_cv:
+            for i, (train_cache, train_market, test_cache, test_market) in enumerate(self._cv_folds):
+                fold_gene = copy.deepcopy(gene)
+                # Evaluate on the TEST portion of this fold (training was done on the rest)
+                fold_gene = _evaluate_gene_impl(
+                    fold_gene, self.symbols, self.days, self.initial_capital,
+                    dict(self.config.fitness_weights), data_seed,
+                    self.max_positions, use_real_data=True,
+                    real_data_cache=test_cache,
+                    raw_market_index_data=test_market
+                )
+                all_fitnesses.append(fold_gene.fitness)
+                all_metrics.append({
+                    'type': f'kfold_{i+1}',
+                    'fitness': fold_gene.fitness,
+                    'return_pct': fold_gene.total_return_pct,
+                    'win_rate': fold_gene.win_rate,
+                    'sharpe': fold_gene.sharpe_ratio,
+                    'trades': fold_gene.total_trades,
+                })
+        
+        # Walk-forward evaluations
+        if has_wf:
+            for i, (train_cache, train_market, test_cache, test_market) in enumerate(self._wf_windows):
+                wf_gene = copy.deepcopy(gene)
+                # Evaluate on the test window (forward portion)
+                wf_gene = _evaluate_gene_impl(
+                    wf_gene, self.symbols, self.days, self.initial_capital,
+                    dict(self.config.fitness_weights), data_seed,
+                    self.max_positions, use_real_data=True,
+                    real_data_cache=test_cache,
+                    raw_market_index_data=test_market
+                )
+                all_fitnesses.append(wf_gene.fitness)
+                all_metrics.append({
+                    'type': f'walkforward_{i+1}',
+                    'fitness': wf_gene.fitness,
+                    'return_pct': wf_gene.total_return_pct,
+                    'win_rate': wf_gene.win_rate,
+                    'sharpe': wf_gene.sharpe_ratio,
+                    'trades': wf_gene.total_trades,
+                })
+        
+        # Average fitness across all splits
+        avg_fitness = sum(all_fitnesses) / len(all_fitnesses) if all_fitnesses else 0.0
+        
+        # Also compute the minimum fitness (worst fold) — penalize inconsistency
+        min_fitness = min(all_fitnesses) if all_fitnesses else 0.0
+        fitness_std = np.std(all_fitnesses) if len(all_fitnesses) > 1 else 0.0
+        
+        # Final fitness: 70% avg + 30% min (rewards consistency across folds)
+        gene.fitness = 0.7 * avg_fitness + 0.3 * min_fitness
+        
+        # Store metrics from the last evaluation for display purposes
+        # (use the fold with median fitness for representative metrics)
+        if all_fitnesses:
+            median_idx = sorted(range(len(all_fitnesses)), key=lambda i: all_fitnesses[i])[len(all_fitnesses) // 2]
+            # Re-evaluate on the median fold to get representative display metrics
+            if has_cv and median_idx < len(self._cv_folds):
+                rep_cache = self._cv_folds[median_idx][2]  # test cache
+                rep_market = self._cv_folds[median_idx][3]  # test market
+            elif has_wf:
+                wf_idx = median_idx - (len(self._cv_folds) if has_cv else 0)
+                rep_cache = self._wf_windows[wf_idx][2]
+                rep_market = self._wf_windows[wf_idx][3]
+            else:
+                rep_cache = None
+                rep_market = None
+            
+            if rep_cache:
+                rep_gene = _evaluate_gene_impl(
+                    copy.deepcopy(gene), self.symbols, self.days, self.initial_capital,
+                    dict(self.config.fitness_weights), data_seed,
+                    self.max_positions, use_real_data=True,
+                    real_data_cache=rep_cache,
+                    raw_market_index_data=rep_market
+                )
+                gene.total_return_pct = rep_gene.total_return_pct
+                gene.win_rate = rep_gene.win_rate
+                gene.sharpe_ratio = rep_gene.sharpe_ratio
+                gene.max_drawdown_pct = rep_gene.max_drawdown_pct
+                gene.profit_factor = rep_gene.profit_factor
+                gene.total_trades = rep_gene.total_trades
+                gene.trades_per_day = rep_gene.trades_per_day
+                gene.avg_win = rep_gene.avg_win
+                gene.avg_loss = rep_gene.avg_loss
+                gene.exit_reasons = rep_gene.exit_reasons
+        
+        return gene.fitness
     
     def evaluate_on_test_set(self, gene: IntradayTradingGene) -> Dict:
         """Re-evaluate a gene on the held-out test data (unseen during evolution).
@@ -966,8 +1342,12 @@ class IntradayGeneticOptimizer:
                     self._log(f"    Gene {i+1}: {gene}")
         else:
             # Sequential evaluation (single worker or small population)
+            use_cv = bool(self._cv_folds or self._wf_windows)
             for i, gene in enumerate(population):
-                self.evaluate_fitness(gene, data_seed)
+                if use_cv:
+                    self._evaluate_gene_cv(gene, data_seed)
+                else:
+                    self.evaluate_fitness(gene, data_seed)
                 if self.verbose:
                     self._log(f"  Evaluating {i+1}/{len(population)}: {gene}")
         
@@ -1007,17 +1387,34 @@ class IntradayGeneticOptimizer:
         real_data_ref = ray.put(self.real_data_cache) if self.real_data_cache else None
         raw_market_ref = ray.put(self.raw_market_index_data) if self.raw_market_index_data else None
         
-        # Define remote function inside method to avoid module-level Ray dependency
-        @ray.remote
-        def ray_evaluate_gene(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
-                              use_real_data=False, real_data_cache=None, raw_market_index_data=None):
-            return _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
-                                       use_real_data, real_data_cache, raw_market_index_data)
+        # Check if CV mode is active
+        use_cv = bool(self._cv_folds or self._wf_windows)
         
-        # Submit all tasks — append shared data refs to each 8-element arg tuple
-        futures = [
-            ray_evaluate_gene.remote(*args, real_data_ref, raw_market_ref) for args in eval_args
-        ]
+        if use_cv:
+            cv_folds_ref = ray.put(self._cv_folds) if self._cv_folds else None
+            wf_windows_ref = ray.put(self._wf_windows) if self._wf_windows else None
+            
+            @ray.remote
+            def ray_evaluate_gene_cv(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
+                                     use_real_data, cv_folds=None, wf_windows=None):
+                return _evaluate_gene_cv_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed,
+                                              max_positions, cv_folds, wf_windows)
+            
+            futures = [
+                ray_evaluate_gene_cv.remote(*args, cv_folds_ref, wf_windows_ref) for args in eval_args
+            ]
+        else:
+            # Define remote function inside method to avoid module-level Ray dependency
+            @ray.remote
+            def ray_evaluate_gene(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
+                                  use_real_data=False, real_data_cache=None, raw_market_index_data=None):
+                return _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
+                                           use_real_data, real_data_cache, raw_market_index_data)
+            
+            # Submit all tasks — append shared data refs to each 8-element arg tuple
+            futures = [
+                ray_evaluate_gene.remote(*args, real_data_ref, raw_market_ref) for args in eval_args
+            ]
         
         # Gather results
         evaluated_population = ray.get(futures)
@@ -1030,12 +1427,16 @@ class IntradayGeneticOptimizer:
         On Linux (fork), workers inherit these via copy-on-write — no pickling needed.
         Workers also ignore SIGTERM so only the parent process handles graceful shutdown.
         """
-        global _shared_real_data_cache, _shared_raw_market_index_data
+        global _shared_real_data_cache, _shared_raw_market_index_data, _shared_cv_folds, _shared_wf_windows
         _shared_real_data_cache = self.real_data_cache
         _shared_raw_market_index_data = self.raw_market_index_data
+        _shared_cv_folds = self._cv_folds
+        _shared_wf_windows = self._wf_windows
         
         if self.verbose:
-            self._log(f"  Evaluating {len(eval_args)} genes using {num_workers} multiprocessing workers...")
+            n_folds = (len(self._cv_folds) if self._cv_folds else 0) + (len(self._wf_windows) if self._wf_windows else 0)
+            cv_info = f" (CV: {n_folds} splits each)" if n_folds > 0 else ""
+            self._log(f"  Evaluating {len(eval_args)} genes using {num_workers} multiprocessing workers...{cv_info}")
         
         try:
             with Pool(processes=num_workers, initializer=_init_worker) as pool:
@@ -1044,6 +1445,8 @@ class IntradayGeneticOptimizer:
             # Clear globals after use (don't hold references longer than needed)
             _shared_real_data_cache = None
             _shared_raw_market_index_data = None
+            _shared_cv_folds = None
+            _shared_wf_windows = None
         
         return evaluated_population
     
@@ -1309,6 +1712,13 @@ class IntradayGeneticOptimizer:
         self._log(f"Data Source: {data_source}")
         if self.train_test_split > 0:
             self._log(f"Train/Test Split: {self.train_test_split:.0%} train / {1 - self.train_test_split:.0%} test (anti-overfitting)")
+        if self.config.validation_mode not in ('none', 'simple'):
+            cv_parts = []
+            if self.config.validation_mode in ('kfold', 'both'):
+                cv_parts.append(f"{self.config.kfold_splits}-fold CV")
+            if self.config.validation_mode in ('walkforward', 'both'):
+                cv_parts.append(f"{self.config.walkforward_windows} walk-forward windows")
+            self._log(f"Validation: {' + '.join(cv_parts)} (anti-overfitting)")
         if self.seed:
             self._log(f"Random Seed: {self.seed}")
         if self.checkpoint_path:
@@ -1366,6 +1776,10 @@ class IntradayGeneticOptimizer:
         # Apply train/test split if requested (must happen after data download)
         if self.train_test_split > 0:
             self._split_data_by_dates()
+        
+        # Create cross-validation splits (uses training data, or all data if no split)
+        if self.config.validation_mode not in ('none', 'simple') and self.use_real_data:
+            self._create_cv_splits()
         
         # Set up signal handler for graceful shutdown
         if self.checkpoint_path:
@@ -1570,7 +1984,17 @@ class IntradayGeneticOptimizer:
                 'crossover_rate': self.config.crossover_rate,
                 'elite_size': self.config.elite_size,
                 'optimize_filters': self.config.optimize_filters,
+                'validation_mode': self.config.validation_mode,
+                'kfold_splits': self.config.kfold_splits if self.config.validation_mode in ('kfold', 'both') else None,
+                'walkforward_windows': self.config.walkforward_windows if self.config.validation_mode in ('walkforward', 'both') else None,
             },
+            'cross_validation': {
+                'mode': self.config.validation_mode,
+                'kfold_info': self._cv_fold_info if self._cv_fold_info else None,
+                'walkforward_info': self._wf_window_info if self._wf_window_info else None,
+                'total_eval_splits': (len(self._cv_folds) if self._cv_folds else 0) + (len(self._wf_windows) if self._wf_windows else 0),
+                'fitness_formula': '0.7 * avg_fitness + 0.3 * min_fitness' if self.config.validation_mode not in ('none', 'simple') else 'standard',
+            } if self.config.validation_mode not in ('none', 'simple') else None,
             'best_gene': self.best_gene.to_dict() if self.best_gene else None,
             'best_fitness': self.best_fitness,
             'test_set_metrics': self.test_set_metrics if self.test_set_metrics else None,
@@ -1946,6 +2370,26 @@ def main():
              'E.g., 0.7 = train on first 70%% of days, evaluate best gene on remaining 30%% as holdout. '
              'Requires --real-data. Recommended: 0.7'
     )
+    parser.add_argument(
+        '--no-kfold', action='store_true',
+        help='Disable K-fold cross-validation during evolution. '
+             'By default, K-fold CV is enabled (with --real-data) to reduce overfitting.'
+    )
+    parser.add_argument(
+        '--no-walkforward', action='store_true',
+        help='Disable walk-forward validation during evolution. '
+             'By default, walk-forward is enabled (with --real-data) to reduce overfitting.'
+    )
+    parser.add_argument(
+        '--kfold-splits', type=int, default=5,
+        help='Number of K-fold cross-validation splits (default: 5). '
+             'More folds = better generalization estimate but slower.'
+    )
+    parser.add_argument(
+        '--walkforward-windows', type=int, default=3,
+        help='Number of walk-forward validation windows (default: 3). '
+             'More windows = better temporal robustness check but slower.'
+    )
     
     args = parser.parse_args()
     
@@ -1963,6 +2407,20 @@ def main():
     else:
         symbols = ['AAPL', 'MSFT', 'GOOGL']
     
+    # Determine validation mode from CLI flags
+    # Default: 'both' (K-fold + walk-forward) when --real-data is used
+    if args.real_data:
+        if args.no_kfold and args.no_walkforward:
+            validation_mode = 'simple'
+        elif args.no_kfold:
+            validation_mode = 'walkforward'
+        elif args.no_walkforward:
+            validation_mode = 'kfold'
+        else:
+            validation_mode = 'both'
+    else:
+        validation_mode = 'none'
+    
     config = IntradayGeneticConfig(
         population_size=args.population,
         generations=args.generations,
@@ -1972,6 +2430,9 @@ def main():
         num_workers=args.workers,
         use_ray=args.use_ray,
         disable_ray_mem_monitor=args.disable_ray_mem_monitor,
+        validation_mode=validation_mode,
+        kfold_splits=args.kfold_splits,
+        walkforward_windows=args.walkforward_windows,
     )
     
     # Print Ray status if requested
