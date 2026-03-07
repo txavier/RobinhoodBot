@@ -25,6 +25,7 @@ spec:
             - "--days=86"
             - "--train-test-split=0.7"
             - "--optimize-filters"
+            - "--use-ray"
           env:
             - name: TZ
               value: "America/New_York"
@@ -39,14 +40,20 @@ spec:
               mountPath: /app/data
             - name: optimizer-cache
               mountPath: /app/.yfinance_cache
+            - name: dshm
+              mountPath: /dev/shm
           resources:
             requests:
               memory: "1Gi"
               cpu: "2000m"
             limits:
               memory: "4Gi"
-              cpu: "8000m"
+              cpu: "14000m"
       volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Gi
         - name: config
           secret:
             secretName: robinhoodbot-config
