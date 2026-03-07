@@ -15,7 +15,7 @@ spec:
           imagePullPolicy: IfNotPresent
           command: ["python3", "genetic_optimizer_intraday.py"]
           args:
-            - "--num-stocks=125"
+            - "--num-stocks=250"
             - "--max-positions=10"
             - "--generations=30"
             - "--population=40"
@@ -44,16 +44,16 @@ spec:
               mountPath: /dev/shm
           resources:
             requests:
-              memory: "1Gi"
+              memory: "2Gi"
               cpu: "2000m"
             limits:
-              memory: "4Gi"
+              memory: "12Gi"
               cpu: "14000m"
       volumes:
         - name: dshm
           emptyDir:
             medium: Memory
-            sizeLimit: 2Gi
+            sizeLimit: 4Gi
         - name: config
           secret:
             secretName: robinhoodbot-config
