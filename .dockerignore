@@ -1,0 +1,52 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.eggs
+*.egg
+
+# Virtual environments
+.venv
+venv
+env
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Docs
+README.md
+LICENSE
+
+# Sensitive config (mounted at runtime via docker-compose)
+robinhoodbot/config.py
+
+# Logs and trade history (mounted at runtime via docker-compose)
+robinhoodbot/log.json
+robinhoodbot/console_log.json
+robinhoodbot/buy_reasons.json
+robinhoodbot/tradehistory-real.json
+
+# AI/optimizer artifacts (not needed in the container image)
+robinhoodbot/ai_changelog.json
+robinhoodbot/ai_suggested_config_changelog.json
+robinhoodbot/ai_prompts.md
+robinhoodbot/genetic_optimization_intraday_result.json
+robinhoodbot/genetic_optimization_intraday_result.checkpoint.json
+robinhoodbot/genetic_optimizer_test_symbols.json
+
+# Cache
+robinhoodbot/.yfinance_cache
+robinhoodbot/__pycache__

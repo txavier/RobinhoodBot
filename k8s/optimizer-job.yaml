@@ -1,0 +1,58 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: robinhoodbot-optimizer
+  namespace: robinhoodbot
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 86400  # Auto-cleanup after 24h
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: optimizer
+          image: robinhoodbot:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python3", "genetic_optimizer_intraday.py"]
+          args:
+            - "--num-stocks=125"
+            - "--max-positions=10"
+            - "--generations=30"
+            - "--population=40"
+            - "--real-data"
+            - "--resume"
+            - "--validate-real"
+            - "--days=86"
+            - "--train-test-split=0.7"
+            - "--optimize-filters"
+          env:
+            - name: TZ
+              value: "America/New_York"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.py
+              subPath: config.py
+              readOnly: true
+            - name: data
+              mountPath: /app/data
+            - name: optimizer-cache
+              mountPath: /app/.yfinance_cache
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+      volumes:
+        - name: config
+          secret:
+            secretName: robinhoodbot-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: robinhoodbot-data
+        - name: optimizer-cache
+          persistentVolumeClaim:
+            claimName: optimizer-cache

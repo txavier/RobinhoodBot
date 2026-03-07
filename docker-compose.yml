@@ -1,0 +1,61 @@
+# ============================================================================
+# RobinhoodBot Docker Compose
+# ============================================================================
+# Usage:
+#   docker compose up -d          # Start bot in background
+#   docker compose logs -f bot    # Follow bot logs
+#   docker compose down            # Stop bot
+#
+#   # Run the genetic optimizer instead of the bot:
+#   docker compose run --rm optimizer --num-stocks 125 --generations 20 --population 30 --real-data --days 86 --train-test-split 0.7
+#
+#   # Interactive shell for debugging:
+#   docker compose exec bot bash
+# ============================================================================
+
+services:
+  bot:
+    build: .
+    container_name: robinhoodbot
+    restart: unless-stopped
+    # Timezone for market hours
+    environment:
+      - TZ=America/New_York
+    volumes:
+      # Persist trade history and logs across container restarts
+      - ./robinhoodbot/tradehistory-real.json:/app/tradehistory-real.json
+      - ./robinhoodbot/tradehistory.json:/app/tradehistory.json
+      - ./robinhoodbot/log.json:/app/log.json
+      - ./robinhoodbot/console_log.json:/app/console_log.json
+      - ./robinhoodbot/buy_reasons.json:/app/buy_reasons.json
+      # Mount config so you can edit without rebuilding
+      - ./robinhoodbot/config.py:/app/config.py
+    # Healthcheck: verify the bot process is alive
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "main.py"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # On-demand optimizer (not started by default)
+  optimizer:
+    build: .
+    container_name: robinhoodbot-optimizer
+    profiles:
+      - optimizer
+    environment:
+      - TZ=America/New_York
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./robinhoodbot/config.py:/app/config.py
+      - ./robinhoodbot/genetic_optimization_intraday_result.json:/app/genetic_optimization_intraday_result.json
+      - ./robinhoodbot/genetic_optimization_intraday_result.checkpoint.json:/app/genetic_optimization_intraday_result.checkpoint.json
+      - ./robinhoodbot/genetic_optimizer_test_symbols.json:/app/genetic_optimizer_test_symbols.json
+      - ./robinhoodbot/tradehistory-real.json:/app/tradehistory-real.json:ro
+      # Cache yfinance data to avoid re-downloading
+      - optimizer-cache:/app/.yfinance_cache
+    entrypoint: ["python3", "genetic_optimizer_intraday.py"]
+
+volumes:
+  optimizer-cache:
