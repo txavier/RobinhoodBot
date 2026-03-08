@@ -60,8 +60,9 @@ spec:
           secret:
             secretName: robinhoodbot-config
         - name: data
-          persistentVolumeClaim:
-            claimName: robinhoodbot-data
+          hostPath:
+            path: /mnt/c/dev/RobinhoodBot/robinhoodbot
+            type: Directory
         - name: optimizer-cache
           persistentVolumeClaim:
             claimName: optimizer-cache
