@@ -129,4 +129,6 @@ docker build -t robinhoodbot:latest .
 kubectl delete job robinhoodbot-optimizer -n robinhoodbot
 kubectl apply -f k8s/optimizer-job.yaml
 kubectl logs -f -n robinhoodbot job/robinhoodbot-optimizer
+kubectl port-forward -n robinhoodbot job/robinhoodbot-optimizer 8265:8265
+kubectl cp robinhoodbot/POD_NAME:/app/data/genetic_optimization_intraday_result.json ./robinhoodbot/genetic_optimization_intraday_result.json
 ```
