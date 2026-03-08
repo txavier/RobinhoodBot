@@ -432,6 +432,56 @@ python genetic_optimizer_intraday.py \
 | `--disable-ray-mem-monitor` | | Disable Ray memory monitor (fixes cgroup v2 crashes) | False |
 | `--resume` | | Enable checkpoint/resume - saves progress after each generation | False |
 | `--checkpoint-file` | | Custom checkpoint file path | `<output>.checkpoint.json` |
+| `--real-data` | | Use real Yahoo Finance data instead of synthetic | False |
+| `--log-file` | | Write output to log file in addition to stdout | None |
+| `--num-stocks` | `-n` | Select N stocks from built-in universe (~500 liquid equities) | None |
+| `--train-test-split` | | Train/test split ratio (e.g. 0.7 = 70% train, 30% holdout) | 0.0 |
+| `--no-kfold` | | Disable K-fold cross-validation | False (enabled) |
+| `--no-walkforward` | | Disable walk-forward validation | False (enabled) |
+| `--kfold-splits` | | Number of K-fold splits | 5 |
+| `--walkforward-windows` | | Number of walk-forward windows | 3 |
+
+## Anti-Overfitting: Cross-Validation
+
+When using `--real-data`, the optimizer automatically enables **K-fold cross-validation** and **walk-forward validation** to combat overfitting. These can be controlled independently:
+
+### How It Works
+
+1. **Train/Test Holdout** (`--train-test-split 0.7`): Splits data into 70% train / 30% unseen test. The test set is only used for final evaluation after evolution completes.
+
+2. **K-Fold CV** (default: 5 folds): Splits the training data into K chronological folds. Each gene is evaluated K times (each fold takes a turn as validation). Reduces overfitting to any particular time period.
+
+3. **Walk-Forward** (default: 3 windows): Creates expanding training windows with fixed-size test windows. Tests that the strategy works across different market regimes in chronological order.
+
+**Fitness formula with CV enabled**: `0.7 × average_fitness + 0.3 × min_fitness` across all folds/windows. This rewards consistency — a gene that performs well on every fold scores higher than one that's great on some but poor on others.
+
+### Usage Examples
+
+```bash
+# Full anti-overfitting stack (recommended for production runs)
+python genetic_optimizer_intraday.py \
+    --num-stocks 75 --real-data --train-test-split 0.7 \
+    --generations 30 --population 40 --resume
+
+# K-fold only (faster, no walk-forward)
+python genetic_optimizer_intraday.py \
+    --num-stocks 50 --real-data --train-test-split 0.7 \
+    --no-walkforward --kfold-splits 5
+
+# Walk-forward only (no K-fold)
+python genetic_optimizer_intraday.py \
+    --num-stocks 50 --real-data --train-test-split 0.7 \
+    --no-kfold --walkforward-windows 4
+
+# Disable all CV (just train/test holdout)
+python genetic_optimizer_intraday.py \
+    --num-stocks 50 --real-data --train-test-split 0.7 \
+    --no-kfold --no-walkforward
+```
+
+### Performance Impact
+
+With 5-fold CV + 3 walk-forward windows, each gene is evaluated **8 times** per generation instead of once. This makes evolution ~8x slower per generation but significantly reduces overfitting. Recommended for overnight/production runs.
 
 ## Example Output
 
