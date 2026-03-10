@@ -2103,6 +2103,14 @@ def validate_against_real_trades(gene: IntradayTradingGene, tradehistory_path: s
     print("REAL TRADE VALIDATION")
     print(f"{'='*70}")
     
+    # Check multiple possible locations for tradehistory-real.json
+    if not os.path.exists(tradehistory_path):
+        alt_paths = ["data/tradehistory-real.json", "tradehistory-real.json"]
+        for alt in alt_paths:
+            if os.path.exists(alt):
+                tradehistory_path = alt
+                break
+    
     if not os.path.exists(tradehistory_path):
         print(f"⚠️  Warning: {tradehistory_path} not found. Skipping validation.")
         return {'status': 'skipped', 'reason': 'file_not_found'}
