@@ -1389,6 +1389,9 @@ class IntradayGeneticOptimizer:
                 if self.verbose:
                     self._log("  Ray memory monitor disabled (--disable-ray-mem-monitor)")
             
+            # Expose Prometheus metrics on port 8080 for Grafana dashboards
+            init_kwargs["_metrics_export_port"] = 8080
+
             # ray.init() auto-detects: local CPUs or K8s cluster
             ray.init(**init_kwargs)
         

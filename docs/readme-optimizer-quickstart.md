@@ -123,11 +123,30 @@ kubectl delete namespace robinhoodbot
 ```
 
 ## Dashboard
+
+### Install monitoring (one-time setup)
+
+**Linux / macOS / WSL:**
+```bash
 ./k8s/monitoring/install-monitoring.sh
-# Then port-forward Grafana:
-kubectl port-forward -n prometheus-system svc/prometheus-grafana 3000:http-web
-# Open http://localhost:3000 (admin / prom-operator)
+```
+
+**Windows PowerShell:**
+```powershell
+.\k8s\monitoring\install-monitoring.ps1
+```
+
+### View the dashboard
+
+```bash
+# Port-forward Grafana
+kubectl port-forward -n prometheus-system svc/prometheus-grafana 3005:http-web
+# Open http://localhost:3005
+# Get password:
+kubectl get secret -n prometheus-system prometheus-grafana -o jsonpath="{.data.admin-password}" | base64 -d
+# Login: admin / <password from above>
 # Navigate to Dashboards → Ray → Default Dashboard
+```
 
 ## Quick Reference
 
