@@ -1,0 +1,29 @@
+# ============================================================================
+# PodMonitor — Scrape Ray metrics from optimizer pods
+# ============================================================================
+# Ray exports Prometheus metrics on port 8080 by default.
+# This PodMonitor tells Prometheus to scrape those metrics from any pod
+# in the robinhoodbot namespace that has the ray metrics port.
+# ============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: ray-optimizer-monitor
+  namespace: prometheus-system
+  labels:
+    # Must match the Prometheus Helm release label for discovery
+    release: prometheus
+spec:
+  jobLabel: ray-optimizer
+  # Monitor pods in the robinhoodbot namespace
+  namespaceSelector:
+    matchNames:
+      - robinhoodbot
+  # Match optimizer pods (Job pods get the job-name label automatically)
+  selector:
+    matchLabels:
+      app: robinhoodbot-optimizer
+  podMetricsEndpoints:
+    - port: ray-metrics
+      interval: 15s
+      path: /metrics

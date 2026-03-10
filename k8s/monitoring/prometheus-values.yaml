@@ -1,0 +1,49 @@
+# ============================================================================
+# Prometheus + Grafana values for Ray monitoring
+# ============================================================================
+# Overrides for kube-prometheus-stack Helm chart
+# Reference: https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack
+
+grafana:
+  # Allow embedding Grafana panels in Ray Dashboard
+  grafana.ini:
+    security:
+      allow_embedding: true
+    auth.anonymous:
+      enabled: true
+      org_role: Viewer
+  # Persist Grafana data (dashboards, config)
+  persistence:
+    enabled: true
+    size: 1Gi
+  # Sidecar watches for ConfigMaps with label grafana_dashboard=1
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
+
+prometheus:
+  prometheusSpec:
+    # Discover PodMonitors in all namespaces
+    podMonitorSelectorNilUsesHelmValues: false
+    podMonitorNamespaceSelector: {}
+    # Discover ServiceMonitors in all namespaces
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorNamespaceSelector: {}
+    # Discover PrometheusRules in all namespaces
+    ruleSelectorNilUsesHelmValues: false
+    ruleNamespaceSelector: {}
+    # Retention
+    retention: 30d
+    # Storage
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
