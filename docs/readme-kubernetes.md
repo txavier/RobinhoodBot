@@ -345,6 +345,71 @@ kubectl rollout restart deployment/robinhoodbot -n robinhoodbot
 | Health check | Docker healthcheck | liveness/readiness probes |
 | Scaling guard | Single container | `replicas: 1` + `Recreate` strategy |
 
+## Monitoring — Prometheus & Grafana for Ray Metrics
+
+The optimizer runs [Ray](https://docs.ray.io/) internally and exports Prometheus metrics on port 8080.
+A monitoring stack (Prometheus + Grafana) can be installed to visualize CPU, memory, task, and actor metrics during optimization runs.
+
+### Prerequisites
+
+- [Helm 3](https://helm.sh/docs/intro/install/) installed
+- `kubectl` configured for your cluster
+
+### Install
+
+```bash
+./k8s/monitoring/install-monitoring.sh
+```
+
+This script:
+1. Adds the `prometheus-community` Helm repo
+2. Creates a `prometheus-system` namespace
+3. Installs [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) (Prometheus + Grafana)
+4. Applies a `PodMonitor` to scrape Ray metrics from optimizer pods
+5. Downloads and imports the [Ray Grafana dashboard](https://github.com/ray-project/kuberay/tree/master/config/grafana) from the KubeRay repo
+
+### Access Grafana
+
+```bash
+kubectl port-forward -n prometheus-system svc/prometheus-grafana 3000:http-web
+```
+Open http://localhost:3000 — login: `admin` / `prom-operator`
+
+Navigate to **Dashboards → Ray → Default Dashboard** to see:
+- Cluster utilization (CPU, memory, disk, network)
+- Task and actor counts by state
+- Logical CPU/GPU usage
+- Object store memory
+- Per-component and per-node hardware breakdowns
+
+### Access Prometheus
+
+```bash
+kubectl port-forward -n prometheus-system svc/prometheus-kube-prometheus-prometheus 9090:http-web
+```
+Open http://localhost:9090 — try queries like `ray_node_cpu_utilization` or `ray_tasks`.
+
+### Verify Metrics Are Scraped
+
+1. Open Prometheus at http://localhost:9090/targets
+2. Look for a target named `podMonitor/prometheus-system/ray-optimizer-monitor`
+3. Status should be **UP** while the optimizer job is running
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `k8s/monitoring/install-monitoring.sh` | One-command install script |
+| `k8s/monitoring/prometheus-values.yaml` | Helm chart values (Grafana config, Prometheus storage/retention) |
+| `k8s/monitoring/ray-pod-monitor.yaml` | PodMonitor CRD — tells Prometheus to scrape Ray metrics |
+
+### Uninstall
+
+```bash
+helm uninstall prometheus -n prometheus-system
+kubectl delete namespace prometheus-system
+```
+
 ## Troubleshooting
 
 **Pod in CrashLoopBackOff:**
