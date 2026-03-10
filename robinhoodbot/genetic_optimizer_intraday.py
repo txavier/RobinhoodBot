@@ -523,11 +523,11 @@ class IntradayGeneticOptimizer:
         
     @staticmethod
     def _archive_file(filepath: str):
-        """Archive an existing file by copying it to a timestamped version.
+        """Archive an existing file by copying it to a timestamped version in archive/.
         
         Creates a copy like:
           genetic_optimization_intraday_result.json
-          → genetic_optimization_intraday_result.2026-03-07_143022.json
+          → archive/genetic_optimization_intraday_result.2026-03-07_143022.json
         
         Only archives if the file exists and is non-empty.
         """
@@ -536,8 +536,12 @@ class IntradayGeneticOptimizer:
         try:
             mtime = os.path.getmtime(filepath)
             ts = datetime.fromtimestamp(mtime).strftime('%Y-%m-%d_%H%M%S')
-            base, ext = os.path.splitext(filepath)
-            archive_path = f"{base}.{ts}{ext}"
+            dirname = os.path.dirname(filepath)
+            archive_dir = os.path.join(dirname, 'archive') if dirname else 'archive'
+            os.makedirs(archive_dir, exist_ok=True)
+            filename = os.path.basename(filepath)
+            base, ext = os.path.splitext(filename)
+            archive_path = os.path.join(archive_dir, f"{base}.{ts}{ext}")
             # Don't overwrite an existing archive with the same timestamp
             if not os.path.exists(archive_path):
                 shutil.copy2(filepath, archive_path)
