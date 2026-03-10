@@ -637,10 +637,15 @@ class IntradayGeneticOptimizer:
                   f"differs from current ({self.config.generations}). Cannot resume.")
             return None
         
-        # Validate symbols match
-        if checkpoint.get('symbols') != self.symbols:
-            print(f"  ⚠️  Warning: Checkpoint symbols differ from current run. Cannot resume.")
-            return None
+        # Adopt checkpoint's symbol list when resuming.
+        # The checkpoint may have fewer symbols than --num-stocks requested because
+        # some symbols failed to download in the original run. Using the checkpoint's
+        # list ensures the resume is consistent with the population's fitness scores.
+        cp_symbols = checkpoint.get('symbols')
+        if cp_symbols and cp_symbols != self.symbols:
+            print(f"  ℹ️  Adopting checkpoint's symbol list ({len(cp_symbols)} symbols) "
+                  f"instead of current ({len(self.symbols)})")
+            self.symbols = cp_symbols
         
         return checkpoint
     
