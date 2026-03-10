@@ -122,6 +122,13 @@ kubectl delete job robinhoodbot-optimizer -n robinhoodbot
 kubectl delete namespace robinhoodbot
 ```
 
+## Dashboard
+./k8s/monitoring/install-monitoring.sh
+# Then port-forward Grafana:
+kubectl port-forward -n prometheus-system svc/prometheus-grafana 3000:http-web
+# Open http://localhost:3000 (admin / prom-operator)
+# Navigate to Dashboards → Ray → Default Dashboard
+
 ## Quick Reference
 
 ```bash
