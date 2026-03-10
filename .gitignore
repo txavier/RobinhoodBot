@@ -145,3 +145,4 @@ robinhoodbot/logs/ai_suggested_config_changelog.json
 robinhoodbot/genetic_optimization_intraday_result.checkpoint.json
 robinhoodbot/.yfinance_cache/
 robinhoodbot/genetic_optimizer_test_symbols.json
+robinhoodbot/archive/
