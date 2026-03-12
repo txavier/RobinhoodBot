@@ -73,12 +73,12 @@ use_caching=True
 # Stop-loss settings
 # Set use_stop_loss to True to enable selling when a stock drops below the stop_loss_percent
 # This protects against holding losing positions waiting for technical indicators
-use_stop_loss=False
+use_stop_loss=True
 # stop_loss_percent: Sell if total loss from buy price exceeds this percentage (e.g., 5 = sell at -5%)
-stop_loss_percent=8.6
+stop_loss_percent=8.4
 # Take-profit settings
 # take_profit_percent: Sell if total gain from buy price exceeds this percentage (e.g., 1.28 = sell at +1.28%)
-take_profit_percent=1.17
+take_profit_percent=1.18
 
 # Golden cross buy settings
 # golden_cross_buy_days: Number of days to look back for golden cross buy signals
@@ -86,15 +86,15 @@ golden_cross_buy_days=2
 
 # SMA (Simple Moving Average) settings
 # short_sma: Short-term SMA period in hours (default 20 hours ≈ ~3 trading days)
-short_sma=16
+short_sma=23
 # long_sma: Long-term SMA period in hours (default 50 hours ≈ ~7 trading days)
-long_sma=100
+long_sma=94
 # short_sma_downtrend: Short-term SMA when market is not in uptrend (more patient to avoid false death crosses)
-short_sma_downtrend=31
+short_sma_downtrend=45
 # short_sma_take_profit: Short-term SMA when take profit triggered and traded today (avoid day trade limit)
-short_sma_take_profit=5
+short_sma_take_profit=13
 # long_sma_take_profit: Long-term SMA when take profit triggered and traded today
-long_sma_take_profit=12
+long_sma_take_profit=19
 # use_dynamic_sma: Enable/disable dynamic SMA adjustment based on market conditions
 use_dynamic_sma=True
 
@@ -104,15 +104,15 @@ use_dynamic_sma=True
 use_market_filter=True
 # uptrend_threshold_pct: Minimum percentage the index must be above day open to count as uptrend
 # (e.g., 0.1 means index must be +0.1% above open, not just any amount above)
-uptrend_threshold_pct=0.44
+uptrend_threshold_pct=0.19
 # major_downtrend_threshold_pct: Minimum percentage the index must be below week open to count as major downtrend
 # (e.g., 1.0 means index must be -1.0% below week open, filtering out trivial dips)
-major_downtrend_threshold_pct=2.2
+major_downtrend_threshold_pct=1.4
 # use_momentum_check: Enable intraday momentum direction check on indices
 # When enabled, a recovering market (was down -1.5%, now only -0.3%) won't trigger downtrend
-use_momentum_check=True
+use_momentum_check=False
 # momentum_lookback_bars: Number of 5-minute bars to compare for momentum direction (e.g., 8 = 40 min ago)
-momentum_lookback_bars=28
+momentum_lookback_bars=30
 
 # Slope ordering settings
 # use_slope_ordering: When True, stocks are sorted by price slope and only those above slope_threshold are bought.
@@ -121,17 +121,17 @@ use_slope_ordering=False
 # slope_threshold: Minimum price slope (from linear regression on 5-min bars) for a stock to be considered for buying.
 # Stocks with slope below this value are filtered out by order_symbols_by_slope().
 # Higher = more selective (fewer buys), Lower = more permissive.
-slope_threshold=0.001
+slope_threshold=0.0019
 
 # Intraday filter toggles
 # use_eod_filter: When True, no new buys after 1:30pm ET (end-of-day filter)
 use_eod_filter=False
 # use_profit_before_eod: When True, sell profitable positions after 1:30pm ET before market close
-use_profit_before_eod=False
+use_profit_before_eod=True
 # use_price_5hr_check: When True, only buy if current price > price 5 hours ago
 use_price_5hr_check=False
 # use_price_cross_check: When True, only buy if current price > price at golden cross formation
 use_price_cross_check=False
 
 # Version number for tracking
-version="0.9.29"
+version="0.9.30"
