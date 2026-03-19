@@ -48,6 +48,10 @@ min_volume=1000000
 min_market_cap=400000
 # Reset the watchlist every week.  Useful for keeping the number of api requests low.
 reset_watchlist=True
+# clear_watchlist_next_run: If True, the bot will clear the default watchlist on the next run
+# and then automatically set this flag back to False. Useful as a fallback when the bot
+# wasn't running during the normal Friday night reset window.
+clear_watchlist_next_run=False
 # Purchase limit mode (controls how purchase_limit_percentage is applied)
 #   0 = Legacy: per-stock cap using flawed formula (limit = equity / pct)
 #   1 = Total investment cap: pct caps TOTAL invested across all stocks, 1-share exception
