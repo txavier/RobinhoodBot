@@ -28,6 +28,7 @@ spec:
             - "--days=180"
             - "--train-test-split=0.7"
             - "--optimize-filters"
+            - "--no-kfold"  # Takes too long with real data so turning off now.
             - "--use-ray"
             - "--output=/app/data/genetic_optimization_intraday_result.json"
             - "--checkpoint-file=/app/data/genetic_optimization_intraday_result.checkpoint.json"
