@@ -1380,19 +1380,28 @@ class IntradayGeneticOptimizer:
             # Configure Ray init options
             init_kwargs = {"ignore_reinit_error": True}
             
-            # Disable memory monitor if configured (fixes cgroup v2 issues on some Linux systems)
-            if self.config.disable_ray_mem_monitor:
-                init_kwargs["_system_config"] = {
-                    "automatic_object_spilling_enabled": False,
-                    "memory_monitor_refresh_ms": 0,
-                }
-                if self.verbose:
-                    self._log("  Ray memory monitor disabled (--disable-ray-mem-monitor)")
+            # Check if connecting to an existing cluster (e.g., KubeRay via RAY_ADDRESS)
+            ray_address = os.environ.get("RAY_ADDRESS", "")
+            connecting_to_cluster = bool(ray_address)
             
-            # Expose Prometheus metrics on port 8080 for Grafana dashboards
-            init_kwargs["_metrics_export_port"] = 8080
+            if connecting_to_cluster:
+                if self.verbose:
+                    self._log(f"  Connecting to Ray cluster at {ray_address}...")
+            else:
+                # These options only apply when starting a local Ray instance
+                # Disable memory monitor if configured (fixes cgroup v2 issues on some Linux systems)
+                if self.config.disable_ray_mem_monitor:
+                    init_kwargs["_system_config"] = {
+                        "automatic_object_spilling_enabled": False,
+                        "memory_monitor_refresh_ms": 0,
+                    }
+                    if self.verbose:
+                        self._log("  Ray memory monitor disabled (--disable-ray-mem-monitor)")
+                
+                # Expose Prometheus metrics on port 8080 for Grafana dashboards
+                init_kwargs["_metrics_export_port"] = 8080
 
-            # ray.init() auto-detects: local CPUs or K8s cluster
+            # ray.init() auto-detects: local CPUs, or connects to cluster via RAY_ADDRESS env var
             ray.init(**init_kwargs)
         
         # Put large shared data into Ray object store once (avoids per-task serialization)

@@ -1779,8 +1779,10 @@ def scan_stocks():
     try:
 
         # Log in to Robinhood
-        # Put your username in the config file.
-        login = rr.authentication.login(username=rh_username)
+        # Username from config.py, password from RH_PASSWORD env var (K8s secret).
+        # If RH_PASSWORD is not set, falls back to interactive getpass prompt.
+        _pw = os.environ.get('RH_PASSWORD') or None
+        login = rr.authentication.login(username=rh_username, password=_pw)
         login_to_sms()
 
         # Clear caches at the start of each scan to get fresh data
