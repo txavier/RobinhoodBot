@@ -551,6 +551,34 @@ def remove_watchlist_symbols(watchlist_symbols):
         result = rr.delete_symbols_from_watchlist(watchlist_symbols, name = watch_list_name)
         return result
 
+def clear_watchlist_on_demand():
+    """Clears all symbols from the default watchlist immediately (regardless of day/time)
+    and resets the clear_watchlist_next_run flag in config.py back to False.
+
+    This is triggered by the clear_watchlist_next_run config flag and is intended
+    as a fallback for when the bot wasn't running during the normal Friday night
+    reset window.
+    """
+    watchlist_symbols_to_remove = get_watchlist_symbols(True)
+    if len(watchlist_symbols_to_remove) > 0:
+        print("----- clear_watchlist_next_run is set: removing all stocks from watchlist -----")
+        rr.delete_symbols_from_watchlist(watchlist_symbols_to_remove, name=watch_list_name)
+        print(f"Removed {len(watchlist_symbols_to_remove)} symbols from watchlist: {watchlist_symbols_to_remove}")
+    else:
+        print("----- clear_watchlist_next_run is set but watchlist is already empty -----")
+
+    # Reset the flag in config.py so it doesn't clear again on the next run
+    try:
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.py')
+        with open(config_path, 'r') as f:
+            config_content = f.read()
+        config_content = config_content.replace('clear_watchlist_next_run=True', 'clear_watchlist_next_run=False')
+        with open(config_path, 'w') as f:
+            f.write(config_content)
+        print("Reset clear_watchlist_next_run to False in config.py")
+    except Exception as e:
+        print(f"Warning: could not reset clear_watchlist_next_run flag in config.py: {e}")
+
 def get_position_creation_date(symbol, holdings_data):
     """Returns the time at which we bought a certain stock in our portfolio
 
@@ -2143,6 +2171,12 @@ def scan_stocks():
         if(reset_watchlist):
             watchlist_symbols_to_remove = get_watchlist_symbols(True)
             remove_watchlist_symbols(watchlist_symbols_to_remove)
+
+        # If the clear_watchlist_next_run flag is set, clear the watchlist now
+        # regardless of day/time. This handles the case where the bot wasn't
+        # running during the normal Friday night reset window.
+        if clear_watchlist_next_run:
+            clear_watchlist_on_demand()
         
         print("----- Version " + version + " -----\n")
 
