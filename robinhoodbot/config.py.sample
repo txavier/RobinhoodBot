@@ -1,6 +1,7 @@
 #Enter your robinhood username and password here, then save this file in the same directory as a regular python file
 # rh=<Set this in your os environment variable with your Robinhood password>
 rh_username="your_email@example.com"
+# rh_password: Set via RH_PASSWORD environment variable (K8s secret) for headless/container operation.
 # If you dont have a premium account then setting this to false will disable buying during the offhours.
 premium_account=False
 # You need to retrieve the authenticator token from the robinhood app when you enable 2FA with

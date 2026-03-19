@@ -14,8 +14,8 @@ spec:
       restartPolicy: Never
       containers:
         - name: optimizer
-          image: robinhoodbot:latest
-          imagePullPolicy: IfNotPresent
+          image: 192.168.87.35:5000/robinhoodbot:latest
+          imagePullPolicy: Always
           command: ["python3", "genetic_optimizer_intraday.py"]
           args:
             - "--num-stocks=250"
@@ -30,6 +30,7 @@ spec:
             - "--optimize-filters"
             - "--no-kfold"  # Takes too long with real data so turning off now.
             - "--use-ray"
+            - "--disable-ray-mem-monitor"
             - "--output=/app/data/genetic_optimization_intraday_result.json"
             - "--checkpoint-file=/app/data/genetic_optimization_intraday_result.checkpoint.json"
           env:
@@ -37,10 +38,8 @@ spec:
               value: "America/New_York"
             - name: PYTHONUNBUFFERED
               value: "1"
-          ports:
-            - name: ray-metrics
-              containerPort: 8080
-              protocol: TCP
+            - name: RAY_ADDRESS
+              value: "ray://optimizer-ray-head-svc.robinhoodbot.svc.cluster.local:10001"
           volumeMounts:
             - name: config
               mountPath: /app/config.py
@@ -50,27 +49,20 @@ spec:
               mountPath: /app/data
             - name: optimizer-cache
               mountPath: /app/.yfinance_cache
-            - name: dshm
-              mountPath: /dev/shm
           resources:
             requests:
-              memory: "2Gi"
-              cpu: "2000m"
+              memory: "1Gi"
+              cpu: "500m"
             limits:
-              memory: "12Gi"
-              cpu: "14000m"
+              memory: "2Gi"
+              cpu: "1000m"
       volumes:
-        - name: dshm
-          emptyDir:
-            medium: Memory
-            sizeLimit: 4Gi
         - name: config
           secret:
             secretName: robinhoodbot-config
         - name: data
-          hostPath:
-            path: /mnt/c/dev/RobinhoodBot/robinhoodbot
-            type: Directory
+          persistentVolumeClaim:
+            claimName: optimizer-data
         - name: optimizer-cache
           persistentVolumeClaim:
             claimName: optimizer-cache

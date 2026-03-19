@@ -19,11 +19,17 @@ spec:
     spec:
       containers:
         - name: bot
-          image: robinhoodbot:latest
-          imagePullPolicy: IfNotPresent
+          image: 192.168.87.35:5000/robinhoodbot:latest
+          imagePullPolicy: Always
           env:
             - name: TZ
               value: "America/New_York"
+            - name: RH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: robinhoodbot-secrets
+                  key: rh-password
+                  optional: true
           volumeMounts:
             - name: config
               mountPath: /app/config.py
