@@ -613,3 +613,18 @@ python genetic_optimizer_intraday.py \
 6. **Start Without Filter Optimization**: Get good base parameters first, then try `--optimize-filters`
 7. **Validate Results**: Run `backtest_intraday.py` with the optimized parameters to confirm
 
+## Quick reference
+
+### View output of robinhoodbot from within cluster:
+```bash
+while true; do kubectl logs -f deployment/robinhoodbot -n robinhoodbot --tail=0; sleep 1; done
+while true; do kubectl logs -f robinhoodbot-optimizer-x2rd9 -n robinhoodbot --tail=0; sleep 1; done
+kubectl logs robinhoodbot-optimizer-l44gl -n robinhoodbot | grep -E "Generation|Best fitness|Evaluating|✓|Error" | tail -15
+```
+
+### For remote computers
+```bash
+./monitor.sh              # default: last 50 lines then follow
+./monitor.sh --history 200  # show last 200 lines then follow
+```
+
