@@ -86,7 +86,7 @@ spec:
       minReplicas: 4
       maxReplicas: 4
       rayStartParams:
-        num-cpus: "6"
+        num-cpus: "7"
         metrics-export-port: "8080"
       template:
         metadata:
@@ -129,7 +129,7 @@ spec:
                   cpu: "6"
                   memory: "2Gi"
                 limits:
-                  cpu: "7"
+                  cpu: "8"
                   memory: "4Gi"
           volumes:
             - name: dshm

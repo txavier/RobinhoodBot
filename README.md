@@ -615,11 +615,17 @@ python genetic_optimizer_intraday.py \
 
 ## Quick reference
 
+### Start Genetic Optimizer
+kubectl delete job robinhoodbot-optimizer -n robinhoodbot
+kubectl apply -f k8s/optimizer-job.yaml
+
+
 ### View output of robinhoodbot from within cluster:
 ```bash
 while true; do kubectl logs -f deployment/robinhoodbot -n robinhoodbot --tail=0; sleep 1; done
 while true; do kubectl logs -f robinhoodbot-optimizer-x2rd9 -n robinhoodbot --tail=0; sleep 1; done
 kubectl logs robinhoodbot-optimizer-l44gl -n robinhoodbot | grep -E "Generation|Best fitness|Evaluating|✓|Error" | tail -15
+kubectl logs -f -n robinhoodbot job/robinhoodbot-optimizer
 ```
 
 ### For remote computers
@@ -632,4 +638,4 @@ kubectl logs robinhoodbot-optimizer-l44gl -n robinhoodbot | grep -E "Generation|
 
 Cluster Dashboard: http://localhost:30300
 Ray Dashboard: http://localhost:30265
-Ray Grafana Dashboard:  http://localhost:3005 
+Ray Grafana Dashboard:  http://localhost:30080
