@@ -635,17 +635,22 @@ ssh -o ControlMaster=yes -o ControlPath=/tmp/ssh-ctrl/%r@%h:%p -o ControlPersist
 ```
 
 ### Start Genetic Optimizer
+kubectl apply -f k8s/ray-cluster.yaml -n robinhoodbot
 kubectl delete job robinhoodbot-optimizer -n robinhoodbot
-kubectl apply -f k8s/optimizer-job.yaml
+kubectl apply -f k8s/optimizer-job.yaml -n robinhoodbot
 
 ### File exchange location
 /srv/nfs/robinhoodbot/robinhoodbot-robinhoodbot-data-nfs-pvc-529a9db2-2ce8-408e-89b5-797a8c68d462/
 
 ### View output of robinhoodbot from within cluster:
 ```bash
-while true; do kubectl logs -f deployment/robinhoodbot -n robinhoodbot --tail=0; sleep 1; done
-while true; do kubectl logs -f robinhoodbot-optimizer-x2rd9 -n robinhoodbot --tail=0; sleep 1; done
+while true; do kubectl logs -f deployment/robinhoodbot -n robinhoodbot --tail=100; sleep 1; done
+
+while true; do kubectl logs -f robinhoodbot-optimizer-x2rd9 -n robinhoodbot --tail=100; sleep 1; done
 kubectl logs robinhoodbot-optimizer-l44gl -n robinhoodbot | grep -E "Generation|Best fitness|Evaluating|✓|Error" | tail -15
+
+while true; do kubectl logs -f -n robinhoodbot job/robinhoodbot-optimizer --tail=100; sleep 1; done
+
 kubectl logs -f -n robinhoodbot job/robinhoodbot-optimizer
 ```
 
