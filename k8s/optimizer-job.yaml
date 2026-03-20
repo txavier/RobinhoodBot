@@ -38,6 +38,8 @@ spec:
               value: "America/New_York"
             - name: PYTHONUNBUFFERED
               value: "1"
+            - name: DATA_DIR
+              value: "/app/data"
             - name: RAY_ADDRESS
               value: "ray://optimizer-ray-head-svc.robinhoodbot.svc.cluster.local:10001"
           volumeMounts:
@@ -47,8 +49,9 @@ spec:
               readOnly: true
             - name: data
               mountPath: /app/data
-            - name: optimizer-cache
+            - name: data
               mountPath: /app/.yfinance_cache
+              subPath: .yfinance_cache
           resources:
             requests:
               memory: "1Gi"
@@ -62,7 +65,4 @@ spec:
             secretName: robinhoodbot-config
         - name: data
           persistentVolumeClaim:
-            claimName: optimizer-data
-        - name: optimizer-cache
-          persistentVolumeClaim:
-            claimName: optimizer-cache
+            claimName: robinhoodbot-data

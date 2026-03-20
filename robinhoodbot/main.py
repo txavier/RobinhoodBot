@@ -505,7 +505,7 @@ def get_portfolio_symbols():
 def add_symbol_to_optimizer_universe(symbol):
     """Add a symbol to the top of genetic_optimizer_test_symbols.json if not already present."""
     try:
-        symbols_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'genetic_optimizer_test_symbols.json')
+        symbols_file = os.path.join(os.environ.get('DATA_DIR', os.path.dirname(os.path.abspath(__file__))), 'genetic_optimizer_test_symbols.json')
         if os.path.exists(symbols_file):
             with open(symbols_file, 'r') as f:
                 data = json.load(f)
@@ -1782,7 +1782,8 @@ def scan_stocks():
         # Username from config.py, password from RH_PASSWORD env var (K8s secret).
         # If RH_PASSWORD is not set, falls back to interactive getpass prompt.
         _pw = os.environ.get('RH_PASSWORD') or None
-        login = rr.authentication.login(username=rh_username, password=_pw)
+        _device_token = RH_DEVICE_TOKEN if RH_DEVICE_TOKEN and RH_DEVICE_TOKEN != "YOUR_16_CHAR_TOKEN" else None
+        login = rr.authentication.login(username=rh_username, password=_pw, device_token=_device_token)
         login_to_sms()
 
         # Clear caches at the start of each scan to get fresh data
