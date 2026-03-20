@@ -619,6 +619,8 @@ python genetic_optimizer_intraday.py \
 kubectl delete job robinhoodbot-optimizer -n robinhoodbot
 kubectl apply -f k8s/optimizer-job.yaml
 
+### File exchange location
+/srv/nfs/robinhoodbot/robinhoodbot-robinhoodbot-data-nfs-pvc-529a9db2-2ce8-408e-89b5-797a8c68d462/
 
 ### View output of robinhoodbot from within cluster:
 ```bash

@@ -135,7 +135,7 @@ spec:
             - name: dshm
               emptyDir:
                 medium: Memory
-                sizeLimit: 1Gi
+                sizeLimit: 2Gi
             - name: config
               secret:
                 secretName: robinhoodbot-config
