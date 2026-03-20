@@ -132,15 +132,15 @@ spec:
               resources:
                 requests:
                   cpu: "6"
-                  memory: "2Gi"
+                  memory: "4Gi"
                 limits:
                   cpu: "8"
-                  memory: "4Gi"
+                  memory: "8Gi"
           volumes:
             - name: dshm
               emptyDir:
                 medium: Memory
-                sizeLimit: 2Gi
+                sizeLimit: 4Gi
             - name: config
               secret:
                 secretName: robinhoodbot-config
