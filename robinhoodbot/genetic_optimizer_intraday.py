@@ -24,6 +24,7 @@ import copy
 import shutil
 import signal
 import sys
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field, asdict
@@ -1416,11 +1417,12 @@ class IntradayGeneticOptimizer:
         # Check if CV mode is active
         use_cv = bool(self._cv_folds or self._wf_windows)
         
+        # max_retries=3: Ray auto-retries tasks that crash (e.g. GCS connection failures)
         if use_cv:
             cv_folds_ref = ray.put(self._cv_folds) if self._cv_folds else None
             wf_windows_ref = ray.put(self._wf_windows) if self._wf_windows else None
             
-            @ray.remote
+            @ray.remote(max_retries=3)
             def ray_evaluate_gene_cv(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
                                      use_real_data, cv_folds=None, wf_windows=None):
                 return _evaluate_gene_cv_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed,
@@ -1431,7 +1433,7 @@ class IntradayGeneticOptimizer:
             ]
         else:
             # Define remote function inside method to avoid module-level Ray dependency
-            @ray.remote
+            @ray.remote(max_retries=3)
             def ray_evaluate_gene(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
                                   use_real_data=False, real_data_cache=None, raw_market_index_data=None):
                 return _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
@@ -1442,8 +1444,40 @@ class IntradayGeneticOptimizer:
                 ray_evaluate_gene.remote(*args, real_data_ref, raw_market_ref) for args in eval_args
             ]
         
-        # Gather results
-        evaluated_population = ray.get(futures)
+        # Gather results with stall detection.
+        # Instead of ray.get() which blocks forever, use ray.wait() in a loop
+        # so we can detect when no tasks have completed for too long (worker crash).
+        STALL_TIMEOUT_MINUTES = 30  # max time with zero progress before failing
+        remaining = list(futures)
+        completed_results = {}  # future -> result, preserving order
+        last_progress_time = time.time()
+        
+        while remaining:
+            ready, remaining = ray.wait(remaining, num_returns=1, timeout=60.0)
+            if ready:
+                for ref in ready:
+                    completed_results[ref] = ray.get(ref)
+                last_progress_time = time.time()
+                done_count = len(completed_results)
+                total_count = len(futures)
+                if self.verbose and done_count % 10 == 0:
+                    self._log(f"    Progress: {done_count}/{total_count} genes evaluated")
+            else:
+                stall_minutes = (time.time() - last_progress_time) / 60.0
+                if stall_minutes >= STALL_TIMEOUT_MINUTES:
+                    done_count = len(completed_results)
+                    total_count = len(futures)
+                    self._log(f"  ⚠️  Ray stall detected: no task completed in {STALL_TIMEOUT_MINUTES} min "
+                              f"({done_count}/{total_count} done). Cancelling remaining tasks...")
+                    for ref in remaining:
+                        ray.cancel(ref, force=True)
+                    raise RuntimeError(
+                        f"Ray stall: {total_count - done_count} tasks stuck for {STALL_TIMEOUT_MINUTES} min. "
+                        f"Likely worker crash. Checkpoint saved — restart to resume."
+                    )
+        
+        # Return results in original submission order
+        evaluated_population = [completed_results[f] for f in futures]
         return evaluated_population
     
     def _evaluate_with_multiprocessing(self, eval_args: List[Tuple], num_workers: int) -> List[IntradayTradingGene]:
@@ -1890,6 +1924,14 @@ class IntradayGeneticOptimizer:
             if self.best_gene:
                 self.end_time = datetime.now()
                 return self.best_gene
+            raise
+        
+        except RuntimeError as e:
+            # Ray stall or other runtime errors — save checkpoint and exit
+            self._log(f"\n  🛑 RuntimeError: {e}")
+            if self.checkpoint_path and self.generation_history:
+                self._log(f"     Checkpoint was saved after Gen {len(self.generation_history)}.")
+                self._log(f"     Resume with: --resume to continue from Gen {len(self.generation_history) + 1}")
             raise
         
         finally:
