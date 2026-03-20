@@ -626,7 +626,12 @@ kubectl rollout restart deployment/robinhoodbot -n robinhoodbot
 
 Deploy remotely without repeated ssh ask
 ```bash
-./deploy.sh setup-ssh
+# One-time per session (enter password once)
+mkdir -p /tmp/ssh-ctrl && source ~/dev/RobinhoodBot/secrets.env && \
+ssh -o ControlMaster=yes -o ControlPath=/tmp/ssh-ctrl/%r@%h:%p -o ControlPersist=3600 -fN "${REMOTE_USER}@${REMOTE_HOST}"
+
+# Build + deploy
+./deploy.sh build && ./deploy.sh bot
 ```
 
 ### Start Genetic Optimizer
