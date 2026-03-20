@@ -5,6 +5,10 @@
 # Reference: https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack
 
 grafana:
+  # Expose Grafana on a NodePort so it's accessible from the LAN
+  service:
+    type: NodePort
+    nodePort: 30080
   # Allow embedding Grafana panels in Ray Dashboard
   grafana.ini:
     security:

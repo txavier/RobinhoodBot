@@ -24,6 +24,6 @@ spec:
     matchLabels:
       app: robinhoodbot-optimizer
   podMetricsEndpoints:
-    - port: ray-metrics
+    - port: metrics
       interval: 15s
       path: /metrics
