@@ -7,7 +7,7 @@ metadata:
     app: robinhoodbot-optimizer
 spec:
   rayVersion: "2.54.0"
-  enableInTreeAutoscaling: false
+  enableInTreeAutoscaling: true
 
   headGroupSpec:
     rayStartParams:
@@ -52,6 +52,8 @@ spec:
                 value: "1"
               - name: RAY_SCHEDULER_EVENTS
                 value: "0"
+              - name: RAY_AUTOSCALER_LOG_LEVEL
+                value: "WARNING"
             volumeMounts:
               - name: config
                 mountPath: /app/config.py
@@ -87,7 +89,7 @@ spec:
     - groupName: workers
       replicas: 4
       minReplicas: 4
-      maxReplicas: 4
+      maxReplicas: 10
       rayStartParams:
         num-cpus: "7"
         metrics-export-port: "8080"
