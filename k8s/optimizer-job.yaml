@@ -27,17 +27,21 @@ spec:
           imagePullPolicy: Always
           command: ["python3", "genetic_optimizer_intraday.py"]
           args:
-            - "--num-stocks=250"
+            - "--num-stocks=3"
+            # - "--num-stocks=250"
             - "--max-positions=10"
-            - "--generations=50"
-            - "--population=60"
+            - "--generations=4"
+            # - "--generations=50"
+            - "--population=5"
+            # - "--population=60"
             - "--real-data"
             - "--resume"
             - "--validate-real"
-            - "--days=180"
+            # - "--days=180"
+            - "--days=6"
             - "--train-test-split=0.7"
             - "--optimize-filters"
-            - "--no-kfold"  # Takes too long with real data so turning off now.
+            # - "--no-kfold"  # Takes too long with real data so turning off now.
             - "--use-ray"
             - "--disable-ray-mem-monitor"
             - "--output=/app/data/genetic_optimization_intraday_result.json"
