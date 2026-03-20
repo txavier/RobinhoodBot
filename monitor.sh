@@ -19,7 +19,7 @@ REMOTE_SSH="${REMOTE_USER}@${REMOTE_HOST}"
 NAMESPACE="robinhoodbot"
 
 TAIL_LINES=50
-if [[ "$1" == "--history" && -n "$2" ]]; then
+if [[ "${1:-}" == "--history" && -n "${2:-}" ]]; then
     TAIL_LINES="$2"
 fi
 
