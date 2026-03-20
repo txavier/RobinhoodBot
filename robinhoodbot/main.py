@@ -1097,10 +1097,10 @@ def is_market_in_major_downtrend():
     # Using NasDaq as the market downtrend indicator which does not have extended trading hours.
     today_history_ndaq = rsa.get_stock_historicals(stockTickerNdaq, interval='5minute', span='day', bounds='regular') 
     week_history = rsa.get_stock_historicals(stockTickerNdaq, interval='day', span='week', bounds='regular')   
-    ndaq_week_open = float(week_history[0]['open_price'])
-    ndaq_current_close = float(today_history_ndaq[-1]['close_price'])
-    ndaq_pct_change = (ndaq_current_close - ndaq_week_open) / ndaq_week_open * 100
-    if(ndaq_week_open > ndaq_current_close and abs(ndaq_pct_change) >= major_downtrend_threshold_pct):
+    ndaq_week_open = float(week_history[0]['open_price']) if week_history else 0
+    ndaq_current_close = float(today_history_ndaq[-1]['close_price']) if today_history_ndaq else 0
+    ndaq_pct_change = (ndaq_current_close - ndaq_week_open) / ndaq_week_open * 100 if ndaq_week_open else 0
+    if(ndaq_week_open > 0 and ndaq_current_close > 0 and ndaq_week_open > ndaq_current_close and abs(ndaq_pct_change) >= major_downtrend_threshold_pct):
         if not use_momentum_check or _is_momentum_falling(today_history_ndaq):
             downtrendNdaq = True
 
@@ -1108,10 +1108,10 @@ def is_market_in_major_downtrend():
     # Using Dow as the market downtrend indicator.
     today_history_dow = rsa.get_stock_historicals(stockTickerDow, interval='5minute', span='day', bounds='regular')  
     week_history = rsa.get_stock_historicals(stockTickerDow, interval='day', span='week', bounds='regular')   
-    dow_week_open = float(week_history[0]['open_price'])
-    dow_current_close = float(today_history_dow[-1]['close_price'])
-    dow_pct_change = (dow_current_close - dow_week_open) / dow_week_open * 100
-    if(dow_week_open > dow_current_close and abs(dow_pct_change) >= major_downtrend_threshold_pct):
+    dow_week_open = float(week_history[0]['open_price']) if week_history else 0
+    dow_current_close = float(today_history_dow[-1]['close_price']) if today_history_dow else 0
+    dow_pct_change = (dow_current_close - dow_week_open) / dow_week_open * 100 if dow_week_open else 0
+    if(dow_week_open > 0 and dow_current_close > 0 and dow_week_open > dow_current_close and abs(dow_pct_change) >= major_downtrend_threshold_pct):
         if not use_momentum_check or _is_momentum_falling(today_history_dow):
             downtrendDow = True
 
@@ -1119,10 +1119,10 @@ def is_market_in_major_downtrend():
     # Using S&P as the market downtrend indicator.
     today_history_sp = rsa.get_stock_historicals(stockTickerSP, interval='5minute', span='day', bounds='regular')    
     week_history = rsa.get_stock_historicals(stockTickerSP, interval='day', span='week', bounds='regular')   
-    sp_week_open = float(week_history[0]['open_price'])
-    sp_current_close = float(today_history_sp[-1]['close_price'])
-    sp_pct_change = (sp_current_close - sp_week_open) / sp_week_open * 100
-    if(sp_week_open > sp_current_close and abs(sp_pct_change) >= major_downtrend_threshold_pct):
+    sp_week_open = float(week_history[0]['open_price']) if week_history else 0
+    sp_current_close = float(today_history_sp[-1]['close_price']) if today_history_sp else 0
+    sp_pct_change = (sp_current_close - sp_week_open) / sp_week_open * 100 if sp_week_open else 0
+    if(sp_week_open > 0 and sp_current_close > 0 and sp_week_open > sp_current_close and abs(sp_pct_change) >= major_downtrend_threshold_pct):
         if not use_momentum_check or _is_momentum_falling(today_history_sp):
             downtrendSp = True
     
@@ -1162,30 +1162,30 @@ def is_market_in_uptrend():
     # Nasdaq
     # Using NasDaq as the market uptrend indicator which does not have extended trading hours.
     today_history_ndaq = rsa.get_stock_historicals(stockTickerNdaq, interval='5minute', span='day', bounds='regular')    
-    ndaq_day_open = float(today_history_ndaq[0]['open_price'])
-    ndaq_current_close = float(today_history_ndaq[-1]['close_price'])
-    ndaq_pct_change = (ndaq_current_close - ndaq_day_open) / ndaq_day_open * 100
-    if(ndaq_pct_change >= uptrend_threshold_pct):
+    ndaq_day_open = float(today_history_ndaq[0]['open_price']) if today_history_ndaq else 0
+    ndaq_current_close = float(today_history_ndaq[-1]['close_price']) if today_history_ndaq else 0
+    ndaq_pct_change = (ndaq_current_close - ndaq_day_open) / ndaq_day_open * 100 if ndaq_day_open else 0
+    if(ndaq_day_open > 0 and ndaq_pct_change >= uptrend_threshold_pct):
         if not use_momentum_check or _is_momentum_rising(today_history_ndaq):
             uptrendNdaq = True
 
     # DOW
     # Using Dow as the market uptrend indicator.
     today_history_dow = rsa.get_stock_historicals(stockTickerDow, interval='5minute', span='day', bounds='regular')    
-    dow_day_open = float(today_history_dow[0]['open_price'])
-    dow_current_close = float(today_history_dow[-1]['close_price'])
-    dow_pct_change = (dow_current_close - dow_day_open) / dow_day_open * 100
-    if(dow_pct_change >= uptrend_threshold_pct):
+    dow_day_open = float(today_history_dow[0]['open_price']) if today_history_dow else 0
+    dow_current_close = float(today_history_dow[-1]['close_price']) if today_history_dow else 0
+    dow_pct_change = (dow_current_close - dow_day_open) / dow_day_open * 100 if dow_day_open else 0
+    if(dow_day_open > 0 and dow_pct_change >= uptrend_threshold_pct):
         if not use_momentum_check or _is_momentum_rising(today_history_dow):
             uptrendDow = True
 
     # S&P Index
     # Using S&P as the market uptrend indicator.
     today_history_sp = rsa.get_stock_historicals(stockTickerSP, interval='5minute', span='day', bounds='regular')    
-    sp_day_open = float(today_history_sp[0]['open_price'])
-    sp_current_close = float(today_history_sp[-1]['close_price'])
-    sp_pct_change = (sp_current_close - sp_day_open) / sp_day_open * 100
-    if(sp_pct_change >= uptrend_threshold_pct):
+    sp_day_open = float(today_history_sp[0]['open_price']) if today_history_sp else 0
+    sp_current_close = float(today_history_sp[-1]['close_price']) if today_history_sp else 0
+    sp_pct_change = (sp_current_close - sp_day_open) / sp_day_open * 100 if sp_day_open else 0
+    if(sp_day_open > 0 and sp_pct_change >= uptrend_threshold_pct):
         if not use_momentum_check or _is_momentum_rising(today_history_sp):
             uptrendSp = True
     
