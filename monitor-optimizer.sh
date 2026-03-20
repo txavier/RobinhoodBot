@@ -1,8 +1,8 @@
 #!/bin/bash
-# Monitor RobinhoodBot logs in Kubernetes with auto-reconnect.
+# Monitor RobinhoodBot Optimizer logs in Kubernetes with auto-reconnect.
 # Connects via SSH to the control-plane node to run kubectl.
-# Usage: ./monitor.sh [--history N]
-#   --history N  Show last N lines on first connect (default: 50)
+# Usage: ./monitor-optimizer.sh [--history N]
+#   --history N  Show last N lines on first connect (default: 100)
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -18,21 +18,21 @@ fi
 REMOTE_SSH="${REMOTE_USER}@${REMOTE_HOST}"
 NAMESPACE="robinhoodbot"
 
-TAIL_LINES=50
+TAIL_LINES=100
 if [[ "${1:-}" == "--history" && -n "${2:-}" ]]; then
     TAIL_LINES="$2"
 fi
 
-echo "Monitoring robinhoodbot logs (Ctrl+C to stop)..."
+echo "Monitoring optimizer logs (Ctrl+C to stop)..."
 FIRST=true
 while true; do
     if $FIRST; then
         ssh -o ConnectTimeout=10 "${REMOTE_SSH}" \
-            "kubectl logs -f deployment/robinhoodbot -n ${NAMESPACE} --tail=${TAIL_LINES}"
+            "kubectl logs -f job/robinhoodbot-optimizer -n ${NAMESPACE} --tail=${TAIL_LINES}" 2>&1 || true
         FIRST=false
     else
         ssh -o ConnectTimeout=10 "${REMOTE_SSH}" \
-            "kubectl logs -f deployment/robinhoodbot -n ${NAMESPACE} --tail=0"
+            "kubectl logs -f job/robinhoodbot-optimizer -n ${NAMESPACE} --tail=0" 2>&1 || true
     fi
     echo "--- Connection lost. Reconnecting... ---"
     sleep 1
