@@ -51,6 +51,9 @@ spec:
             - name: data
               mountPath: /root/.tokens
               subPath: .tokens
+            - name: data
+              mountPath: /app/logs
+              subPath: logs/robinhoodbot
           livenessProbe:
             exec:
               command: ["find", "/tmp/heartbeat", "-mmin", "-12"]
