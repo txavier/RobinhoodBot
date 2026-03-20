@@ -616,7 +616,15 @@ python genetic_optimizer_intraday.py \
 ## Quick reference
 
 ### Deploy
-Deploy without repeated ssh ask
+Deploy locally
+```bash
+sudo docker build -t 192.168.87.35:5000/robinhoodbot:latest . && \
+sudo docker push 192.168.87.35:5000/robinhoodbot:latest && \
+kubectl apply -f k8s/deployment.yaml && \
+kubectl rollout restart deployment/robinhoodbot -n robinhoodbot
+```
+
+Deploy remotely without repeated ssh ask
 ```bash
 ./deploy.sh setup-ssh
 ```
