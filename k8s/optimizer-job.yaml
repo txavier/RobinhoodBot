@@ -40,6 +40,7 @@ spec:
             # - "--no-kfold"  # Takes too long with real data so turning off now.
             - "--use-ray"
             - "--disable-ray-mem-monitor"
+            - "--email-notify"
             - "--output=/app/data/genetic_optimization_intraday_result.json"
             - "--checkpoint-file=/app/data/genetic_optimization_intraday_result.checkpoint.json"
           env:
