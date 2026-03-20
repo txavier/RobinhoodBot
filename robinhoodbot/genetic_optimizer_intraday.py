@@ -1451,7 +1451,7 @@ class IntradayGeneticOptimizer:
         # Gather results with stall detection.
         # Instead of ray.get() which blocks forever, use ray.wait() in a loop
         # so we can detect when no tasks have completed for too long (worker crash).
-        STALL_TIMEOUT_MINUTES = 30  # max time with zero progress before failing
+        STALL_TIMEOUT_MINUTES = 120  # max time with zero progress before failing
         remaining = list(futures)
         completed_results = {}  # future -> result, preserving order
         last_progress_time = time.time()
