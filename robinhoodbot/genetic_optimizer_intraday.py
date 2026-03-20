@@ -23,9 +23,13 @@ import random
 import copy
 import shutil
 import signal
+import smtplib
+import ssl
 import sys
 import time
 from datetime import datetime, timedelta
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field, asdict
 from collections import Counter
@@ -2321,6 +2325,103 @@ def validate_against_real_trades(gene: IntradayTradingGene, tradehistory_path: s
     }
 
 
+def send_optimizer_completion_email(optimizer: 'IntradayGeneticOptimizer', elapsed: timedelta, output_file: str):
+    """Send an email notification when the optimizer job completes.
+    
+    Uses the same rh_email/rh_mail_password config as main.py.
+    Sends to the SMS gateway (rh_phone@rh_company_url) by default,
+    or to optimizer_email_recipient if set in config.
+    """
+    try:
+        from config import rh_email, rh_mail_password
+    except ImportError:
+        print("⚠️  Email notification skipped: rh_email/rh_mail_password not in config.py")
+        return
+    
+    # Determine recipient: prefer optimizer_email_recipient, fall back to SMS gateway
+    try:
+        from config import optimizer_email_recipient
+        recipient = optimizer_email_recipient
+    except ImportError:
+        try:
+            from config import rh_phone, rh_company_url
+            recipient = f"{rh_phone}@{rh_company_url}"
+        except ImportError:
+            print("⚠️  Email notification skipped: no recipient configured ")
+            return
+    
+    # Build summary
+    gene = optimizer.best_gene
+    hours, remainder = divmod(int(elapsed.total_seconds()), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    runtime_str = f"{hours}h {minutes}m {seconds}s" if hours else f"{minutes}m {seconds}s"
+    
+    subject = f"Optimizer Complete: {optimizer.best_fitness:+.4f} fitness | {runtime_str}"
+    
+    lines = [
+        f"Genetic optimizer job finished.",
+        f"",
+        f"Runtime:      {runtime_str}",
+        f"Generations:  {optimizer.config.generations}",
+        f"Population:   {optimizer.config.population_size}",
+        f"Symbols:      {len(optimizer.symbols)}",
+        f"Days:         {optimizer.days}",
+        f"",
+        f"--- Best Result ---",
+        f"Fitness:      {optimizer.best_fitness:.4f}",
+    ]
+    
+    if gene:
+        lines += [
+            f"Return:       {gene.total_return_pct:+.2f}%",
+            f"Win Rate:     {gene.win_rate:.1f}%",
+            f"Sharpe:       {gene.sharpe_ratio:.2f}",
+            f"Max Drawdown: {gene.max_drawdown_pct:.2f}%",
+            f"Trades:       {gene.total_trades}",
+            f"SMA:          {gene.short_sma}/{gene.long_sma}",
+            f"Stop Loss:    {gene.stop_loss_pct:.1f}%",
+            f"Take Profit:  {gene.take_profit_pct:.2f}%",
+        ]
+    
+    if optimizer.test_set_metrics:
+        tm = optimizer.test_set_metrics
+        lines += [
+            f"",
+            f"--- Test Set ---",
+            f"Return:       {tm['total_return_pct']:+.2f}%",
+            f"Win Rate:     {tm['win_rate']:.1f}%",
+            f"Sharpe:       {tm['sharpe_ratio']:.2f}",
+        ]
+    
+    lines += [f"", f"Output: {output_file}"]
+    message = "\n".join(lines)
+    
+    try:
+        import certifi
+        ca_file = certifi.where()
+    except ImportError:
+        ca_file = None
+    
+    try:
+        context = ssl.create_default_context(cafile=ca_file)
+        smtp_server = smtplib.SMTP("smtp.gmail.com", 587, timeout=30)
+        smtp_server.ehlo()
+        smtp_server.starttls(context=context)
+        smtp_server.ehlo()
+        smtp_server.login(rh_email, rh_mail_password)
+        
+        msg = MIMEMultipart()
+        msg['From'] = rh_email
+        msg['To'] = recipient
+        msg['Subject'] = subject
+        msg.attach(MIMEText(message, 'plain'))
+        smtp_server.sendmail(rh_email, recipient, msg.as_string())
+        smtp_server.quit()
+        print(f"📧 Optimizer completion email sent to {recipient}")
+    except Exception as e:
+        print(f"⚠️  Failed to send optimizer completion email: {e}")
+
+
 def print_evolution_summary(optimizer: IntradayGeneticOptimizer):
     """Print a summary of how fitness evolved over generations"""
     if not optimizer.generation_history:
@@ -2457,6 +2558,12 @@ def main():
              'By default, walk-forward is enabled (with --real-data) to reduce overfitting.'
     )
     parser.add_argument(
+        '--email-notify', action='store_true',
+        help='Send an email notification when the optimizer job completes. '
+             'Requires rh_email and rh_mail_password in config.py. '
+             'Sends to optimizer_email_recipient (config.py) or falls back to rh_phone@rh_company_url SMS gateway.'
+    )
+    parser.add_argument(
         '--kfold-splits', type=int, default=5,
         help='Number of K-fold cross-validation splits (default: 5). '
              'More folds = better generalization estimate but slower.'
@@ -2569,6 +2676,10 @@ def main():
     elapsed = end_time - start_time
     print(f"\n⏱️  Genetic optimizer completed at: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"⏱️  Total runtime: {elapsed.total_seconds():.2f} seconds ({elapsed.total_seconds()/60:.1f} minutes)")
+    
+    # Send email notification if requested
+    if args.email_notify:
+        send_optimizer_completion_email(optimizer, elapsed, args.output)
     
     return best_gene
 

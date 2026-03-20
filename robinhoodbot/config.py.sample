@@ -27,6 +27,10 @@ rh_phone="5551234567"
 # rh_company_url: Your carrier's email-to-SMS gateway domain
 # Common carriers: vtext.com (Verizon), txt.att.net (AT&T), tmomail.net (T-Mobile), messaging.sprintpcs.com (Sprint)
 rh_company_url="vtext.com"
+# optimizer_email_recipient: Email address for optimizer completion notifications.
+# If not set, notifications go to the SMS gateway (rh_phone@rh_company_url).
+# Set to a full email address to receive detailed results instead of/along with SMS.
+# optimizer_email_recipient="your_email@example.com"
 trade_history_file_name="logs/tradehistory-real.json"
 # watch_list_name: Name of your Robinhood watchlist to monitor for potential buys
 watch_list_name="Default"
