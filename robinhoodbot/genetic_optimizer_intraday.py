@@ -50,7 +50,10 @@ from backtest_intraday import (
 )
 
 # Load stock universe from external JSON file for --num-stocks mode.
-_SYMBOLS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'genetic_optimizer_test_symbols.json')
+_SYMBOLS_FILE = os.path.join(os.environ.get('DATA_DIR', os.path.dirname(os.path.abspath(__file__))), 'genetic_optimizer_test_symbols.json')
+# Fall back to the bundled copy next to the script if DATA_DIR copy doesn't exist yet.
+if not os.path.isfile(_SYMBOLS_FILE):
+    _SYMBOLS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'genetic_optimizer_test_symbols.json')
 with open(_SYMBOLS_FILE, 'r') as _f:
     STOCK_UNIVERSE = json.load(_f)['symbols']
 
@@ -1387,6 +1390,8 @@ class IntradayGeneticOptimizer:
             if connecting_to_cluster:
                 if self.verbose:
                     self._log(f"  Connecting to Ray cluster at {ray_address}...")
+                # Workers need /app on sys.path to import backtest_intraday etc.
+                init_kwargs["runtime_env"] = {"env_vars": {"PYTHONPATH": "/app"}}
             else:
                 # These options only apply when starting a local Ray instance
                 # Disable memory monitor if configured (fixes cgroup v2 issues on some Linux systems)

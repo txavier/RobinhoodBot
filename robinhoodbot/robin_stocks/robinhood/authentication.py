@@ -119,10 +119,11 @@ def _validate_sherrif_id(device_token: str, workflow_id: str):
 
 
 
-def login(username=None, password=None, expiresIn=86400, scope='internal', store_session=True, mfa_code=None, pickle_path="", pickle_name=""):
+def login(username=None, password=None, expiresIn=86400, scope='internal', store_session=True, mfa_code=None, pickle_path="", pickle_name="", device_token=None):
     """Handles the login process to Robinhood, including multi-factor authentication, session persistence, and verification handling."""
     print("Starting login process...")
-    device_token = generate_device_token()
+    if not device_token:
+        device_token = generate_device_token()
     home_dir = os.path.expanduser("~")
     data_dir = os.path.join(home_dir, ".tokens")
 

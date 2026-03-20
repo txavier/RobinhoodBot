@@ -24,6 +24,7 @@ RUN apt-get update && \
         iputils-ping \
         tzdata \
         procps \
+        wget \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

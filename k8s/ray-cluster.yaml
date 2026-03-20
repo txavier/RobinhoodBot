@@ -46,8 +46,9 @@ spec:
                 readOnly: true
               - name: data
                 mountPath: /app/data
-              - name: optimizer-cache
+              - name: data
                 mountPath: /app/.yfinance_cache
+                subPath: .yfinance_cache
               - name: dshm
                 mountPath: /dev/shm
             resources:
@@ -67,10 +68,7 @@ spec:
               secretName: robinhoodbot-config
           - name: data
             persistentVolumeClaim:
-              claimName: optimizer-data
-          - name: optimizer-cache
-            persistentVolumeClaim:
-              claimName: optimizer-cache
+              claimName: robinhoodbot-data
 
   workerGroupSpecs:
     - groupName: workers

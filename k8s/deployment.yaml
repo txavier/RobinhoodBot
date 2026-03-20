@@ -24,6 +24,8 @@ spec:
           env:
             - name: TZ
               value: "America/New_York"
+            - name: DATA_DIR
+              value: "/app/data"
             - name: RH_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -37,6 +39,9 @@ spec:
               readOnly: true
             - name: data
               mountPath: /app/data
+            - name: data
+              mountPath: /root/.tokens
+              subPath: .tokens
           livenessProbe:
             exec:
               command: ["pgrep", "-f", "main.py"]
