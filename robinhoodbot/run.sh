@@ -1,8 +1,10 @@
 #!/bin/bash
 
-# run bot every hour
+# run bot every 7 minutes
 while true; do
-   # do stuff
+   # Update heartbeat so K8s liveness probe knows we're alive
+   touch /tmp/heartbeat
+
    echo $(date)
    # https://stackoverflow.com/questions/40652793/how-to-kill-python-script-with-bash-script
    pkill -f main.py

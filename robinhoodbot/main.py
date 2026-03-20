@@ -2237,11 +2237,16 @@ def scan_stocks():
             sys.exit(75)  # EX_TEMPFAIL - distinctive code so run.sh stops looping
     except Exception as e:
         print("Unexpected error:", str(e))
+        print(traceback.format_exc())
         json_logger.log("error", f"Unexpected error: {str(e)}", {"error_type": type(e).__name__, "traceback": traceback.format_exc()})
 
-        login_to_sms()
-        send_text("Unexpected error:" + str(traceback.format_exc()))
-        raise
+        try:
+            login_to_sms()
+            send_text("Unexpected error:" + str(traceback.format_exc()))
+        except Exception as notify_err:
+            print(f"Failed to send error notification: {notify_err}")
+
+        print("Failing gracefully. run.sh will retry in 7 minutes.")
 
 def traded_today(stock, profileData):
     # If the equity in the account is above the day trading violation
