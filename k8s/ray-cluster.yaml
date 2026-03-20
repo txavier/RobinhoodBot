@@ -14,6 +14,7 @@ spec:
       dashboard-host: "0.0.0.0"
       metrics-export-port: "8080"
       num-cpus: "0"            # Head does coordination only, no work
+      disable-usage-stats: "true"
     template:
       metadata:
         labels:
@@ -49,6 +50,8 @@ spec:
                 value: "1"
               - name: RAY_DISABLE_MEMORY_MONITOR
                 value: "1"
+              - name: RAY_SCHEDULER_EVENTS
+                value: "0"
             volumeMounts:
               - name: config
                 mountPath: /app/config.py
