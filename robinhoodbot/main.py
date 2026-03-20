@@ -1783,7 +1783,7 @@ def scan_stocks():
         # If RH_PASSWORD is not set, falls back to interactive getpass prompt.
         _pw = os.environ.get('RH_PASSWORD') or None
         _device_token = RH_DEVICE_TOKEN if RH_DEVICE_TOKEN and RH_DEVICE_TOKEN != "YOUR_16_CHAR_TOKEN" else None
-        login = rr.authentication.login(username=rh_username, password=_pw, device_token=_device_token)
+        login = rr.authentication.login(username=rh_username, password=_pw, device_token=_device_token, expiresIn=604800)  # 7-day token
         login_to_sms()
 
         # Clear caches at the start of each scan to get fresh data

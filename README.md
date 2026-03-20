@@ -615,6 +615,12 @@ python genetic_optimizer_intraday.py \
 
 ## Quick reference
 
+### Deploy
+Deploy without repeated ssh ask
+```bash
+./deploy.sh setup-ssh
+```
+
 ### Start Genetic Optimizer
 kubectl delete job robinhoodbot-optimizer -n robinhoodbot
 kubectl apply -f k8s/optimizer-job.yaml

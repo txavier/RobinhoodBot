@@ -2,6 +2,11 @@
 
 Deploy **only** the genetic optimizer on Kubernetes (Rancher Desktop, minikube, or any K8s cluster) — no trading bot.
 
+Deploy without repeated ssh ask
+```bash
+./deploy.sh setup-ssh
+```
+
 ## Prerequisites
 
 - Kubernetes cluster running (e.g., [Rancher Desktop](https://rancherdesktop.io/))
