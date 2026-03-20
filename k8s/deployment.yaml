@@ -17,6 +17,15 @@ spec:
       labels:
         app: robinhoodbot
     spec:
+      tolerations:
+        - key: "node.kubernetes.io/not-ready"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 30
+        - key: "node.kubernetes.io/unreachable"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 30
       containers:
         - name: bot
           image: 192.168.87.35:5000/robinhoodbot:latest
@@ -61,4 +70,4 @@ spec:
             secretName: robinhoodbot-config
         - name: data
           persistentVolumeClaim:
-            claimName: robinhoodbot-data
+            claimName: robinhoodbot-data-nfs

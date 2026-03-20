@@ -12,6 +12,7 @@ spec:
   headGroupSpec:
     rayStartParams:
       dashboard-host: "0.0.0.0"
+      metrics-export-port: "8080"
       num-cpus: "0"            # Head does coordination only, no work
     template:
       metadata:
@@ -19,6 +20,15 @@ spec:
           app: robinhoodbot-optimizer
           ray-role: head
       spec:
+        tolerations:
+          - key: "node.kubernetes.io/not-ready"
+            operator: "Exists"
+            effect: "NoExecute"
+            tolerationSeconds: 30
+          - key: "node.kubernetes.io/unreachable"
+            operator: "Exists"
+            effect: "NoExecute"
+            tolerationSeconds: 30
         containers:
           - name: ray-head
             image: 192.168.87.35:5000/robinhoodbot:latest
@@ -68,7 +78,7 @@ spec:
               secretName: robinhoodbot-config
           - name: data
             persistentVolumeClaim:
-              claimName: robinhoodbot-data
+              claimName: robinhoodbot-data-nfs
 
   workerGroupSpecs:
     - groupName: workers
@@ -77,16 +87,29 @@ spec:
       maxReplicas: 4
       rayStartParams:
         num-cpus: "6"
+        metrics-export-port: "8080"
       template:
         metadata:
           labels:
             app: robinhoodbot-optimizer
             ray-role: worker
         spec:
+          tolerations:
+            - key: "node.kubernetes.io/not-ready"
+              operator: "Exists"
+              effect: "NoExecute"
+              tolerationSeconds: 30
+            - key: "node.kubernetes.io/unreachable"
+              operator: "Exists"
+              effect: "NoExecute"
+              tolerationSeconds: 30
           containers:
             - name: ray-worker
               image: 192.168.87.35:5000/robinhoodbot:latest
               imagePullPolicy: Always
+              ports:
+                - containerPort: 8080
+                  name: metrics
               env:
                 - name: TZ
                   value: "America/New_York"

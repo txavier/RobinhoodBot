@@ -628,3 +628,8 @@ kubectl logs robinhoodbot-optimizer-l44gl -n robinhoodbot | grep -E "Generation|
 ./monitor.sh --history 200  # show last 200 lines then follow
 ```
 
+### Dashboards 
+
+Cluster Dashboard: http://localhost:30300
+Ray Dashboard: http://localhost:30265
+Ray Grafana Dashboard:  http://localhost:3005 
