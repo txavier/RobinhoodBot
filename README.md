@@ -306,6 +306,100 @@ python backtest_intraday.py --symbols AAPL,MSFT,GOOGL,NVDA,TSLA --days 60 --seed
 
 ---
 
+# Testing
+
+The backtest engine includes a comprehensive test suite (`test_backtest_intraday.py`) with 67 unit and integration tests that validate correctness of every trading rule, indicator calculation, and end-to-end backtest behavior.
+
+## Test Architecture
+
+```mermaid
+graph TD
+    A[pytest test_backtest_intraday.py] --> B[Unit Tests]
+    A --> C[Integration Tests]
+
+    B --> B1[Indicators]
+    B --> B2[Trading Rules]
+    B --> B3[Position Management]
+
+    B1 --> B1a[TestCalculateIndicators<br/>SMA columns & values]
+    B1 --> B1b[TestCalculateSlope<br/>flat / rising / falling]
+
+    B2 --> B2a[TestIsEod<br/>9 time boundaries]
+    B2 --> B2b[TestCheckFiveYear<br/>rising / declining]
+    B2 --> B2c[TestStopLossAndTakeProfit<br/>trigger / no-trigger / disabled]
+    B2 --> B2d[TestSuddenDrop<br/>15%/1hr, 10%/2hr]
+    B2 --> B2e[TestProfitBeforeEod<br/>profitable / loss / disabled]
+    B2 --> B2f[TestDynamicSma<br/>default / downtrend / PDT]
+    B2 --> B2g[TestCheckGoldenCross<br/>detected / not in downtrend]
+    B2 --> B2h[TestCheckDeathCross<br/>detected / not in uptrend]
+    B2 --> B2i[TestPriceHigherThan5hrAgo<br/>higher / lower / insufficient]
+
+    B3 --> B3a[TestPositionSizing<br/>modes 0 / 1 / 2]
+    B3 --> B3b[TestExecuteBuySell<br/>buy / sell / insufficient funds]
+    B3 --> B3c[TestPortfolioValue<br/>cash only / with positions]
+    B3 --> B3d[TestResetDailyState<br/>flag reset]
+
+    C --> C1[TestDataGeneration<br/>schemas & determinism]
+    C --> C2[TestFullBacktestDeterminism<br/>3 symbols, 60 days<br/>determinism, accounting,<br/>trade counts, equity curve]
+    C --> C3[TestFullBacktestWithMoreSymbols<br/>8 symbols, 90 days]
+    C --> C4[TestBacktestSnapshotValues<br/>hard-coded expected values]
+
+    style A fill:#4a90d9,color:#fff
+    style B fill:#50b050,color:#fff
+    style C fill:#e8a030,color:#fff
+```
+
+## Running Tests
+
+```bash
+cd robinhoodbot/
+
+# Run all tests with verbose output
+python -m pytest test_backtest_intraday.py -v
+
+# Run a specific test class
+python -m pytest test_backtest_intraday.py::TestCalculateSlope -v
+
+# Run a single test
+python -m pytest test_backtest_intraday.py::TestBacktestSnapshotValues::test_snapshot_values -v
+
+# Run with short traceback on failure
+python -m pytest test_backtest_intraday.py -v --tb=short
+
+# Run only unit tests (fast, < 5 seconds)
+python -m pytest test_backtest_intraday.py -v -k "not FullBacktest and not Snapshot and not MoreSymbols"
+
+# Run only integration tests
+python -m pytest test_backtest_intraday.py -v -k "FullBacktest or Snapshot or MoreSymbols"
+```
+
+## Test Categories
+
+| Category | Tests | What It Validates |
+|----------|------:|-------------------|
+| **Indicators** | 7 | SMA columns, slope calculation (flat/rising/falling prices) |
+| **Trading Rules** | 31 | EOD boundaries, five-year check, stop loss, take profit, sudden drop, profit-before-EOD, dynamic SMA, golden/death cross, price-5hr-ago |
+| **Position Management** | 10 | Position sizing modes 0/1/2, buy/sell execution, portfolio value, daily state reset |
+| **Data Generation** | 5 | DataFrame schemas, deterministic seeds, trading-day filtering |
+| **Full Backtest** | 14 | End-to-end determinism, accounting integrity, trade counts, equity curve, exit reasons, snapshot values |
+
+## Snapshot Test
+
+`TestBacktestSnapshotValues` locks in exact numeric results for a deterministic 3-symbol, 60-day backtest. This catches any code change that alters trading behavior, even subtly:
+
+| Metric | Expected Value |
+|--------|---------------|
+| Total Return % | 1.11 |
+| Final Capital | $10,111.22 |
+| Total Trades | 46 |
+| Win Rate | 86.96% |
+| Max Drawdown | 0.47% |
+| Sharpe Ratio | 2.7901 |
+
+If optimizations or refactors change trading logic, this test will fail immediately with the exact delta.
+
+---
+
 # Intraday Genetic Optimizer (Day Trading Parameter Evolution)
 
 The `genetic_optimizer_intraday.py` module uses genetic algorithms to evolve trading parameters using **hourly data** - matching actual day trading performance.
