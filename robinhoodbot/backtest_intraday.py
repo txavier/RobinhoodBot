@@ -937,6 +937,20 @@ class IntradayTradingStrategy:
         df['sma_short_take_profit'] = df['close'].rolling(window=self.short_sma_take_profit, min_periods=self.short_sma_take_profit).mean()
         df['sma_long_take_profit'] = df['close'].rolling(window=self.long_sma_take_profit, min_periods=self.long_sma_take_profit).mean()
         
+        # Optimization 3: Pre-compute rolling slope column so calculate_slope()
+        # can do a simple column lookup instead of calling linregress() per bar.
+        lookback = 7  # default lookback_hours used in calculate_slope
+        close = df['close']
+        slopes = np.full(len(df), 0.0)
+        # Scale x-axis by 12 to match 5-minute granularity (see calculate_slope docs)
+        x = np.arange(lookback + 1) * 12
+        x_mean = x.mean()
+        x_var = ((x - x_mean) ** 2).sum()
+        for i in range(lookback, len(df)):
+            y = close.iloc[i - lookback:i + 1].values
+            slopes[i] = ((x - x_mean) * (y - y.mean())).sum() / x_var
+        df['_slope'] = slopes
+        
         return df
     
     def calculate_slope(self, df: pd.DataFrame, current_idx: int, lookback_hours: int = 7) -> float:
@@ -951,9 +965,17 @@ class IntradayTradingStrategy:
         0..~78, while with hourly bars they run 0..7.  We therefore multiply
         x by 12 (there are 12 five-minute intervals per hour) so that the
         resulting slope magnitude is comparable to main.py's.
+        
+        Optimization: when lookback_hours == 7 (the default used in the hot loop)
+        and the DataFrame has a pre-computed '_slope' column, use it directly
+        instead of calling linregress().
         """
         if current_idx < lookback_hours:
             return 0.0
+        
+        # Use pre-computed column when available and lookback matches
+        if lookback_hours == 7 and '_slope' in df.columns:
+            return float(df.iloc[current_idx]['_slope'])
         
         start_idx = max(0, current_idx - lookback_hours)
         prices = df.iloc[start_idx:current_idx + 1]['close'].values
@@ -1548,6 +1570,20 @@ class IntradayBacktester:
         if len(all_timestamps) > warmup_hours:
             all_timestamps = all_timestamps[warmup_hours:]
         
+        # Optimization 1: Build per-symbol datetime→index dicts for O(1) lookups
+        symbol_ts_idx = {}
+        for symbol, df in symbol_data.items():
+            symbol_ts_idx[symbol] = dict(zip(df['datetime'], df.index))
+        
+        # Optimization 2: Convert market_data DataFrame to dict keyed by date
+        market_dict = {}
+        for _, row in market_data.iterrows():
+            market_dict[row['date']] = {
+                'is_uptrend': row['is_uptrend'],
+                'is_major_downtrend': row['is_major_downtrend'],
+                'market_condition': row['market_condition'],
+            }
+        
         if verbose:
             trading_days = len(set(ts.date() for ts in all_timestamps))
             print(f"\nSimulating {len(all_timestamps)} hourly bars ({trading_days} trading days)...\n")
@@ -1574,14 +1610,14 @@ class IntradayBacktester:
             if current_date != timestamp.date():
                 if current_date is not None and verbose:
                     portfolio_value = self.get_portfolio_value({
-                        sym: df[df['datetime'] == timestamp].iloc[0]['close']
-                        if not df[df['datetime'] == timestamp].empty else 100
-                        for sym, df in symbol_data.items()
+                        sym: symbol_data[sym].iloc[symbol_ts_idx[sym][timestamp]]['close']
+                        if timestamp in symbol_ts_idx[sym] else 100
+                        for sym in symbol_data
                     })
                     
                     # Get market condition for logging
-                    market_row = market_data[market_data['date'] == current_date]
-                    market_status = market_row.iloc[0]['market_condition'] if not market_row.empty else 'unknown'
+                    mkt = market_dict.get(current_date)
+                    market_status = mkt['market_condition'] if mkt else 'unknown'
                     
                     if daily_trades > 0:
                         print(f"  📊 Day {current_date} [{market_status}]: {daily_trades} trades, P/L: ${daily_pnl:+.2f}, Portfolio: ${portfolio_value:,.2f}")
@@ -1591,16 +1627,16 @@ class IntradayBacktester:
                 daily_pnl = 0.0
                 self.reset_daily_state()
             
-            # Get market condition for this day
-            market_row = market_data[market_data['date'] == current_date]
-            if market_row.empty:
+            # Get market condition for this day (O(1) dict lookup)
+            mkt = market_dict.get(current_date)
+            if mkt is None:
                 market_uptrend = True
                 market_major_downtrend = False
                 market_condition = MarketCondition.NEUTRAL.value
             else:
-                market_uptrend = market_row.iloc[0]['is_uptrend']
-                market_major_downtrend = market_row.iloc[0]['is_major_downtrend']
-                market_condition = market_row.iloc[0]['market_condition']
+                market_uptrend = mkt['is_uptrend']
+                market_major_downtrend = mkt['is_major_downtrend']
+                market_condition = mkt['market_condition']
             
             # Get dynamic SMA periods based on market condition
             n1, n2 = self.strategy.get_dynamic_sma_periods(
@@ -1611,9 +1647,9 @@ class IntradayBacktester:
             
             current_prices = {}
             for symbol, df in symbol_data.items():
-                ts_rows = df[df['datetime'] == timestamp]
-                if not ts_rows.empty:
-                    current_prices[symbol] = ts_rows.iloc[0]['close']
+                idx = symbol_ts_idx[symbol].get(timestamp)
+                if idx is not None:
+                    current_prices[symbol] = df.iloc[idx]['close']
             
             # Record equity
             portfolio_value = self.get_portfolio_value(current_prices)
@@ -1632,10 +1668,9 @@ class IntradayBacktester:
                 if df is None:
                     continue
                 
-                ts_idx = df[df['datetime'] == timestamp].index
-                if len(ts_idx) == 0:
+                current_idx = symbol_ts_idx[symbol].get(timestamp)
+                if current_idx is None:
                     continue
-                current_idx = ts_idx[0]
                 
                 # Check ALL sell conditions independently (matches main.py)
                 # main.py checks every condition and joins reasons with comma
@@ -1692,10 +1727,9 @@ class IntradayBacktester:
                     if df is None:
                         continue
                     
-                    ts_idx = df[df['datetime'] == timestamp].index
-                    if len(ts_idx) == 0:
+                    current_idx = symbol_ts_idx[symbol].get(timestamp)
+                    if current_idx is None:
                         continue
-                    current_idx = ts_idx[0]
                     
                     slope = self.strategy.calculate_slope(df, current_idx)
                     symbol_slopes.append((symbol, slope, current_idx))

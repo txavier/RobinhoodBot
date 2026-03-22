@@ -32,6 +32,7 @@ LICENSE
 
 # Sensitive config (mounted at runtime via docker-compose)
 robinhoodbot/config.py
+secrets.env
 
 # Logs and trade history (mounted at runtime via docker-compose)
 robinhoodbot/log.json
