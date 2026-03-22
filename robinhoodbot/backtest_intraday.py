@@ -334,8 +334,14 @@ def download_real_data(
     cache_path = _get_cache_path(cache_key)
     
     if _cache_is_fresh(cache_path, cache_max_age_hours):
-        with open(cache_path, 'rb') as f:
-            return pickle.load(f)
+        try:
+            with open(cache_path, 'rb') as f:
+                return pickle.load(f)
+        except (EOFError, pickle.UnpicklingError, OSError):
+            try:
+                os.remove(cache_path)
+            except OSError:
+                pass
     
     # Download hourly data
     ticker = yf.Ticker(symbol)
@@ -401,8 +407,14 @@ def download_raw_market_index_data(
     cache_path = _get_cache_path(cache_key)
     
     if _cache_is_fresh(cache_path, cache_max_age_hours):
-        with open(cache_path, 'rb') as f:
-            return pickle.load(f)
+        try:
+            with open(cache_path, 'rb') as f:
+                return pickle.load(f)
+        except (EOFError, pickle.UnpicklingError, OSError):
+            try:
+                os.remove(cache_path)
+            except OSError:
+                pass
     
     indices = ['SPY', 'DIA', 'QQQ']
     daily_data = {}

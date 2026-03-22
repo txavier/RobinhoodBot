@@ -74,7 +74,7 @@ spec:
                 memory: "1Gi"
               limits:
                 cpu: "2"
-                memory: "1792Mi"
+                memory: "2560Mi"
         volumes:
           - name: shared-mem
             emptyDir:
@@ -91,7 +91,7 @@ spec:
     - groupName: workers
       replicas: 4
       minReplicas: 4
-      maxReplicas: 4
+      maxReplicas: 10
       rayStartParams:
         num-cpus: "7"
         metrics-export-port: "8080"

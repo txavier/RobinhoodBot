@@ -4,7 +4,7 @@ metadata:
   name: robinhoodbot-optimizer
   namespace: robinhoodbot
 spec:
-  backoffLimit: 1
+  backoffLimit: 6
   ttlSecondsAfterFinished: 86400  # Auto-cleanup after 24h
   template:
     metadata:
