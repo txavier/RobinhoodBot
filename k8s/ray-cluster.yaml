@@ -54,6 +54,8 @@ spec:
                 value: "0"
               - name: RAY_AUTOSCALER_LOG_LEVEL
                 value: "WARNING"
+              - name: RAY_gcs_rpc_server_connect_timeout_s
+                value: "30"
             volumeMounts:
               - name: config
                 mountPath: /app/config.py
@@ -64,7 +66,7 @@ spec:
               - name: data
                 mountPath: /app/.yfinance_cache
                 subPath: .yfinance_cache
-              - name: dshm
+              - name: shared-mem
                 mountPath: /dev/shm
             resources:
               requests:
@@ -72,12 +74,12 @@ spec:
                 memory: "1Gi"
               limits:
                 cpu: "2"
-                memory: "2Gi"
+                memory: "1792Mi"
         volumes:
-          - name: dshm
+          - name: shared-mem
             emptyDir:
               medium: Memory
-              sizeLimit: 512Mi
+              sizeLimit: 256Mi
           - name: config
             secret:
               secretName: robinhoodbot-config
@@ -89,7 +91,7 @@ spec:
     - groupName: workers
       replicas: 4
       minReplicas: 4
-      maxReplicas: 10
+      maxReplicas: 4
       rayStartParams:
         num-cpus: "7"
         metrics-export-port: "8080"
@@ -122,6 +124,8 @@ spec:
                   value: "1"
                 - name: RAY_DISABLE_MEMORY_MONITOR
                   value: "1"
+                - name: RAY_gcs_rpc_server_connect_timeout_s
+                  value: "30"
               volumeMounts:
                 - name: config
                   mountPath: /app/config.py
@@ -132,15 +136,15 @@ spec:
               resources:
                 requests:
                   cpu: "6"
-                  memory: "4Gi"
+                  memory: "2Gi"
                 limits:
                   cpu: "8"
-                  memory: "8Gi"
+                  memory: "4Gi"
           volumes:
             - name: dshm
               emptyDir:
                 medium: Memory
-                sizeLimit: 4Gi
+                sizeLimit: 1Gi
             - name: config
               secret:
                 secretName: robinhoodbot-config
