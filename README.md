@@ -713,9 +713,25 @@ python genetic_optimizer_intraday.py \
 Deploy locally
 ```bash
 sudo docker build -t 192.168.87.35:5000/robinhoodbot:latest . && \
-sudo docker push 192.168.87.35:5000/robinhoodbot:latest && \
+sudo docker push 192.168.87.35:5000/robinhoodbot:latest
 kubectl apply -f k8s/deployment.yaml && \
 kubectl rollout restart deployment/robinhoodbot -n robinhoodbot
+```
+
+Deploy Optimizer locally
+```bash
+# 2. Sync the updated files (from your Windows machine, or git pull)
+cd ~/dev/RobinhoodBot && git pull
+
+# 3. Build and push the Docker image
+sudo docker build -t 192.168.87.35:5000/robinhoodbot:latest . && \
+sudo docker push 192.168.87.35:5000/robinhoodbot:latest
+
+# 4. Delete the current optimizer job (it will checkpoint at Gen 14)
+kubectl delete job robinhoodbot-optimizer -n robinhoodbot
+
+# 5. Restart the optimizer (it will resume from Gen 14 checkpoint)
+kubectl apply -f k8s/optimizer-job.yaml -n robinhoodbot
 ```
 
 Deploy remotely without repeated ssh ask

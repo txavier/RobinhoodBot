@@ -70,7 +70,7 @@ spec:
               memory: "1Gi"
               cpu: "500m"
             limits:
-              memory: "2Gi"
+              memory: "1536Mi"
               cpu: "1000m"
       volumes:
         - name: config
