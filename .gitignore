@@ -147,3 +147,4 @@ robinhoodbot/genetic_optimization_intraday_result.checkpoint.json
 robinhoodbot/.yfinance_cache/
 robinhoodbot/genetic_optimizer_test_symbols.json
 robinhoodbot/archive/
+k8s/config
