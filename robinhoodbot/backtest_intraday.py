@@ -294,6 +294,11 @@ class DailyStats:
 
 REAL_DATA_CACHE_DIR = os.path.join(os.path.dirname(__file__), '.yfinance_cache')
 
+# Circuit breaker: stop hitting Yahoo after repeated failures (e.g. rate limiting)
+_yahoo_consecutive_failures = 0
+_YAHOO_CIRCUIT_BREAKER_THRESHOLD = 5  # trip after this many consecutive failures
+
+
 def _get_cache_path(key: str) -> str:
     """Get cache file path for a given key."""
     os.makedirs(REAL_DATA_CACHE_DIR, exist_ok=True)
@@ -307,6 +312,21 @@ def _cache_is_fresh(cache_path: str, max_age_hours: int = 12) -> bool:
         return False
     age = datetime.now().timestamp() - os.path.getmtime(cache_path)
     return age < max_age_hours * 3600
+
+
+def _load_stale_cache(cache_path: str):
+    """Try to load a cache file regardless of age. Returns None if no valid cache exists."""
+    if not os.path.exists(cache_path):
+        return None
+    try:
+        with open(cache_path, 'rb') as f:
+            return pickle.load(f)
+    except (EOFError, pickle.UnpicklingError, OSError):
+        try:
+            os.remove(cache_path)
+        except OSError:
+            pass
+        return None
 
 
 def download_real_data(
@@ -343,11 +363,37 @@ def download_real_data(
             except OSError:
                 pass
     
-    # Download hourly data
-    ticker = yf.Ticker(symbol)
-    df_raw = ticker.history(period=f"{calendar_days}d", interval="1h")
+    # Circuit breaker: if Yahoo has been failing repeatedly, don't keep hammering them
+    global _yahoo_consecutive_failures
+    if _yahoo_consecutive_failures >= _YAHOO_CIRCUIT_BREAKER_THRESHOLD:
+        stale = _load_stale_cache(cache_path)
+        if stale is not None:
+            print(f"  ⚠️  Yahoo circuit breaker open ({_yahoo_consecutive_failures} failures). Using stale cache for {symbol}.")
+            return stale
+        raise ValueError(f"Yahoo API circuit breaker open ({_yahoo_consecutive_failures} consecutive failures). "
+                         f"No cached data for {symbol}.")
     
-    if df_raw.empty:
+    # Download hourly data (retry once on transient Yahoo API failures)
+    ticker = yf.Ticker(symbol)
+    df_raw = None
+    for attempt in range(2):
+        try:
+            df_raw = ticker.history(period=f"{calendar_days}d", interval="1h")
+            if df_raw is not None and not df_raw.empty:
+                _yahoo_consecutive_failures = 0  # reset on success
+                break
+        except (TypeError, KeyError):
+            if attempt == 0:
+                import time as _time
+                _time.sleep(1)
+    
+    if df_raw is None or df_raw.empty:
+        _yahoo_consecutive_failures += 1
+        # Fall back to stale cache if available
+        stale = _load_stale_cache(cache_path)
+        if stale is not None:
+            print(f"  ⚠️  Yahoo API failed for {symbol}. Using stale cache ({_yahoo_consecutive_failures} consecutive failures).")
+            return stale
         raise ValueError(f"No data returned for {symbol}. Symbol may be invalid or delisted.")
     
     # Convert to our expected format
@@ -416,13 +462,39 @@ def download_raw_market_index_data(
             except OSError:
                 pass
     
+    # Circuit breaker: if Yahoo has been failing repeatedly, use stale cache
+    global _yahoo_consecutive_failures
+    if _yahoo_consecutive_failures >= _YAHOO_CIRCUIT_BREAKER_THRESHOLD:
+        stale = _load_stale_cache(cache_path)
+        if stale is not None:
+            print(f"  ⚠️  Yahoo circuit breaker open ({_yahoo_consecutive_failures} failures). Using stale cache for market index data.")
+            return stale
+        raise ValueError(f"Yahoo API circuit breaker open ({_yahoo_consecutive_failures} consecutive failures). "
+                         f"No cached market index data.")
+    
     indices = ['SPY', 'DIA', 'QQQ']
     daily_data = {}
     
     for idx_symbol in indices:
         ticker = yf.Ticker(idx_symbol)
-        df_raw = ticker.history(period=f"{calendar_days}d", interval="1d")
-        if df_raw.empty:
+        df_raw = None
+        for attempt in range(2):
+            try:
+                df_raw = ticker.history(period=f"{calendar_days}d", interval="1d")
+                if df_raw is not None and not df_raw.empty:
+                    _yahoo_consecutive_failures = 0
+                    break
+            except (TypeError, KeyError):
+                if attempt == 0:
+                    import time as _time
+                    _time.sleep(1)
+        if df_raw is None or df_raw.empty:
+            _yahoo_consecutive_failures += 1
+            # Fall back to stale cache for the whole index set
+            stale = _load_stale_cache(cache_path)
+            if stale is not None:
+                print(f"  ⚠️  Yahoo API failed for {idx_symbol}. Using stale cache for market index data ({_yahoo_consecutive_failures} consecutive failures).")
+                return stale
             raise ValueError(f"No market data returned for {idx_symbol}")
         
         records = {}
@@ -1538,14 +1610,18 @@ class IntradayBacktester:
             
             symbol_data: Dict[str, pd.DataFrame] = {}
             for i, symbol in enumerate(symbols):
-                if real_data_cache is not None and symbol in real_data_cache:
-                    df = real_data_cache[symbol].copy()
-                else:
-                    if verbose:
-                        print(f"Downloading real data for {symbol}...")
-                    df = download_real_data(symbol, days)
-                df = self.strategy.calculate_indicators(df)
-                symbol_data[symbol] = df
+                try:
+                    if real_data_cache is not None and symbol in real_data_cache:
+                        df = real_data_cache[symbol].copy()
+                    else:
+                        if verbose:
+                            print(f"Downloading real data for {symbol}...")
+                        df = download_real_data(symbol, days)
+                    df = self.strategy.calculate_indicators(df)
+                    symbol_data[symbol] = df
+                except (ValueError, TypeError, KeyError):
+                    # Skip symbols that fail download (e.g. Yahoo throttling)
+                    continue
         else:
             # Synthetic data (original behavior)
             market_data = generate_market_data(
