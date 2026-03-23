@@ -72,15 +72,15 @@ spec:
             resources:
               requests:
                 cpu: "1"
-                memory: "1Gi"
+                memory: "2Gi"
               limits:
                 cpu: "2"
-                memory: "2560Mi"
+                memory: "4Gi"
         volumes:
           - name: shared-mem
             emptyDir:
               medium: Memory
-              sizeLimit: 256Mi
+              sizeLimit: 512Mi
           - name: config
             secret:
               secretName: robinhoodbot-config

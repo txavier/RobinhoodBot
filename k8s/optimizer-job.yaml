@@ -22,6 +22,10 @@ spec:
           operator: "Exists"
           effect: "NoExecute"
           tolerationSeconds: 30
+      initContainers:
+        - name: wait-for-ray
+          image: busybox:1.36
+          command: ['sh', '-c', 'echo "Waiting for Ray head..."; until nc -z optimizer-ray-head-svc.robinhoodbot.svc.cluster.local 10001; do sleep 5; done; echo "Ray head is ready"']
       containers:
         - name: optimizer
           image: 192.168.87.35:5000/robinhoodbot:latest
@@ -69,10 +73,10 @@ spec:
               subPath: logs/optimizer
           resources:
             requests:
-              memory: "1Gi"
+              memory: "2Gi"
               cpu: "500m"
             limits:
-              memory: "1536Mi"
+              memory: "4Gi"
               cpu: "1000m"
       volumes:
         - name: config
