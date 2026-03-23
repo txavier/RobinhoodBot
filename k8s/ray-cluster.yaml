@@ -72,10 +72,10 @@ spec:
             resources:
               requests:
                 cpu: "1"
-                memory: "2Gi"
+                memory: "3584Mi"
               limits:
                 cpu: "2"
-                memory: "4Gi"
+                memory: "5Gi"
         volumes:
           - name: shared-mem
             emptyDir:
@@ -92,7 +92,7 @@ spec:
     - groupName: workers
       replicas: 4
       minReplicas: 4
-      maxReplicas: 10
+      maxReplicas: 4
       rayStartParams:
         num-cpus: "7"
         metrics-export-port: "8080"
@@ -138,10 +138,10 @@ spec:
               resources:
                 requests:
                   cpu: "6"
-                  memory: "2Gi"
+                  memory: "4Gi"
                 limits:
                   cpu: "8"
-                  memory: "4Gi"
+                  memory: "5Gi"
           volumes:
             - name: dshm
               emptyDir:
