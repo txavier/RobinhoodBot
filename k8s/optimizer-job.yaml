@@ -32,7 +32,7 @@ spec:
           imagePullPolicy: Always
           command: ["python3", "genetic_optimizer_intraday.py"]
           args:
-            - "--num-stocks=500"
+            - "--num-stocks=350"
             - "--max-positions=10"
             - "--generations=50"
             - "--population=56"
@@ -73,10 +73,10 @@ spec:
               subPath: logs/optimizer
           resources:
             requests:
-              memory: "2Gi"
+              memory: "2560Mi"
               cpu: "500m"
             limits:
-              memory: "4Gi"
+              memory: "5Gi"
               cpu: "1000m"
       volumes:
         - name: config
