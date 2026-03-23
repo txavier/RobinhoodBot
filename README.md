@@ -713,7 +713,7 @@ python genetic_optimizer_intraday.py \
 Deploy locally
 ```bash
 sudo docker build -t 192.168.87.35:5000/robinhoodbot:latest . && \
-sudo docker push 192.168.87.35:5000/robinhoodbot:latest
+sudo docker push 192.168.87.35:5000/robinhoodbot:latest && \
 kubectl apply -f k8s/deployment.yaml && \
 kubectl rollout restart deployment/robinhoodbot -n robinhoodbot
 ```
@@ -752,6 +752,19 @@ kubectl apply -f k8s/optimizer-job.yaml -n robinhoodbot
 ### File exchange location
 /srv/nfs/robinhoodbot/robinhoodbot-robinhoodbot-data-nfs-pvc-529a9db2-2ce8-408e-89b5-797a8c68d462/
 
+#### Mount remote nfs location
+# 1. Install NFS client
+sudo apt-get install -y nfs-common
+
+# 2. Create mount point
+sudo mkdir -p /mnt/robinhoodbot-nfs
+
+# 3. Mount the NFS share
+sudo mount -t nfs 192.168.87.35:/srv/nfs/robinhoodbot/robinhoodbot-robinhoodbot-data-nfs-pvc-529a9db2-2ce8-408e-89b5-797a8c68d462 /mnt/robinhoodbot-nfs
+
+# 4. (Optional) Make it persist across reboots — add to /etc/fstab:
+# 192.168.87.35:/srv/nfs/robinhoodbot/robinhoodbot-robinhoodbot-data-nfs-pvc-529a9db2-2ce8-408e-89b5-797a8c68d462 /mnt/robinhoodbot-nfs nfs defaults,soft,timeo=10 0 0
+
 ### View output of robinhoodbot from within cluster:
 ```bash
 while true; do kubectl logs -f deployment/robinhoodbot -n robinhoodbot --tail=100; sleep 1; done
@@ -768,6 +781,8 @@ kubectl logs -f -n robinhoodbot job/robinhoodbot-optimizer
 ```bash
 ./monitor.sh              # default: last 50 lines then follow
 ./monitor.sh --history 200  # show last 200 lines then follow
+./monitor-optimizer.sh              # Last 100 lines + follow
+./monitor-optimizer.sh --history 500  # Last 500 lines + follow
 ```
 
 ### Dashboards 
