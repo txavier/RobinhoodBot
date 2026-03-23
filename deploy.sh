@@ -11,6 +11,8 @@
 #   ./deploy.sh bot             # Deploy/restart the trading bot
 #   ./deploy.sh optimizer       # Launch a genetic optimizer job
 #   ./deploy.sh optimizer-stop  # Delete the optimizer job
+#   ./deploy.sh kuberay-install # Install KubeRay operator via Helm
+#   ./deploy.sh kuberay-remove  # Uninstall KubeRay operator
 #   ./deploy.sh sync-up         # Sync local data files TO the cluster
 #   ./deploy.sh sync-down       # Sync cluster data files BACK to local
 #   ./deploy.sh logs            # Tail bot logs
@@ -268,6 +270,56 @@ cmd_optimizer_stop() {
     log "Optimizer job and Ray cluster deleted"
 }
 
+cmd_kuberay_install() {
+    header "Installing KubeRay Operator (Helm)"
+    check_connection
+
+    # Check if helm is available on the remote
+    if ! remote "which helm" >/dev/null 2>&1; then
+        err "Helm is not installed on ${REMOTE_HOST}. Install it first:"
+        err "  curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash"
+        exit 1
+    fi
+
+    # Add the KubeRay repo if not already added
+    log "Adding KubeRay Helm repo..."
+    remote "helm repo add kuberay https://ray-project.github.io/kuberay-helm/ 2>/dev/null || true"
+    remote "helm repo update kuberay"
+
+    # Install the operator
+    log "Installing KubeRay operator..."
+    remote "helm install kuberay-operator kuberay/kuberay-operator --namespace kuberay-system --create-namespace"
+
+    # Wait for operator pod to be ready
+    log "Waiting for KubeRay operator pod..."
+    remote_kubectl "wait --for=condition=Ready pod -l app.kubernetes.io/name=kuberay-operator -n kuberay-system --timeout=120s" || true
+
+    log "KubeRay operator installed!"
+    remote_kubectl "get pods -n kuberay-system"
+}
+
+cmd_kuberay_remove() {
+    header "Removing KubeRay Operator"
+    check_connection
+
+    # Stop optimizer first if running
+    log "Cleaning up optimizer resources..."
+    remote_kubectl "delete job robinhoodbot-optimizer -n ${NAMESPACE} --ignore-not-found"
+    remote_kubectl "delete raycluster optimizer-ray -n ${NAMESPACE} --ignore-not-found"
+
+    # Check if helm is available
+    if remote "which helm" >/dev/null 2>&1; then
+        log "Uninstalling KubeRay Helm release..."
+        remote "helm uninstall kuberay-operator --namespace kuberay-system" 2>/dev/null || true
+    fi
+
+    # Delete the namespace
+    log "Deleting kuberay-system namespace..."
+    remote_kubectl "delete namespace kuberay-system --ignore-not-found"
+
+    log "KubeRay operator removed"
+}
+
 cmd_sync_up() {
     header "Syncing local data TO cluster"
     check_connection
@@ -481,8 +533,10 @@ case "$CMD" in
     bot)            cmd_deploy_bot ;;
     optimizer)      cmd_deploy_optimizer ;;
     optimizer-stop) cmd_optimizer_stop ;;
-    ray-status)     cmd_ray_status ;;
-    sync-up)        cmd_sync_up ;;
+    ray-status)      cmd_ray_status ;;
+    kuberay-install) cmd_kuberay_install ;;
+    kuberay-remove)  cmd_kuberay_remove ;;
+    sync-up)         cmd_sync_up ;;
     sync-down)      cmd_sync_down ;;
     logs)           cmd_logs ;;
     logs-optimizer) cmd_logs_optimizer ;;
@@ -496,7 +550,7 @@ case "$CMD" in
     update-config)  cmd_update_config ;;
     "")             cmd_full_deploy ;;
     *)
-        echo "Usage: $0 {build|bot|optimizer|optimizer-stop|ray-status|sync-up|sync-down|logs|logs-optimizer|status|shell|start|stop|destroy|setup-ssh|update-config}"
+        echo "Usage: $0 {build|bot|optimizer|optimizer-stop|ray-status|kuberay-install|kuberay-remove|sync-up|sync-down|logs|logs-optimizer|status|shell|start|stop|destroy|setup-ssh|update-config}"
         echo ""
         echo "Commands:"
         echo "  (none)          Full deploy: build image + deploy bot"
@@ -505,6 +559,8 @@ case "$CMD" in
         echo "  optimizer       Launch optimizer with Ray cluster (multi-node)"
         echo "  optimizer-stop  Delete optimizer job and Ray cluster"
         echo "  ray-status      Show Ray cluster status and resources"
+        echo "  kuberay-install Install KubeRay operator via Helm"
+        echo "  kuberay-remove  Uninstall KubeRay operator and namespace"
         echo "  sync-up         Sync local data files TO the cluster"
         echo "  sync-down       Sync cluster data files BACK to local"
         echo "  logs            Tail bot logs"
