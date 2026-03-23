@@ -188,7 +188,7 @@ class IntradayGeneticConfig:
         'long_sma_take_profit': (2, 20),   # Hours - aggressive SMA after take profit (lower expanded from 5 - best hit 5/5)
         'stop_loss_pct': (0.5, 15.0),  # (lower expanded from 1.0 - best hit 2.1/1.0)
         'take_profit_pct': (0.3, 3.0), # Tighter range for day trading
-        'position_size_pct': (1.0, 10.0),  # Per-stock % of equity (mode 2)
+        # position_size_pct fixed at 5.0 — not optimized
         'slope_threshold': (0.0001, 0.002),
         'uptrend_threshold_pct': (0.0, 0.5),
         'major_downtrend_threshold_pct': (0.3, 3.0),
@@ -1136,7 +1136,7 @@ class IntradayGeneticOptimizer:
             use_stop_loss=random.choice([True, True, True, False]) if self.config.optimize_filters else True,  # 75% chance True
             stop_loss_pct=round(random.uniform(*ranges['stop_loss_pct']), 1),
             take_profit_pct=round(random.uniform(*ranges['take_profit_pct']), 2),
-            position_size_pct=round(random.uniform(*ranges['position_size_pct']), 1),
+            position_size_pct=5.0,
             slope_threshold=round(random.uniform(*ranges['slope_threshold']), 4),
             uptrend_threshold_pct=round(random.uniform(*ranges['uptrend_threshold_pct']), 2),
             major_downtrend_threshold_pct=round(random.uniform(*ranges['major_downtrend_threshold_pct']), 1),
@@ -1533,7 +1533,7 @@ class IntradayGeneticOptimizer:
         # Numeric parameters
         params = ['short_sma', 'long_sma', 'golden_cross_buy_days',
                   'short_sma_downtrend', 'short_sma_take_profit', 'long_sma_take_profit',
-                  'stop_loss_pct', 'take_profit_pct', 'position_size_pct',
+                  'stop_loss_pct', 'take_profit_pct',
                   'slope_threshold',
                   'uptrend_threshold_pct', 'major_downtrend_threshold_pct',
                   'momentum_lookback_bars']
@@ -1634,12 +1634,6 @@ class IntradayGeneticOptimizer:
             mutated.take_profit_pct = round(max(ranges['take_profit_pct'][0],
                                                min(ranges['take_profit_pct'][1],
                                                    mutated.take_profit_pct + delta)), 2)
-        
-        if random.random() < self.config.mutation_rate:
-            delta = random.uniform(-2.0, 2.0)
-            mutated.position_size_pct = round(max(ranges['position_size_pct'][0],
-                                                 min(ranges['position_size_pct'][1],
-                                                     mutated.position_size_pct + delta)), 1)
         
         if random.random() < self.config.mutation_rate:
             delta = random.uniform(-0.0003, 0.0003)
