@@ -52,3 +52,4 @@ Tuning the optimizer.
 /> Based on the latest data are we overfitting?
 /> how to prevent overfitting?
 /> Are there any improvements you can suggest for the optimizer to run faster or better on the cluster?
+/> is there any way to make the genetic optimizer code run faster?
