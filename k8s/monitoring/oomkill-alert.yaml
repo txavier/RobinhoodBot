@@ -53,9 +53,7 @@ spec:
         # Pod not ready for 5 minutes
         - alert: RobinhoodBotNotReady
           expr: |
-            kube_pod_status_ready{namespace="robinhoodbot", condition="true"} == 0
-            and on(namespace, pod)
-            kube_pod_labels{namespace="robinhoodbot", label_app="robinhoodbot"}
+            kube_pod_status_ready{namespace="robinhoodbot", pod=~"robinhoodbot-[a-z0-9]+-[a-z0-9]+", condition="true"} == 0
           for: 5m
           labels:
             severity: warning
@@ -67,8 +65,7 @@ spec:
         # No running bot pod at all
         - alert: RobinhoodBotDown
           expr: |
-            absent(kube_pod_status_phase{namespace="robinhoodbot", phase="Running"}
-            * on(namespace, pod) kube_pod_labels{namespace="robinhoodbot", label_app="robinhoodbot"})
+            absent(kube_pod_status_phase{namespace="robinhoodbot", pod=~"robinhoodbot-[a-z0-9]+-[a-z0-9]+", phase="Running"})
           for: 5m
           labels:
             severity: critical
