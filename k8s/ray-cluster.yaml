@@ -21,6 +21,7 @@ spec:
           app: robinhoodbot-optimizer
           ray-role: head
       spec:
+        priorityClassName: robinhoodbot-high
         tolerations:
           - key: "node.kubernetes.io/not-ready"
             operator: "Exists"
@@ -101,6 +102,7 @@ spec:
             app: robinhoodbot-optimizer
             ray-role: worker
         spec:
+          priorityClassName: robinhoodbot-high
           tolerations:
             - key: "node.kubernetes.io/not-ready"
               operator: "Exists"

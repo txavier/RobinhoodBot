@@ -1,0 +1,17 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: robinhoodbot-critical
+value: 1000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: "Highest priority - trading bot must always run"
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: robinhoodbot-high
+value: 500
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: "High priority - genetic optimizer Ray cluster and job"

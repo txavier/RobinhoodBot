@@ -17,6 +17,7 @@ spec:
       labels:
         app: robinhoodbot
     spec:
+      priorityClassName: robinhoodbot-critical
       tolerations:
         - key: "node.kubernetes.io/not-ready"
           operator: "Exists"

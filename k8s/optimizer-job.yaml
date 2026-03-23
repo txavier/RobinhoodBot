@@ -12,6 +12,7 @@ spec:
         app: robinhoodbot-optimizer
     spec:
       restartPolicy: Never
+      priorityClassName: robinhoodbot-high
       tolerations:
         - key: "node.kubernetes.io/not-ready"
           operator: "Exists"
