@@ -1,0 +1,24 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: robinhoodbot-oomkill
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+    app: kube-prometheus-stack
+spec:
+  groups:
+    - name: robinhoodbot.oomkill
+      rules:
+        - alert: RobinhoodBotOOMKilled
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="robinhoodbot", container="bot"}[5m]) > 0
+            and on(namespace, pod)
+            kube_pod_container_status_last_terminated_reason{namespace="robinhoodbot", container="bot", reason="OOMKilled"} == 1
+          for: 0m
+          labels:
+            severity: critical
+            app: robinhoodbot
+          annotations:
+            summary: "RobinhoodBot OOMKilled"
+            description: "The robinhoodbot container was OOMKilled and restarted. Pod {{ $labels.pod }} on node {{ $labels.node }}."
