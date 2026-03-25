@@ -53,10 +53,11 @@ def _validate_sherrif_id(device_token: str, workflow_id: str):
             if challenge_type == "prompt":
                 print("Check robinhood app for device approvals method...")
                 prompt_url = f"https://api.robinhood.com/push/{challenge_id}/get_prompts_status/"
-                while True:
+                prompt_start = time.time()
+                while time.time() - prompt_start < 120:
                     time.sleep(5)
                     prompt_challenge_status = request_get(url=prompt_url)
-                    if prompt_challenge_status["challenge_status"] == "validated":
+                    if prompt_challenge_status and prompt_challenge_status.get("challenge_status") == "validated":
                         break
                 break
 
