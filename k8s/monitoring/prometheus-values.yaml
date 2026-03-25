@@ -5,6 +5,8 @@
 # Reference: https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack
 
 grafana:
+  # Set a known admin password (avoids mismatch after reinstall with persistent storage)
+  adminPassword: prom-operator
   # Expose Grafana on a NodePort so it's accessible from the LAN
   service:
     type: NodePort
