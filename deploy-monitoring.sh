@@ -94,6 +94,13 @@ cmd_install() {
         exit 1
     fi
 
+    # Step 0: Sync monitoring manifests to remote
+    log "Syncing monitoring manifests to ${REMOTE_HOST}..."
+    remote "mkdir -p ${REMOTE_DIR}/${MONITORING_DIR}"
+    rsync -az \
+        -e "ssh ${SSH_OPTS[*]}" \
+        "${LOCAL_DIR}/${MONITORING_DIR}/" "${REMOTE_SSH}:${REMOTE_DIR}/${MONITORING_DIR}/"
+
     # Step 1: Add Helm repos
     log "Adding prometheus-community Helm repo..."
     remote "helm repo add prometheus-community https://prometheus-community.github.io/helm-charts 2>/dev/null || true"
@@ -239,7 +246,14 @@ cmd_reinstall() {
     done
 
     log "Waiting for namespaces to fully terminate..."
-    sleep 10
+    # Actively wait for namespaces to be fully gone (not just deleted but terminating)
+    for ns in ${NAMESPACE} prometheus-system; do
+        while remote_kubectl "get namespace ${ns}" >/dev/null 2>&1; do
+            log "  Waiting for namespace '${ns}' to terminate..."
+            sleep 5
+        done
+    done
+    log "Namespaces fully terminated"
 
     # Install fresh
     cmd_install
