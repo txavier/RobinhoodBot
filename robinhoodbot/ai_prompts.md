@@ -53,3 +53,7 @@ Tuning the optimizer.
 /> how to prevent overfitting?
 /> Are there any improvements you can suggest for the optimizer to run faster or better on the cluster?
 /> is there any way to make the genetic optimizer code run faster?
+/> Based on everything you have learned in this repository create an agents.md file.
+
+
+

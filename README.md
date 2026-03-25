@@ -749,6 +749,19 @@ kubectl apply -f k8s/ray-cluster.yaml -n robinhoodbot
 kubectl delete job robinhoodbot-optimizer -n robinhoodbot
 kubectl apply -f k8s/optimizer-job.yaml -n robinhoodbot
 
+#### Default Kubernetes namspaces before optimizer and monitoring
+kubectl get namespaces
+NAME                 STATUS   AGE
+calico-apiserver     Active   
+calico-system        Active   
+default              Active   
+kube-node-lease      Active   
+kube-public          Active   
+kube-system          Active   
+local-path-storage   Active   
+robinhoodbot         Active   
+tigera-operator      Active   
+
 ### File exchange location
 /srv/nfs/robinhoodbot/robinhoodbot-robinhoodbot-data-nfs-pvc-529a9db2-2ce8-408e-89b5-797a8c68d462/
 
