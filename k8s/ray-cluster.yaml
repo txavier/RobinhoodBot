@@ -57,6 +57,10 @@ spec:
                 value: "WARNING"
               - name: RAY_gcs_rpc_server_connect_timeout_s
                 value: "30"
+              - name: RAY_grpc_client_keepalive_time_ms
+                value: "10000"
+              - name: RAY_grpc_client_keepalive_timeout_ms
+                value: "20000"
             volumeMounts:
               - name: config
                 mountPath: /app/config.py
@@ -128,6 +132,10 @@ spec:
                   value: "1"
                 - name: RAY_gcs_rpc_server_connect_timeout_s
                   value: "30"
+                - name: RAY_grpc_client_keepalive_time_ms
+                  value: "10000"
+                - name: RAY_grpc_client_keepalive_timeout_ms
+                  value: "20000"
               volumeMounts:
                 - name: config
                   mountPath: /app/config.py

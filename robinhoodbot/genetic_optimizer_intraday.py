@@ -1846,6 +1846,13 @@ class IntradayGeneticOptimizer:
         # Evolution loop
         try:
             for gen in range(start_gen, self.config.generations):
+                # Touch heartbeat file for K8s liveness probe
+                try:
+                    from pathlib import Path
+                    Path('/tmp/optimizer-heartbeat').touch()
+                except OSError:
+                    pass
+                
                 # Check if SIGTERM was received — save checkpoint and exit cleanly
                 if self._interrupted:
                     self._log(f"\n  🛑 SIGTERM detected before Generation {gen + 1}. Saving checkpoint and exiting cleanly...")
@@ -1927,6 +1934,14 @@ class IntradayGeneticOptimizer:
         except RuntimeError as e:
             # Ray stall or other runtime errors — save checkpoint and exit
             self._log(f"\n  🛑 RuntimeError: {e}")
+            if self.checkpoint_path and self.generation_history:
+                self._log(f"     Checkpoint was saved after Gen {len(self.generation_history)}.")
+                self._log(f"     Resume with: --resume to continue from Gen {len(self.generation_history) + 1}")
+            raise
+        
+        except (ConnectionError, OSError) as e:
+            # Ray gRPC connection lost (e.g. network outage) — save checkpoint and exit
+            self._log(f"\n  🛑 Ray connection lost: {e}")
             if self.checkpoint_path and self.generation_history:
                 self._log(f"     Checkpoint was saved after Gen {len(self.generation_history)}.")
                 self._log(f"     Resume with: --resume to continue from Gen {len(self.generation_history) + 1}")

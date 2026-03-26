@@ -58,6 +58,18 @@ spec:
               value: "/app/data"
             - name: RAY_ADDRESS
               value: "ray://optimizer-ray-head-svc.robinhoodbot.svc.cluster.local:10001"
+            - name: RAY_gcs_rpc_server_reconnect_timeout_s
+              value: "120"
+            - name: RAY_grpc_client_keepalive_time_ms
+              value: "10000"
+            - name: RAY_grpc_client_keepalive_timeout_ms
+              value: "20000"
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "[ -n \"$(find /tmp/optimizer-heartbeat -mmin -30)\" ]"]
+            initialDelaySeconds: 300
+            periodSeconds: 120
+            failureThreshold: 3
           volumeMounts:
             - name: config
               mountPath: /app/config.py
