@@ -57,7 +57,7 @@ spec:
               subPath: logs/robinhoodbot
           livenessProbe:
             exec:
-              command: ["find", "/tmp/heartbeat", "-mmin", "-12"]
+              command: ["sh", "-c", "[ -n \"$(find /tmp/heartbeat -mmin -12)\" ]"]
             initialDelaySeconds: 60
             periodSeconds: 120
             failureThreshold: 3

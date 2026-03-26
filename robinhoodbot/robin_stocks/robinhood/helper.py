@@ -239,9 +239,9 @@ def request_document(url, payload=None):
 
     """ 
     try:
-        res = SESSION.get(url, params=payload)
+        res = SESSION.get(url, params=payload, timeout=16)
         res.raise_for_status()
-    except requests.exceptions.HTTPError as message:
+    except (requests.exceptions.HTTPError, requests.exceptions.ConnectionError, requests.exceptions.Timeout) as message:
         print(message, file=get_output())
         return(None)
 
