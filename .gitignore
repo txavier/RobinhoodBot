@@ -148,3 +148,4 @@ robinhoodbot/.yfinance_cache/
 robinhoodbot/genetic_optimizer_test_symbols.json
 robinhoodbot/archive/
 k8s/config
+.github/agents.local.md
