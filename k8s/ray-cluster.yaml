@@ -26,11 +26,11 @@ spec:
           - key: "node.kubernetes.io/not-ready"
             operator: "Exists"
             effect: "NoExecute"
-            tolerationSeconds: 30
+            tolerationSeconds: 600
           - key: "node.kubernetes.io/unreachable"
             operator: "Exists"
             effect: "NoExecute"
-            tolerationSeconds: 30
+            tolerationSeconds: 600
         containers:
           - name: ray-head
             image: 192.168.87.35:5000/robinhoodbot:latest
@@ -113,11 +113,11 @@ spec:
             - key: "node.kubernetes.io/not-ready"
               operator: "Exists"
               effect: "NoExecute"
-              tolerationSeconds: 30
+              tolerationSeconds: 600
             - key: "node.kubernetes.io/unreachable"
               operator: "Exists"
               effect: "NoExecute"
-              tolerationSeconds: 30
+              tolerationSeconds: 600
           containers:
             - name: ray-worker
               image: 192.168.87.35:5000/robinhoodbot:latest
