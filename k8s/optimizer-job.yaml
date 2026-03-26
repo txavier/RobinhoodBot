@@ -18,10 +18,10 @@ spec:
           operator: "Exists"
           effect: "NoExecute"
           tolerationSeconds: 600
-          - key: "node.kubernetes.io/unreachable"
-            operator: "Exists"
-            effect: "NoExecute"
-            tolerationSeconds: 600
+        - key: "node.kubernetes.io/unreachable"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 600
       initContainers:
         - name: wait-for-ray
           image: busybox:1.36

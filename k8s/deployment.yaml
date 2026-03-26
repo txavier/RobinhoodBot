@@ -23,10 +23,10 @@ spec:
           operator: "Exists"
           effect: "NoExecute"
           tolerationSeconds: 600
-          - key: "node.kubernetes.io/unreachable"
-            operator: "Exists"
-            effect: "NoExecute"
-            tolerationSeconds: 600
+        - key: "node.kubernetes.io/unreachable"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 600
       containers:
         - name: bot
           image: REGISTRY_HOST:5000/robinhoodbot:latest
