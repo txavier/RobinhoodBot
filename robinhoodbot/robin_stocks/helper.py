@@ -246,9 +246,9 @@ def request_document(url, payload=None):
 
     """ 
     try:
-        res = SESSION.get(url, params=payload)
+        res = SESSION.get(url, params=payload, timeout=16)
         res.raise_for_status()
-    except requests.exceptions.HTTPError as message:
+    except (requests.exceptions.HTTPError, requests.exceptions.ConnectionError, requests.exceptions.Timeout) as message:
         print(message, file=get_output())
         return(None)
 
@@ -279,14 +279,14 @@ def request_get(url, dataType='regular', payload=None, jsonify_data=True):
     res = None
     if jsonify_data:
         try:
-            res = SESSION.get(url, params=payload)
+            res = SESSION.get(url, params=payload, timeout=16)
             res.raise_for_status()
             data = res.json()
-        except (requests.exceptions.HTTPError, AttributeError) as message:
+        except (requests.exceptions.HTTPError, requests.exceptions.ConnectionError, requests.exceptions.Timeout, AttributeError) as message:
             print(message, file=get_output())
             return(data)
     else:
-        res = SESSION.get(url, params=payload)
+        res = SESSION.get(url, params=payload, timeout=16)
         return(res)
     # Only continue to filter data if jsonify_data=True, and Session.get returned status code <200>.
     if (dataType == 'results'):
@@ -308,7 +308,7 @@ def request_get(url, dataType='regular', payload=None, jsonify_data=True):
             print('Found Additional pages.', file=get_output())
         while nextData['next']:
             try:
-                res = SESSION.get(nextData['next'])
+                res = SESSION.get(nextData['next'], timeout=16)
                 res.raise_for_status()
                 nextData = res.json()
             except:
@@ -375,7 +375,7 @@ def request_delete(url):
 
     """
     try:
-        res = SESSION.delete(url)
+        res = SESSION.delete(url, timeout=16)
         res.raise_for_status()
         data = res
     except Exception as message:

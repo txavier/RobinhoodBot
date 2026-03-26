@@ -32,6 +32,12 @@ grafana:
       provider:
         foldersFromFilesStructure: true
 
+# Ensure node-exporter collects hardware temperature sensors
+prometheus-node-exporter:
+  extraArgs:
+    - --collector.hwmon
+    - --collector.thermal_zone
+
 prometheus:
   prometheusSpec:
     # Discover PodMonitors in all namespaces
