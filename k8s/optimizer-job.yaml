@@ -64,6 +64,10 @@ spec:
               value: "10000"
             - name: RAY_grpc_client_keepalive_timeout_ms
               value: "20000"
+            - name: RAY_CLIENT_RECONNECT_GRACE_PERIOD
+              value: "120"
+            - name: GRPC_KEEPALIVE_PERMIT_WITHOUT_CALLS
+              value: "1"
           livenessProbe:
             exec:
               command: ["sh", "-c", "[ -n \"$(find /tmp/optimizer-heartbeat -mmin -30)\" ]"]

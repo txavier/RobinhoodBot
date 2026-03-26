@@ -61,6 +61,8 @@ spec:
                 value: "10000"
               - name: RAY_grpc_client_keepalive_timeout_ms
                 value: "20000"
+              - name: GRPC_KEEPALIVE_PERMIT_WITHOUT_CALLS
+                value: "1"
             volumeMounts:
               - name: config
                 mountPath: /app/config.py
@@ -136,6 +138,8 @@ spec:
                   value: "10000"
                 - name: RAY_grpc_client_keepalive_timeout_ms
                   value: "20000"
+                - name: GRPC_KEEPALIVE_PERMIT_WITHOUT_CALLS
+                  value: "1"
               volumeMounts:
                 - name: config
                   mountPath: /app/config.py
