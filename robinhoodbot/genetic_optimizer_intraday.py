@@ -1412,7 +1412,20 @@ class IntradayGeneticOptimizer:
                 init_kwargs["_metrics_export_port"] = 8080
 
             # ray.init() auto-detects: local CPUs, or connects to cluster via RAY_ADDRESS env var
-            ray.init(**init_kwargs)
+            # Use a timeout to avoid hanging forever on stale Ray Client connections
+            if connecting_to_cluster:
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(ray.init, **init_kwargs)
+                    try:
+                        future.result(timeout=120)
+                    except concurrent.futures.TimeoutError:
+                        raise ConnectionError(
+                            f"ray.init() timed out after 120s connecting to {ray_address}. "
+                            "The Ray head may need to be restarted."
+                        )
+            else:
+                ray.init(**init_kwargs)
         
         # Put large shared data into Ray object store once (avoids per-task serialization)
         real_data_ref = ray.put(self.real_data_cache) if self.real_data_cache else None
@@ -1466,7 +1479,13 @@ class IntradayGeneticOptimizer:
                 total_count = len(futures)
                 if self.verbose and done_count % 10 == 0:
                     self._log(f"    Progress: {done_count}/{total_count} genes evaluated")
-            else:
+            # Touch heartbeat file so K8s liveness probe knows we're alive
+            try:
+                from pathlib import Path
+                Path('/tmp/optimizer-heartbeat').touch()
+            except OSError as e:
+                self._log(f"  ⚠️  Failed to touch heartbeat file: {e}")
+            if not ready:
                 stall_minutes = (time.time() - last_progress_time) / 60.0
                 if stall_minutes >= STALL_TIMEOUT_MINUTES:
                     done_count = len(completed_results)
@@ -1850,8 +1869,8 @@ class IntradayGeneticOptimizer:
                 try:
                     from pathlib import Path
                     Path('/tmp/optimizer-heartbeat').touch()
-                except OSError:
-                    pass
+                except OSError as e:
+                    self._log(f"  ⚠️  Failed to touch heartbeat file: {e}")
                 
                 # Check if SIGTERM was received — save checkpoint and exit cleanly
                 if self._interrupted:
