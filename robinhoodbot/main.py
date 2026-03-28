@@ -1784,6 +1784,18 @@ def scan_stocks():
         _pw = os.environ.get('RH_PASSWORD') or None
         _device_token = RH_DEVICE_TOKEN if RH_DEVICE_TOKEN and RH_DEVICE_TOKEN != "YOUR_16_CHAR_TOKEN" else None
         login = rr.authentication.login(username=rh_username, password=_pw, device_token=_device_token, expiresIn=604800)  # 7-day token
+
+        if login is None:
+            if not check_internet_connectivity():
+                print("⚠️  Login failed but network is down — will retry on next loop iteration.")
+                json_logger.log("warning", "Login returned None but network is down", {"action": "retry"})
+                return
+            print("❌ Login failed (token expired or credentials invalid). Manual re-login required.")
+            print("   Run: cd ~/dev/RobinhoodBot/robinhoodbot && python main.py")
+            json_logger.log("error", "Login failed - session expired", {"action": "exit"})
+            _send_password_required_email()
+            sys.exit(75)
+
         login_to_sms()
 
         # Clear caches at the start of each scan to get fresh data

@@ -354,6 +354,7 @@ def request_post(url, payload=None, timeout=16, json=False, jsonify_data=True):
         data = res.json()
     except Exception as message:
         print("Error in request_post: {0}".format(message), file=get_output())
+        print("Error in request_post: {0}".format(message))  # Also print to stdout for debugging
     if jsonify_data:
         return(data)
     else:
