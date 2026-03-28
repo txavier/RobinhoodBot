@@ -1414,7 +1414,12 @@ class IntradayBacktester:
                        1-share exception when budget exceeded.
           2 (per-stock pct): Each position capped at equity * (pct / 100).
         """
+        import math
+        if not math.isfinite(price) or price <= 0:
+            return 0
         equity = self.cash + sum(p.total_cost for p in self.positions.values())
+        if not math.isfinite(equity) or equity <= 0:
+            return 0
         currently_invested = sum(p.total_cost for p in self.positions.values())
         max_from_cash = self.cash * 0.95  # Keep 5% reserve
         
@@ -1430,7 +1435,10 @@ class IntradayBacktester:
                 return 0
             
             spendable = min(remaining_budget, max_from_cash)
-            shares = int(spendable / price)
+            result = spendable / price
+            if not math.isfinite(result):
+                return 0
+            shares = int(result)
             
             # 1-share exception if budget too small for a full share
             if shares <= 0 and price <= max_from_cash:
@@ -1441,13 +1449,19 @@ class IntradayBacktester:
             # Mode 2: Per-stock percentage cap (correct percentage math)
             max_position_value = equity * (self.max_position_pct / 100)
             position_value = min(max_position_value, max_from_cash)
-            shares = int(position_value / price)
+            result = position_value / price
+            if not math.isfinite(result):
+                return 0
+            shares = int(result)
             return max(0, shares)
         else:
             # Mode 0 (legacy): Per-stock cap using flawed formula
             limit = equity / self.max_position_pct
             max_from_budget = min(limit, max_from_cash)
-            shares = int(max_from_budget / price)
+            result = max_from_budget / price
+            if not math.isfinite(result):
+                return 0
+            shares = int(result)
             return max(0, shares)
     
     def execute_buy(
