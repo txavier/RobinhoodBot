@@ -54,6 +54,6 @@ Tuning the optimizer.
 /> Are there any improvements you can suggest for the optimizer to run faster or better on the cluster?
 /> is there any way to make the genetic optimizer code run faster?
 /> Based on everything you have learned in this repository, create an agents.local.md file.
-
+/> What code improvement/security improvements can we make to the code in this repo?  List them in terms of severity.
 
 
