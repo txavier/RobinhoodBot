@@ -48,6 +48,7 @@ spec:
             - "--email-notify"
             - "--output=/app/data/genetic_optimization_intraday_result.json"
             - "--checkpoint-file=/app/data/genetic_optimization_intraday_result.checkpoint.json"
+            - "--log-file=/app/logs/optimizer_output.log"
           env:
             - name: TZ
               value: "America/New_York"
