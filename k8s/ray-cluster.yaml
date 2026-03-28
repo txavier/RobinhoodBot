@@ -149,11 +149,11 @@ spec:
                   mountPath: /dev/shm
               resources:
                 requests:
-                  cpu: "6"
-                  memory: "4Gi"
+                  cpu: "7"
+                  memory: "6Gi"
                 limits:
-                  cpu: "8"
-                  memory: "5Gi"
+                  cpu: "7"
+                  memory: "8Gi"
           volumes:
             - name: dshm
               emptyDir:
