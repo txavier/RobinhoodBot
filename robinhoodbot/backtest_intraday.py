@@ -20,6 +20,7 @@ Usage:
 
 import argparse
 import json
+import math
 import os
 import sys
 from datetime import datetime, timedelta
@@ -2032,11 +2033,13 @@ class IntradayBacktester:
             for i in range(1, len(self.equity_curve)):
                 prev_eq = self.equity_curve[i-1][1]
                 curr_eq = self.equity_curve[i][1]
-                returns.append((curr_eq - prev_eq) / prev_eq)
+                if prev_eq > 0:
+                    returns.append((curr_eq - prev_eq) / prev_eq)
             
             if returns and np.std(returns) > 0:
                 # Annualize: assume 7 hours/day, 252 days/year = 1764 hours
-                sharpe_ratio = (np.mean(returns) / np.std(returns)) * np.sqrt(1764)
+                sr = (np.mean(returns) / np.std(returns)) * np.sqrt(1764)
+                sharpe_ratio = sr if math.isfinite(sr) else 0.0
             else:
                 sharpe_ratio = 0.0
         else:

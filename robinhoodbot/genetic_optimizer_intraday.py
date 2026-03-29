@@ -18,6 +18,7 @@ Usage:
 
 import argparse
 import json
+import math
 import os
 import random
 import copy
@@ -261,7 +262,10 @@ def _evaluate_gene_cv_impl(gene, symbols, days, initial_capital, fitness_weights
             )
             all_fitnesses.append(wf_gene.fitness)
 
-    if not all_fitnesses:
+    # Filter out NaN fitness values (bad folds with missing/corrupt data)
+    valid_fitnesses = [f for f in all_fitnesses if math.isfinite(f)]
+
+    if not valid_fitnesses:
         # Fallback to standard evaluation
         return _evaluate_gene_impl(
             gene, symbols, days, initial_capital,
@@ -270,8 +274,8 @@ def _evaluate_gene_cv_impl(gene, symbols, days, initial_capital, fitness_weights
         )
 
     # Fitness: 70% average + 30% minimum (rewards consistency across folds)
-    avg_fitness = sum(all_fitnesses) / len(all_fitnesses)
-    min_fitness = min(all_fitnesses)
+    avg_fitness = sum(valid_fitnesses) / len(valid_fitnesses)
+    min_fitness = min(valid_fitnesses)
     gene.fitness = 0.7 * avg_fitness + 0.3 * min_fitness
 
     # Get representative metrics from median fold for display
@@ -413,6 +417,19 @@ def _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, d
     gene.avg_loss = result.get('avg_loss', 0)
     gene.exit_reasons = result.get('exit_reasons', {})
     
+    # Sanitize metrics — replace NaN/inf with 0 to prevent NaN fitness
+    def _safe(val, default=0.0):
+        return val if math.isfinite(val) else default
+
+    gene.total_return_pct = _safe(gene.total_return_pct)
+    gene.sharpe_ratio = _safe(gene.sharpe_ratio)
+    gene.win_rate = _safe(gene.win_rate)
+    gene.profit_factor = _safe(gene.profit_factor)
+    gene.max_drawdown_pct = _safe(gene.max_drawdown_pct)
+    gene.trades_per_day = _safe(gene.trades_per_day)
+    gene.avg_win = _safe(gene.avg_win)
+    gene.avg_loss = _safe(gene.avg_loss)
+
     # Calculate weighted fitness
     fitness = 0.0
     
