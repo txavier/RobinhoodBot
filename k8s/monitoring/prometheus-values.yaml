@@ -3,6 +3,11 @@
 # ============================================================================
 # Overrides for kube-prometheus-stack Helm chart
 # Reference: https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack
+#
+# IMPORTANT: No PII, credentials, or email addresses in this file.
+# SMTP credentials are stored in K8s secret 'alertmanager-smtp-secret'
+# in the monitoring namespace (see secrets.env for setup).
+# Alertmanager config is applied directly via its K8s secret, not here.
 
 grafana:
   # Set a known admin password (avoids mismatch after reinstall with persistent storage)
@@ -18,6 +23,12 @@ grafana:
     auth.anonymous:
       enabled: true
       org_role: Viewer
+    smtp:
+      enabled: true
+      host: smtp.gmail.com:587
+      # Credentials loaded from grafana-smtp-secret via env vars below
+  envFromSecrets:
+    - grafana-smtp-secret
   # Persist Grafana data (dashboards, config)
   persistence:
     enabled: true
