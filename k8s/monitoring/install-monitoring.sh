@@ -67,6 +67,28 @@ fi
 rm -f "$TEMP_FILE"
 
 echo ""
+echo "=== Step 6: Import Node CPU Temperature dashboard ==="
+kubectl create configmap node-temp-dashboard \
+  --namespace "$NAMESPACE" \
+  --from-file="node-cpu-temps.json=$SCRIPT_DIR/node-temp-dashboard.json" \
+  --dry-run=client -o yaml | \
+  kubectl apply -f -
+kubectl label configmap node-temp-dashboard \
+  --namespace "$NAMESPACE" \
+  grafana_dashboard=1 \
+  --overwrite
+kubectl annotate configmap node-temp-dashboard \
+  --namespace "$NAMESPACE" \
+  grafana_folder=Hardware \
+  --overwrite
+echo "Node CPU Temperature dashboard imported."
+
+echo ""
+echo "=== Step 7: Deploy node network watchdog ==="
+kubectl apply -f "$SCRIPT_DIR/../node-watchdog-daemonset.yaml"
+echo "Node network watchdog deployed."
+
+echo ""
 echo "=== Installation complete! ==="
 echo ""
 echo "To access Grafana:"
