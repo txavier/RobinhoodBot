@@ -30,7 +30,7 @@ def _validate_sherrif_id(device_token: str, workflow_id: str):
     print("Starting verification process...")
     pathfinder_url = "https://api.robinhood.com/pathfinder/user_machine/"
     machine_payload = {'device_id': device_token, 'flow': 'suv', 'input': {'workflow_id': workflow_id}}
-    print(f"DEBUG: pathfinder request device_id: {device_token}")
+    print(f"DEBUG: pathfinder request device_id: {device_token[:8]}...")
     machine_data = request_post(url=pathfinder_url, payload=machine_payload, json=True)
     print(f"DEBUG: pathfinder response: {machine_data}")
 
@@ -134,9 +134,9 @@ def login(username=None, password=None, expiresIn=86400, scope='internal', store
     # Legacy 16-char tokens like "WNHMWLYXJEV5ROKP" won't work.
     import re
     if not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', device_token, re.IGNORECASE):
-        print(f"Device token '{device_token}' is not UUID format — generating a proper UUID token.")
+        print(f"Device token is not UUID format — generating a proper UUID token.")
         device_token = generate_device_token()
-    print(f"DEBUG: Using device_token: {device_token}")
+    print(f"DEBUG: Using device_token: {device_token[:8]}...")
     home_dir = os.path.expanduser("~")
     data_dir = os.path.join(home_dir, ".tokens")
 
