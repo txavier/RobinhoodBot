@@ -1,0 +1,108 @@
+# Node Setup DaemonSet
+# --------------------
+# Ensures consistent update configuration across all worker nodes:
+#   - Pins K8s packages (kubelet, kubeadm, kubectl) via apt preferences
+#   - Blacklists kernel + K8s from unattended-upgrades
+#   - Runs once at startup, then sleeps (re-applies on pod restart)
+# For full initial setup, use k8s/node-setup.sh via SSH.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-setup
+  namespace: kube-system
+  labels:
+    app: node-setup
+spec:
+  selector:
+    matchLabels:
+      app: node-setup
+  template:
+    metadata:
+      labels:
+        app: node-setup
+    spec:
+      hostPID: true
+      tolerations:
+        - operator: "Exists"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: DoesNotExist
+      containers:
+        - name: setup
+          image: busybox:1.36
+          command: ["sh", "-c"]
+          args:
+            - |
+              K8S_VERSION="1.35.3"
+
+              log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [node-setup] $1"; }
+
+              log "Applying node configuration on $(cat /host-etc/hostname)..."
+
+              # 1. Pin K8s packages via apt preferences
+              cat > /host-etc/apt/preferences.d/kubernetes-pin <<PINEOF
+              # Pin Kubernetes packages — managed by node-setup DaemonSet
+              Package: kubelet kubeadm kubectl
+              Pin: version ${K8S_VERSION}*
+              Pin-Priority: 1001
+              PINEOF
+              # Remove leading whitespace from heredoc
+              sed -i 's/^              //' /host-etc/apt/preferences.d/kubernetes-pin
+
+              # 2. Configure unattended-upgrades blacklist
+              cat > /host-etc/apt/apt.conf.d/50unattended-upgrades <<'UUEOF'
+              // Unattended-Upgrade configuration — managed by node-setup DaemonSet
+              Unattended-Upgrade::Allowed-Origins {
+                  "${distro_id}:${distro_codename}-security";
+              };
+              Unattended-Upgrade::Package-Blacklist {
+                  "kubelet";
+                  "kubeadm";
+                  "kubectl";
+                  "linux-image-*";
+                  "linux-headers-*";
+                  "linux-modules-*";
+                  "linux-base";
+              };
+              Unattended-Upgrade::Automatic-Reboot "false";
+              Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+              Unattended-Upgrade::Remove-Unused-Dependencies "true";
+              UUEOF
+              sed -i 's/^              //' /host-etc/apt/apt.conf.d/50unattended-upgrades
+
+              # 3. Ensure auto-upgrades are enabled
+              cat > /host-etc/apt/apt.conf.d/20auto-upgrades <<'AUEOF'
+              APT::Periodic::Update-Package-Lists "1";
+              APT::Periodic::Unattended-Upgrade "1";
+              APT::Periodic::AutocleanInterval "7";
+              AUEOF
+              sed -i 's/^              //' /host-etc/apt/apt.conf.d/20auto-upgrades
+
+              # 4. Pin K8s packages with apt-mark hold via nsenter
+              nsenter -t 1 -m -u -i -n -- apt-mark hold kubelet kubeadm kubectl 2>/dev/null || true
+
+              log "Configuration applied. Sleeping."
+
+              # Sleep forever — DaemonSet stays running for kubectl logs access
+              sleep infinity
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: host-etc
+              mountPath: /host-etc
+          resources:
+            requests:
+              cpu: 1m
+              memory: 4Mi
+            limits:
+              cpu: 10m
+              memory: 16Mi
+      volumes:
+        - name: host-etc
+          hostPath:
+            path: /etc
+            type: Directory

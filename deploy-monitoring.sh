@@ -146,7 +146,31 @@ cmd_install() {
         fi; \
         rm -f \"\$TEMP_FILE\""
 
-    # Step 7: Verify
+    # Step 7: Import Node Hardware Monitoring dashboard
+    log "Importing Node Hardware Monitoring dashboard..."
+    remote "kubectl create configmap node-temp-dashboard \
+        --namespace ${NAMESPACE} \
+        --from-file='node-cpu-temps.json=${REMOTE_DIR}/${MONITORING_DIR}/node-temp-dashboard.json' \
+        --dry-run=client -o yaml | kubectl apply -f - && \
+    kubectl label configmap node-temp-dashboard --namespace ${NAMESPACE} grafana_dashboard=1 --overwrite && \
+    kubectl annotate configmap node-temp-dashboard --namespace ${NAMESPACE} grafana_folder=Hardware --overwrite"
+
+    # Step 8: Install kured (Kubernetes Reboot Daemon)
+    log "Adding kubereboot Helm repo..."
+    remote "helm repo add kubereboot https://kubereboot.github.io/charts 2>/dev/null || true"
+    remote "helm repo update kubereboot"
+
+    log "Installing kured..."
+    remote "helm upgrade --install kured kubereboot/kured \
+        --namespace kube-system \
+        --values ${REMOTE_DIR}/${MONITORING_DIR}/kured-values.yaml \
+        --wait --timeout 3m"
+
+    # Step 9: Deploy node network watchdog
+    log "Deploying node network watchdog..."
+    remote_kubectl "apply -f ${REMOTE_DIR}/k8s/node-watchdog-daemonset.yaml"
+
+    # Step 10: Verify
     log "Waiting for pods to be ready..."
     remote_kubectl "wait --for=condition=Ready pods --all -n ${NAMESPACE} --timeout=120s" || true
 
@@ -176,6 +200,14 @@ cmd_remove() {
     # Remove Helm release in monitoring namespace
     log "Removing Helm release '${HELM_RELEASE}' from '${NAMESPACE}'..."
     remote "helm uninstall ${HELM_RELEASE} -n ${NAMESPACE} 2>/dev/null || true"
+
+    # Remove kured
+    log "Removing kured..."
+    remote "helm uninstall kured -n kube-system 2>/dev/null || true"
+
+    # Remove node network watchdog
+    log "Removing node network watchdog..."
+    remote_kubectl "delete daemonset node-network-watchdog -n kube-system --ignore-not-found" || true
 
     # Remove Helm release in prometheus-system (legacy install from install-monitoring.sh)
     log "Removing legacy Helm release 'prometheus' from 'prometheus-system'..."
