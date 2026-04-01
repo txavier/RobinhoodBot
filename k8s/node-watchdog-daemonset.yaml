@@ -5,6 +5,7 @@
 # reboots the node via nsenter. 2-hour cooldown prevents reboot loops.
 # Tolerates NotReady/Unreachable taints so it stays on troubled nodes.
 # Requires hostPID + privileged to access the host's /sbin/reboot.
+# Sends an alert to Alertmanager (-> Gmail) before rebooting.
 # Footprint: 1m CPU, 8Mi memory per node.
 apiVersion: apps/v1
 kind: DaemonSet
@@ -45,18 +46,48 @@ spec:
             - |
               GATEWAY="192.168.87.1"
               CONTROL_PLANE="192.168.87.35"
+              ALERTMANAGER="kube-prometheus-stack-alertmanager.monitoring:9093"
               CHECK_INTERVAL=120        # check every 2 minutes
               MAX_FAILURES=30           # 30 consecutive failures = ~1 hour
               REBOOT_COOLDOWN=7200      # don't reboot more than once per 2 hours
+              REBOOT_FLAG="/host-tmp/watchdog-rebooted"
 
               fail_count=0
               last_reboot=0
 
               log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [watchdog] $1"; }
 
+              # Send alert to Alertmanager (best-effort, don't fail if unreachable)
+              send_alert() {
+                severity="$1"
+                summary="$2"
+                description="$3"
+                node=$(cat /etc/hostname 2>/dev/null || echo "unknown")
+                # busybox wget with POST body via stdin
+                printf '[{"labels":{"alertname":"NodeWatchdogReboot","severity":"%s","node":"%s","namespace":"kube-system"},"annotations":{"summary":"%s","description":"%s"},"generatorURL":"http://node-watchdog"}]' \
+                  "$severity" "$node" "$summary" "$description" | \
+                  wget -q -O /dev/null --post-data="$(cat)" "http://${ALERTMANAGER}/api/v2/alerts" 2>/dev/null || true
+              }
+
               log "Starting network watchdog on $(hostname)"
               log "Targets: gateway=$GATEWAY control-plane=$CONTROL_PLANE"
               log "Will reboot after $MAX_FAILURES consecutive failures (~$((MAX_FAILURES * CHECK_INTERVAL / 60)) min)"
+
+              # Check if this is a post-reboot startup (uptime < 10 min + flag file exists)
+              uptime_seconds=$(cut -d. -f1 /proc/uptime)
+              if [ "$uptime_seconds" -lt 600 ] && [ -f "$REBOOT_FLAG" ]; then
+                log "POST-REBOOT: Node was rebooted by watchdog (uptime=${uptime_seconds}s)"
+                rm -f "$REBOOT_FLAG"
+                # Wait for network to come up before sending alert
+                for i in $(seq 1 30); do
+                  if ping -c 1 -W 3 "$CONTROL_PLANE" >/dev/null 2>&1; then
+                    send_alert "warning" "Node watchdog rebooted node" "Node $(cat /etc/hostname) was automatically rebooted by network watchdog after ~1 hour of network unreachability. Node is now back online."
+                    log "POST-REBOOT: Alert sent to Alertmanager"
+                    break
+                  fi
+                  sleep 10
+                done
+              fi
 
               while true; do
                 if ping -c 2 -W 5 "$GATEWAY" >/dev/null 2>&1 || ping -c 2 -W 5 "$CONTROL_PLANE" >/dev/null 2>&1; then
@@ -73,6 +104,8 @@ spec:
                     elapsed=$((now - last_reboot))
                     if [ "$elapsed" -ge "$REBOOT_COOLDOWN" ]; then
                       log "REBOOTING NODE - network unreachable for $((fail_count * CHECK_INTERVAL / 60)) minutes"
+                      # Write flag to host filesystem so it persists across reboot
+                      echo "$(date +%s)" > "$REBOOT_FLAG"
                       last_reboot=$now
                       nsenter -t 1 -m -u -i -n -- /sbin/reboot
                     else
@@ -84,6 +117,12 @@ spec:
               done
           securityContext:
             privileged: true
+          volumeMounts:
+            - name: host-tmp
+              mountPath: /host-tmp
+            - name: host-hostname
+              mountPath: /etc/hostname
+              readOnly: true
           resources:
             requests:
               cpu: 1m
@@ -91,3 +130,12 @@ spec:
             limits:
               cpu: 10m
               memory: 16Mi
+      volumes:
+        - name: host-tmp
+          hostPath:
+            path: /var/tmp
+            type: DirectoryOrCreate
+        - name: host-hostname
+          hostPath:
+            path: /etc/hostname
+            type: File
