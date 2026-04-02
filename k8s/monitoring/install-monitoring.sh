@@ -33,6 +33,7 @@ echo ""
 echo "=== Step 3: Install kube-prometheus-stack ==="
 helm upgrade --install "$HELM_RELEASE" prometheus-community/kube-prometheus-stack \
   --namespace "$NAMESPACE" \
+  --version 82.14.0 \
   --values "$SCRIPT_DIR/prometheus-values.yaml" \
   --wait
 
