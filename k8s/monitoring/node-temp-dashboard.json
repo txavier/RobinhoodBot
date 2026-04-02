@@ -159,6 +159,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
           "expr": "node_hwmon_temp_celsius{chip=~\"platform_coretemp.*\", sensor=\"temp1\"} * on(instance) group_left(nodename) node_uname_info",
+          "instant": true,
           "legendFormat": "{{nodename}}",
           "refId": "A"
         }
@@ -255,6 +256,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
           "expr": "node_hwmon_fan_rpm{sensor=\"fan1\"} * on(instance) group_left(nodename) node_uname_info",
+          "instant": true,
           "legendFormat": "{{nodename}}",
           "refId": "A"
         }
@@ -266,7 +268,11 @@
   "templating": {
     "list": [
       {
-        "current": {},
+        "current": {
+          "selected": true,
+          "text": "Prometheus",
+          "value": "prometheus"
+        },
         "hide": 0,
         "includeAll": false,
         "label": "Datasource",

@@ -114,6 +114,7 @@ cmd_install() {
     log "Installing ${HELM_RELEASE} via Helm..."
     remote "helm upgrade --install ${HELM_RELEASE} prometheus-community/kube-prometheus-stack \
         --namespace ${NAMESPACE} \
+        --version 82.14.0 \
         --values ${REMOTE_DIR}/${MONITORING_DIR}/prometheus-values.yaml \
         --wait --timeout 5m"
 
