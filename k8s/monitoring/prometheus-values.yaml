@@ -28,7 +28,17 @@ grafana:
       host: smtp.gmail.com:587
       # Credentials loaded from grafana-smtp-secret via env vars below
   envFromSecrets:
-    - grafana-smtp-secret
+    - name: grafana-smtp-secret
+      optional: false
+  # Disable init-chown-data — it fails after kured reboots because it only has
+  # CHOWN capability (no DAC_OVERRIDE) and can't traverse 0700 dirs Grafana creates.
+  # Use fsGroup instead so K8s handles volume ownership natively.
+  initChownData:
+    enabled: false
+  podSecurityContext:
+    runAsUser: 472
+    runAsGroup: 472
+    fsGroup: 472
   # Persist Grafana data (dashboards, config)
   persistence:
     enabled: true
