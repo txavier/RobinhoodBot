@@ -18,10 +18,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     TZ=America/New_York
 
-# Install minimal OS deps (ping for connectivity checks in run.sh, tzdata for timezone)
+# Install minimal OS deps (connectivity checks in run.sh, tzdata for timezone)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         iputils-ping \
+        dnsutils \
+        curl \
         tzdata \
         procps \
         wget \
