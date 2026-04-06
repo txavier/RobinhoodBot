@@ -1699,6 +1699,27 @@ def get_market_tag_stocks_report():
         send_text(
             "Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.format_exc())
 
+# --- Trailing stop high-water-mark persistence ---
+_TRAILING_STOP_FILE = os.path.join(os.environ.get('DATA_DIR', os.path.dirname(os.path.abspath(__file__))), 'trailing_stop_state.json')
+
+def load_high_water_marks():
+    """Load persisted high-water marks from disk. Returns dict {symbol: hwm_price}."""
+    try:
+        if os.path.exists(_TRAILING_STOP_FILE):
+            with open(_TRAILING_STOP_FILE, 'r') as f:
+                return json.load(f)
+    except (json.JSONDecodeError, IOError) as e:
+        print(f"⚠️  Could not load trailing stop state: {e}")
+    return {}
+
+def save_high_water_marks(hwm_dict):
+    """Save high-water marks to disk."""
+    try:
+        with open(_TRAILING_STOP_FILE, 'w') as f:
+            json.dump(hwm_dict, f, indent=2)
+    except IOError as e:
+        print(f"⚠️  Could not save trailing stop state: {e}")
+
 def order_symbols_by_slope(portfolio_symbols):
     """ This method orders an array of symbols by their slope in descending order
     """ 
@@ -1830,6 +1851,9 @@ def scan_stocks():
         market_uptrend = is_market_in_uptrend()        
         market_in_major_downtrend = is_market_in_major_downtrend()
 
+        # Load trailing stop high-water marks
+        high_water_marks = load_high_water_marks() if use_trailing_stop else {}
+
         if(not market_uptrend):
                 print("Setting the sell day period to 14 days.")
                 n1 = 14
@@ -1907,6 +1931,25 @@ def scan_stocks():
                     is_stop_loss = True
                     print(f"🛑 STOP-LOSS triggered for {symbol}: {stop_loss_pct:.2f}% (threshold: -{stop_loss_percent}%)")
             
+            # Check trailing stop
+            is_trailing_stop = False
+            trailing_drop_pct = 0
+            if use_trailing_stop:
+                current_price = float(holdings_data[symbol]['price'])
+                avg_buy_price = float(holdings_data[symbol]['average_buy_price'])
+                hwm = high_water_marks.get(symbol, avg_buy_price)
+                # Update high-water mark
+                if current_price > hwm:
+                    hwm = current_price
+                high_water_marks[symbol] = hwm
+                # Check if price dropped trailing_stop_percent below the high-water mark
+                trailing_drop_pct = ((hwm - current_price) / hwm) * 100 if hwm > 0 else 0
+                # Floor check: only activate trailing stop once HWM gained trailing_stop_floor_percent above buy price
+                gain_from_buy = ((hwm - avg_buy_price) / avg_buy_price) * 100 if avg_buy_price > 0 else 0
+                if gain_from_buy >= trailing_stop_floor_percent and trailing_drop_pct >= trailing_stop_percent:
+                    is_trailing_stop = True
+                    print(f"📉 TRAILING-STOP triggered for {symbol}: dropped {trailing_drop_pct:.2f}% from high ${hwm:.2f} (threshold: {trailing_stop_percent}%, floor: {trailing_stop_floor_percent}%)")
+            
             # Determine sell reasons - track all that apply
             sell_reasons_list = []
             if cross[0] == -1:
@@ -1919,11 +1962,13 @@ def scan_stocks():
                 sell_reasons_list.append("profit_before_eod")
             if is_stop_loss:
                 sell_reasons_list.append("stop_loss")
+            if is_trailing_stop:
+                sell_reasons_list.append("trailing_stop")
             
             # Join all reasons or use None if empty
             sell_reason = ",".join(sell_reasons_list) if sell_reasons_list else None
             
-            if(cross[0] == -1 or is_sudden_drop or is_take_profit or is_profit_before_eod or is_stop_loss):
+            if(cross[0] == -1 or is_sudden_drop or is_take_profit or is_profit_before_eod or is_stop_loss or is_trailing_stop):
                 day_trades = get_day_trades(profileData)
                 if ((day_trades <= 1) or (not is_traded_today)):
                     print("Day trades currently: " + str(day_trades))
@@ -1939,6 +1984,8 @@ def scan_stocks():
                         "holdings_data": holdings_data.get(symbol, {})
                     })
                     genetic_generation_add(symbol, is_take_profit)
+                    # Remove sold symbol from high-water marks
+                    high_water_marks.pop(symbol, None)
                 else:
                     day_trade_message = "Unable to sell " + symbol + " because there are " + str(day_trades) + " day trades and/or this stock was traded today."
                     print(day_trade_message)
@@ -2024,9 +2071,32 @@ def scan_stocks():
                         "trigger_pct": -stop_loss_percent,
                         "would_trigger_at": round(float(holdings_data[symbol]['average_buy_price']) * (1 - stop_loss_percent/100), 2)
                     }
+                if not is_trailing_stop:
+                    # Show trailing-stop metrics
+                    ts_status = "enabled" if use_trailing_stop else "disabled"
+                    ts_hwm = high_water_marks.get(symbol, 0)
+                    ts_gain_from_buy = ((ts_hwm - float(holdings_data[symbol]['average_buy_price'])) / float(holdings_data[symbol]['average_buy_price'])) * 100 if use_trailing_stop and ts_hwm > 0 and float(holdings_data[symbol]['average_buy_price']) > 0 else 0
+                    ts_floor_met = ts_gain_from_buy >= trailing_stop_floor_percent if use_trailing_stop else False
+                    hold_reasons.append(f"no trailing_stop ({ts_status}, hwm=${ts_hwm:.2f}, drop={trailing_drop_pct:.2f}%, floor={'met' if ts_floor_met else f'not met ({ts_gain_from_buy:.2f}%/{trailing_stop_floor_percent}%)'}, trigger={trailing_stop_percent if use_trailing_stop else 'N/A'}%)")
+                    hold_data["trailing_stop_metrics"] = {
+                        "enabled": use_trailing_stop,
+                        "high_water_mark": round(ts_hwm, 2),
+                        "current_drop_from_hwm_pct": round(trailing_drop_pct, 2),
+                        "hwm_gain_from_buy_pct": round(ts_gain_from_buy, 2),
+                        "floor_pct": trailing_stop_floor_percent if use_trailing_stop else None,
+                        "floor_met": ts_floor_met,
+                        "trigger_pct": trailing_stop_percent if use_trailing_stop else None,
+                        "would_trigger_at": round(ts_hwm * (1 - trailing_stop_percent/100), 2) if use_trailing_stop and ts_hwm > 0 else None
+                    }
                 hold_data["reasons"] = hold_reasons
                 print(f"HOLD {symbol}: {', '.join(hold_reasons)}")
                 json_logger.log("hold", f"Holding {symbol}", hold_data)
+        
+        # Persist trailing stop high-water marks (prune symbols no longer held)
+        if use_trailing_stop:
+            pruned_hwm = {s: p for s, p in high_water_marks.items() if s in portfolio_symbols}
+            save_high_water_marks(pruned_hwm)
+        
         profile_data_with_dividend_total = rr.build_user_profile()
         profile_data = build_pheonix_profile_data(profile_data_with_dividend_total)
         ordered_watchlist_symbols = order_symbols_by_slope(watchlist_symbols) if use_slope_ordering else watchlist_symbols
