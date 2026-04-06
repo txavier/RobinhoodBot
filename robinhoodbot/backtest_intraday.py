@@ -225,6 +225,7 @@ class MarketCondition(Enum):
 class SellReason(Enum):
     DEATH_CROSS = "death_cross"
     STOP_LOSS = "stop_loss"
+    TRAILING_STOP = "trailing_stop"
     TAKE_PROFIT = "take_profit"
     SUDDEN_DROP = "sudden_drop"
     PROFIT_BEFORE_EOD = "profit_before_eod"  # NEW: matches main.py
@@ -258,9 +259,12 @@ class Position:
     total_cost: float = 0.0
     traded_today: bool = False  # NEW: for dynamic SMA adjustment
     took_profit_today: bool = False  # NEW: for dynamic SMA adjustment
+    high_water_mark: float = 0.0  # Tracks highest price since buy (for trailing stop)
     
     def __post_init__(self):
         self.total_cost = self.shares * self.avg_buy_price
+        if self.high_water_mark == 0.0:
+            self.high_water_mark = self.avg_buy_price
     
     def current_value(self, current_price: float) -> float:
         return self.shares * current_price
@@ -924,6 +928,9 @@ class IntradayTradingStrategy:
         stop_loss_pct: float = 5.0,
         take_profit_pct: float = 0.70,
         use_stop_loss: bool = True,
+        use_trailing_stop: bool = False,
+        trailing_stop_pct: float = 3.0,
+        trailing_stop_floor_pct: float = 1.0,
         close_at_eod: bool = False,
         # NEW: Main.py matching parameters
         use_market_filter: bool = True,  # Require market uptrend to buy
@@ -953,6 +960,9 @@ class IntradayTradingStrategy:
         self.stop_loss_pct = stop_loss_pct
         self.take_profit_pct = take_profit_pct
         self.use_stop_loss = use_stop_loss
+        self.use_trailing_stop = use_trailing_stop
+        self.trailing_stop_pct = trailing_stop_pct
+        self.trailing_stop_floor_pct = trailing_stop_floor_pct
         self.close_at_eod = close_at_eod
         
         # Main.py matching features
@@ -1295,6 +1305,25 @@ class IntradayTradingStrategy:
             return False
         pct_change = position.profit_loss_pct(current_price)
         return pct_change <= -self.stop_loss_pct
+    
+    def check_trailing_stop(self, position: Position, current_price: float) -> bool:
+        """Check if trailing stop triggered.
+        
+        Sells if price has dropped trailing_stop_pct below the high water mark.
+        The high water mark tracks the highest price seen since buying.
+        Only activates after position has gained at least trailing_stop_floor_pct
+        above the buy price (the "floor").
+        """
+        if not self.use_trailing_stop:
+            return False
+        if position.high_water_mark <= 0:
+            return False
+        # Floor check: trailing stop only activates once position has reached the floor
+        gain_from_buy = ((position.high_water_mark - position.avg_buy_price) / position.avg_buy_price) * 100 if position.avg_buy_price > 0 else 0
+        if gain_from_buy < self.trailing_stop_floor_pct:
+            return False
+        drop_from_high = ((position.high_water_mark - current_price) / position.high_water_mark) * 100
+        return drop_from_high >= self.trailing_stop_pct
     
     def check_take_profit(self, position: Position, current_price: float) -> bool:
         """Check if take profit triggered"""
@@ -1775,6 +1804,10 @@ class IntradayBacktester:
                 if current_idx is None:
                     continue
                 
+                # Update high water mark for trailing stop
+                if price > position.high_water_mark:
+                    position.high_water_mark = price
+                
                 # Check ALL sell conditions independently (matches main.py)
                 # main.py checks every condition and joins reasons with comma
                 sell_reasons_list = []
@@ -1799,7 +1832,11 @@ class IntradayBacktester:
                 if self.strategy.check_stop_loss(position, price):
                     sell_reasons_list.append(SellReason.STOP_LOSS.value)
                 
-                # 6. End of day close (optional, backtester-specific)
+                # 6. Trailing stop
+                if self.strategy.check_trailing_stop(position, price):
+                    sell_reasons_list.append(SellReason.TRAILING_STOP.value)
+                
+                # 7. End of day close (optional, backtester-specific)
                 if self.strategy.close_at_eod and timestamp.hour == 15:
                     sell_reasons_list.append(SellReason.END_OF_DAY.value)
                 

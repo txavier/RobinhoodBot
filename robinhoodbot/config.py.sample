@@ -85,6 +85,15 @@ use_caching=True
 use_stop_loss=True
 # stop_loss_percent: Sell if total loss from buy price exceeds this percentage (e.g., 5 = sell at -5%)
 stop_loss_percent=15.0
+# Trailing stop settings
+# Set use_trailing_stop to True to enable selling when a stock drops trailing_stop_percent below its highest price since purchase
+# The trailing stop tracks the highest price (high-water mark) since buying and sells if price drops below it by trailing_stop_percent
+use_trailing_stop=False
+# trailing_stop_percent: Sell if price drops this % from the high-water mark (e.g., 3 = sell at -3% from peak)
+trailing_stop_percent=3.0
+# trailing_stop_floor_percent: Trailing stop only activates after position gains this % above buy price (e.g., 1.0 = must be up 1% first)
+# Prevents the trailing stop from triggering on minor dips right after buying
+trailing_stop_floor_percent=1.0
 # Take-profit settings
 # take_profit_percent: Sell if total gain from buy price exceeds this percentage (e.g., 1.28 = sell at +1.28%)
 take_profit_percent=2.87

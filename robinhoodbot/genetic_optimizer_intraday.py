@@ -100,6 +100,9 @@ class IntradayTradingGene:
     # Risk management
     use_stop_loss: bool = True   # Enable/disable stop loss selling
     stop_loss_pct: float = 5.0   # Range: 1-15%
+    use_trailing_stop: bool = False  # Enable/disable trailing stop
+    trailing_stop_pct: float = 3.0   # Range: 1.0-10.0% drop from high-water mark
+    trailing_stop_floor_pct: float = 1.0  # Range: 0.0-5.0% gain from buy price before trailing stop activates
     take_profit_pct: float = 0.7 # Range: 0.3-3.0%
     
     # Position sizing (per-stock % of equity, mode 2)
@@ -149,8 +152,9 @@ class IntradayTradingGene:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
     
     def __str__(self) -> str:
+        ts_str = f"TS:{self.trailing_stop_pct:.1f}%" if self.use_trailing_stop else "TS:off"
         return (f"SMA({self.short_sma}/{self.long_sma}) GC:{self.golden_cross_buy_days}d "
-                f"SL:{self.stop_loss_pct:.1f}% TP:{self.take_profit_pct:.2f}% "
+                f"SL:{self.stop_loss_pct:.1f}% TP:{self.take_profit_pct:.2f}% {ts_str} "
                 f"Slope:{self.slope_threshold:.4f} UT:{self.uptrend_threshold_pct:.2f}% "
                 f"DT:{self.major_downtrend_threshold_pct:.1f}% Mom:{self.momentum_lookback_bars}b "
                 f"| Fit:{self.fitness:.4f}")
@@ -188,6 +192,8 @@ class IntradayGeneticConfig:
         'short_sma_take_profit': (3, 15),  # Hours - aggressive SMA after take profit
         'long_sma_take_profit': (2, 20),   # Hours - aggressive SMA after take profit (lower expanded from 5 - best hit 5/5)
         'stop_loss_pct': (0.5, 15.0),  # (lower expanded from 1.0 - best hit 2.1/1.0)
+        'trailing_stop_pct': (1.0, 10.0),  # % drop from high-water mark to trigger sell
+        'trailing_stop_floor_pct': (0.0, 5.0),  # % gain from buy needed before trailing stop activates
         'take_profit_pct': (0.3, 3.0), # Tighter range for day trading
         # position_size_pct fixed at 5.0 — not optimized
         'slope_threshold': (0.0001, 0.002),
@@ -361,6 +367,9 @@ def _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, d
         stop_loss_pct=gene.stop_loss_pct,
         take_profit_pct=gene.take_profit_pct,
         use_stop_loss=gene.use_stop_loss,
+        use_trailing_stop=gene.use_trailing_stop,
+        trailing_stop_pct=gene.trailing_stop_pct,
+        trailing_stop_floor_pct=gene.trailing_stop_floor_pct,
         use_market_filter=gene.use_market_filter,
         use_eod_filter=gene.use_eod_filter,
         use_profit_before_eod=gene.use_profit_before_eod,
@@ -1152,6 +1161,9 @@ class IntradayGeneticOptimizer:
             long_sma_take_profit=random.randint(*ranges['long_sma_take_profit']),
             use_stop_loss=random.choice([True, True, True, False]) if self.config.optimize_filters else True,  # 75% chance True
             stop_loss_pct=round(random.uniform(*ranges['stop_loss_pct']), 1),
+            use_trailing_stop=random.choice([True, False]),  # 50% chance
+            trailing_stop_pct=round(random.uniform(*ranges['trailing_stop_pct']), 1),
+            trailing_stop_floor_pct=round(random.uniform(*ranges['trailing_stop_floor_pct']), 1),
             take_profit_pct=round(random.uniform(*ranges['take_profit_pct']), 2),
             position_size_pct=5.0,
             slope_threshold=round(random.uniform(*ranges['slope_threshold']), 4),
@@ -1569,7 +1581,7 @@ class IntradayGeneticOptimizer:
         # Numeric parameters
         params = ['short_sma', 'long_sma', 'golden_cross_buy_days',
                   'short_sma_downtrend', 'short_sma_take_profit', 'long_sma_take_profit',
-                  'stop_loss_pct', 'take_profit_pct',
+                  'stop_loss_pct', 'trailing_stop_pct', 'trailing_stop_floor_pct', 'take_profit_pct',
                   'slope_threshold',
                   'uptrend_threshold_pct', 'major_downtrend_threshold_pct',
                   'momentum_lookback_bars']
@@ -1582,8 +1594,8 @@ class IntradayGeneticOptimizer:
                 setattr(child1, param, getattr(parent2, param))
                 setattr(child2, param, getattr(parent1, param))
         
-        # Boolean parameters (use_stop_loss, use_momentum_check)
-        for bool_param in ['use_stop_loss', 'use_momentum_check']:
+        # Boolean parameters (use_stop_loss, use_trailing_stop, use_momentum_check)
+        for bool_param in ['use_stop_loss', 'use_trailing_stop', 'use_momentum_check']:
             if random.random() < 0.5:
                 setattr(child1, bool_param, getattr(parent1, bool_param))
                 setattr(child2, bool_param, getattr(parent2, bool_param))
@@ -1664,6 +1676,21 @@ class IntradayGeneticOptimizer:
             mutated.stop_loss_pct = round(max(ranges['stop_loss_pct'][0],
                                              min(ranges['stop_loss_pct'][1],
                                                  mutated.stop_loss_pct + delta)), 1)
+        
+        if random.random() < self.config.mutation_rate:
+            mutated.use_trailing_stop = not mutated.use_trailing_stop
+        
+        if random.random() < self.config.mutation_rate:
+            delta = random.uniform(-1.5, 1.5)
+            mutated.trailing_stop_pct = round(max(ranges['trailing_stop_pct'][0],
+                                                 min(ranges['trailing_stop_pct'][1],
+                                                     mutated.trailing_stop_pct + delta)), 1)
+        
+        if random.random() < self.config.mutation_rate:
+            delta = random.uniform(-1.0, 1.0)
+            mutated.trailing_stop_floor_pct = round(max(ranges['trailing_stop_floor_pct'][0],
+                                                       min(ranges['trailing_stop_floor_pct'][1],
+                                                           mutated.trailing_stop_floor_pct + delta)), 1)
         
         if random.random() < self.config.mutation_rate:
             delta = random.uniform(-0.3, 0.3)
