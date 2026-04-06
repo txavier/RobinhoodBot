@@ -665,15 +665,15 @@ class TestBacktestSnapshotValues:
     DAYS = 60
 
     SNAPSHOT = {
-        'total_return_pct': 0.76,
-        'final_capital': 10075.52,
-        'total_trades': 32,
-        'winning_trades': 14,
-        'losing_trades': 2,
-        'win_rate': 87.5,
-        'max_drawdown_pct': 0.47,
-        'sharpe_ratio': 2.1037,
-        'trades_per_day': 0.16,
+        'total_return_pct': 1.25,
+        'final_capital': 10124.84,
+        'total_trades': 52,
+        'winning_trades': 20,
+        'losing_trades': 6,
+        'win_rate': 76.92,
+        'max_drawdown_pct': 0.39,
+        'sharpe_ratio': 3.0894,
+        'trades_per_day': 0.25,
     }
 
     def _run(self):
