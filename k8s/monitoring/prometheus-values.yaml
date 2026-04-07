@@ -82,10 +82,11 @@ prometheus:
     ruleNamespaceSelector: {}
     # Retention
     retention: 30d
-    # Storage
+    # Storage — use NFS so data survives node wipes/drains
     storageSpec:
       volumeClaimTemplate:
         spec:
+          storageClassName: nfs
           accessModes: ["ReadWriteOnce"]
           resources:
             requests:
