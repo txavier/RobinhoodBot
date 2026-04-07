@@ -47,9 +47,11 @@ grafana:
     runAsUser: 472
     runAsGroup: 472
     fsGroup: 472
-  # Persist Grafana data (dashboards, config)
+  # Persist Grafana data on NFS so it survives node wipes/drains
   persistence:
     enabled: true
+    storageClassName: nfs
+    accessModes: ["ReadWriteOnce"]
     size: 1Gi
   # Sidecar watches for ConfigMaps with label grafana_dashboard=1
   sidecar:
