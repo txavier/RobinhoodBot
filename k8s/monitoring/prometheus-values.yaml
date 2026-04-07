@@ -30,11 +30,19 @@ grafana:
   envFromSecrets:
     - name: grafana-smtp-secret
       optional: false
-  # Disable init-chown-data — it fails after kured reboots because it only has
-  # CHOWN capability (no DAC_OVERRIDE) and can't traverse 0700 dirs Grafana creates.
-  # Use fsGroup instead so K8s handles volume ownership natively.
+  # Use the chart's built-in init-chown-data with DAC_OVERRIDE + FOWNER added so
+  # it can traverse 0700 dirs Grafana creates (which caused failures with only
+  # CHOWN cap after kured reboots).
   initChownData:
-    enabled: false
+    enabled: true
+    image:
+      repository: busybox
+      tag: latest
+    securityContext:
+      runAsUser: 0
+      runAsNonRoot: false
+      capabilities:
+        add: ["CHOWN", "DAC_OVERRIDE", "FOWNER"]
   podSecurityContext:
     runAsUser: 472
     runAsGroup: 472
