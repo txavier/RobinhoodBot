@@ -1,0 +1,88 @@
+# ============================================================================
+# Longhorn distributed storage — values for bare-metal ThinkPad cluster
+# ============================================================================
+# Tuned for: 4 worker nodes, 44G disks, 8GB RAM, WiFi networking
+# Reference: https://longhorn.io/docs/1.8.1/references/settings/
+
+# ---------------------------------------------------------------------------
+# Storage defaults
+# ---------------------------------------------------------------------------
+defaultSettings:
+  # 2 replicas (not 3) — we only have 4 workers with 44G disks
+  defaultReplicaCount: 2
+  # Data path on root FS (no raw disks available)
+  defaultDataPath: /var/lib/longhorn
+  # Reserve 25% of each disk so the OS doesn't run out of space
+  storageMinimalAvailablePercentage: 25
+  storageOverProvisioningPercentage: 100
+  # WiFi-friendly: increase timeouts to avoid false node-down on flaky WiFi
+  nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
+  # Reduce replica rebuild concurrency to avoid WiFi saturation
+  concurrentReplicaRebuildPerNodeLimit: 1
+  # Auto-salvage replicas after unexpected detach
+  autoSalvage: true
+  # Don't auto-delete workload pod when volume is degraded
+  autoDeletePodWhenVolumeDetachedUnexpectedly: false
+  # Backup target (optional — can be set later to NFS)
+  # backupTarget: nfs://192.168.87.35:/srv/nfs/longhorn-backup
+
+# ---------------------------------------------------------------------------
+# Longhorn Manager (runs on every node as DaemonSet)
+# ---------------------------------------------------------------------------
+longhornManager:
+  tolerations: []
+
+# ---------------------------------------------------------------------------
+# Longhorn UI — expose on NodePort for LAN access
+# ---------------------------------------------------------------------------
+longhornUI:
+  replicas: 1
+
+service:
+  ui:
+    type: NodePort
+    nodePort: 30081
+
+# ---------------------------------------------------------------------------
+# Resource limits — keep it lightweight on 8GB nodes
+# ---------------------------------------------------------------------------
+longhornManager:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+longhornDriver:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+# ---------------------------------------------------------------------------
+# Don't schedule Longhorn storage on the control plane (4 CPU, 8G RAM,
+# already running NFS + etcd + API server)
+# ---------------------------------------------------------------------------
+longhornManager:
+  nodeSelector: {}
+  tolerations: []
+
+# Exclude control plane from storing data via node tag (applied post-install)
+# kubectl -n longhorn-system label node theo-thinkpad-l430 node.longhorn.io/create-default-disk=false
+
+# ---------------------------------------------------------------------------
+# Ingress (disabled — using NodePort above)
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: false
+
+# ---------------------------------------------------------------------------
+# StorageClass
+# ---------------------------------------------------------------------------
+persistence:
+  defaultClass: false  # Keep NFS as default; Longhorn is opt-in
+  defaultClassReplicaCount: 2
+  reclaimPolicy: Retain
