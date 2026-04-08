@@ -75,4 +75,4 @@ spec:
             secretName: robinhoodbot-config
         - name: data
           persistentVolumeClaim:
-            claimName: robinhoodbot-data-nfs
+            claimName: robinhoodbot-data-longhorn
