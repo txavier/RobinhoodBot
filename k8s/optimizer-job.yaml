@@ -32,7 +32,7 @@ spec:
           imagePullPolicy: Always
           command: ["python3", "genetic_optimizer_intraday.py"]
           args:
-            - "--num-stocks=500"
+            - "--num-stocks=600"
             - "--max-positions=10"
             - "--generations=50"
             - "--population=56"
