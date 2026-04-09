@@ -85,7 +85,19 @@ spec:
               # 4. Pin K8s packages with apt-mark hold via nsenter
               nsenter -t 1 -m -u -i -n -- apt-mark hold kubelet kubeadm kubectl 2>/dev/null || true
 
-              log "Configuration applied. Sleeping."
+              # 5. Disable WiFi power management (rtw88/rtw_8822ce)
+              # Prevents WiFi dropout under heavy network load
+              cat > /host-etc/modprobe.d/rtw88-power.conf <<'WIFIEOF'
+              # Disable WiFi power saving — managed by node-setup DaemonSet
+              # Prevents rtw_8822ce dropouts under load
+              options rtw_core rtw_power_mgnt=0 rtw_ips_mode=0
+              WIFIEOF
+              sed -i 's/^              //' /host-etc/modprobe.d/rtw88-power.conf
+
+              # Apply at runtime (takes effect immediately, modprobe conf is for next boot)
+              nsenter -t 1 -m -u -i -n -- sh -c 'iwconfig wlp5s0 power off 2>/dev/null || true'
+
+              log "Configuration applied (including WiFi power fix). Sleeping."
 
               # Sleep forever — DaemonSet stays running for kubectl logs access
               sleep infinity

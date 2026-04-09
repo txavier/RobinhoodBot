@@ -179,6 +179,11 @@ cmd_deploy_bot() {
     log "Creating namespace '${NAMESPACE}'..."
     remote_kubectl "apply -f ${REMOTE_DIR}/k8s/namespace.yaml"
 
+    # Apply cluster-wide resources (priority classes, node setup)
+    log "Applying cluster-wide resources..."
+    remote_kubectl "apply -f ${REMOTE_DIR}/k8s/priority-classes.yaml"
+    remote_kubectl "apply -f ${REMOTE_DIR}/k8s/node-setup-daemonset.yaml"
+
     # Create/update config secret
     log "Creating config secret..."
     if [[ -f "${LOCAL_DIR}/robinhoodbot/config.py" ]]; then
@@ -209,7 +214,7 @@ cmd_deploy_bot() {
 
     # Create PVCs
     log "Creating PersistentVolumeClaims..."
-    remote_kubectl "apply -f ${REMOTE_DIR}/k8s/pvc.yaml"
+    remote_kubectl "apply -f ${REMOTE_DIR}/k8s/robinhoodbot-data-longhorn-pvc.yaml"
     remote_kubectl "apply -f ${REMOTE_DIR}/k8s/optimizer-cache-pvc.yaml"
     remote_kubectl "apply -f ${REMOTE_DIR}/k8s/optimizer-data-pvc.yaml"
 

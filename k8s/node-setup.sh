@@ -109,7 +109,23 @@ if [ ${#PACKAGES_NEEDED[@]} -gt 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Verify state
+# 4. Disable WiFi power management (rtw88/rtw_8822ce)
+# ---------------------------------------------------------------------------
+log "Configuring WiFi power management fix..."
+
+cat <<EOF | sudo tee /etc/modprobe.d/rtw88-power.conf > /dev/null
+# Disable WiFi power saving — managed by node-setup.sh
+# Prevents rtw_8822ce dropouts under load
+options rtw_core rtw_power_mgnt=0 rtw_ips_mode=0
+EOF
+
+# Apply immediately (modprobe conf takes effect on next boot/module reload)
+sudo iwconfig wlp5s0 power off 2>/dev/null || true
+
+log "WiFi power management disabled"
+
+# ---------------------------------------------------------------------------
+# 5. Verify state
 # ---------------------------------------------------------------------------
 log "=== Verification ==="
 log "K8s hold status:"
