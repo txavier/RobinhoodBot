@@ -26,11 +26,11 @@ spec:
           - key: "node.kubernetes.io/not-ready"
             operator: "Exists"
             effect: "NoExecute"
-            tolerationSeconds: 600
+            tolerationSeconds: 30
           - key: "node.kubernetes.io/unreachable"
             operator: "Exists"
             effect: "NoExecute"
-            tolerationSeconds: 600
+            tolerationSeconds: 30
         containers:
           - name: ray-head
             image: 192.168.87.35:5000/robinhoodbot:latest
@@ -92,7 +92,7 @@ spec:
               secretName: robinhoodbot-config
           - name: data
             persistentVolumeClaim:
-              claimName: robinhoodbot-data-nfs
+              claimName: robinhoodbot-data-longhorn
 
   workerGroupSpecs:
     - groupName: workers
@@ -113,11 +113,11 @@ spec:
             - key: "node.kubernetes.io/not-ready"
               operator: "Exists"
               effect: "NoExecute"
-              tolerationSeconds: 600
+              tolerationSeconds: 30
             - key: "node.kubernetes.io/unreachable"
               operator: "Exists"
               effect: "NoExecute"
-              tolerationSeconds: 600
+              tolerationSeconds: 30
           containers:
             - name: ray-worker
               image: 192.168.87.35:5000/robinhoodbot:latest
@@ -149,8 +149,8 @@ spec:
                   mountPath: /dev/shm
               resources:
                 requests:
-                  cpu: "4"
-                  memory: "2Gi"
+                  cpu: "2"
+                  memory: "1Gi"
                 limits:
                   cpu: "7"
                   memory: "8Gi"

@@ -17,11 +17,11 @@ spec:
         - key: "node.kubernetes.io/not-ready"
           operator: "Exists"
           effect: "NoExecute"
-          tolerationSeconds: 600
+          tolerationSeconds: 30
         - key: "node.kubernetes.io/unreachable"
           operator: "Exists"
           effect: "NoExecute"
-          tolerationSeconds: 600
+          tolerationSeconds: 30
       initContainers:
         - name: wait-for-ray
           image: busybox:1.36
