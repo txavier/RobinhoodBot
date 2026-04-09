@@ -239,7 +239,7 @@ class ConsoleLogger:
         self.original_stdout.flush()
     
     def _log_to_file(self, message):
-        """Append message to the console log file"""
+        """Append message to the console log file (JSONL format — one JSON object per line)"""
         try:
             entry = {
                 "timestamp": str(pd.Timestamp("now")),
@@ -247,23 +247,24 @@ class ConsoleLogger:
                 "message": message
             }
             
-            # Read existing logs
-            try:
-                with open(self.log_file, 'r') as f:
-                    all_logs = json.load(f)
-            except (FileNotFoundError, json.JSONDecodeError):
-                all_logs = []
+            # Append-only: write one JSON line without reading the whole file
+            with open(self.log_file, 'a') as f:
+                f.write(json.dumps(entry) + '\n')
             
-            # Append new entry
-            all_logs.append(entry)
-            
-            # Keep only last 10000 entries to prevent file from growing too large
-            if len(all_logs) > 10000:
-                all_logs = all_logs[-10000:]
-            
-            # Write back
-            with open(self.log_file, 'w') as f:
-                json.dump(all_logs, f, indent=2)
+            # Periodically truncate to keep last 10000 lines
+            # Only check every 100 writes to avoid stat overhead
+            if not hasattr(self, '_write_count'):
+                self._write_count = 0
+            self._write_count += 1
+            if self._write_count % 100 == 0:
+                try:
+                    with open(self.log_file, 'r') as f:
+                        lines = f.readlines()
+                    if len(lines) > 10000:
+                        with open(self.log_file, 'w') as f:
+                            f.writelines(lines[-10000:])
+                except Exception:
+                    pass  # Non-critical — truncation can happen next time
         except Exception as e:
             # Use original stdout to avoid recursion
             self.original_stdout.write(f"Warning: Could not write to console log file: {e}\n")
