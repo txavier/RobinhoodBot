@@ -1657,6 +1657,9 @@ class IntradayBacktester:
                 try:
                     if real_data_cache is not None and symbol in real_data_cache:
                         df = real_data_cache[symbol].copy()
+                    elif real_data_cache is not None:
+                        # Cache provided but symbol missing (e.g. filtered out in CV fold) — skip
+                        continue
                     else:
                         if verbose:
                             print(f"Downloading real data for {symbol}...")
