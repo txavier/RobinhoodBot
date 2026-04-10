@@ -44,7 +44,7 @@ spec:
             - "--mutation-rate=0.25"
             - "--optimize-filters"
             - "--use-ray"
-            - "--disable-ray-mem-monitor"
+            # - "--disable-ray-mem-monitor"
             - "--email-notify"
             - "--output=/app/data/genetic_optimization_intraday_result.json"
             - "--checkpoint-file=/app/data/genetic_optimization_intraday_result.checkpoint.json"
