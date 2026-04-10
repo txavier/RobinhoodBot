@@ -1468,7 +1468,7 @@ class IntradayGeneticOptimizer:
             cv_folds_ref = ray.put(self._cv_folds) if self._cv_folds else None
             wf_windows_ref = ray.put(self._wf_windows) if self._wf_windows else None
             
-            @ray.remote(max_retries=3)
+            @ray.remote(max_retries=3, memory=500 * 1024 * 1024)  # 2GB per task — prevents OOM on 8GB nodes
             def ray_evaluate_gene_cv(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
                                      use_real_data, cv_folds=None, wf_windows=None):
                 return _evaluate_gene_cv_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed,
@@ -1479,7 +1479,7 @@ class IntradayGeneticOptimizer:
             ]
         else:
             # Define remote function inside method to avoid module-level Ray dependency
-            @ray.remote(max_retries=3)
+            @ray.remote(max_retries=3, memory=2500 * 1024 * 1024)  # 2GB per task — prevents OOM on 8GB nodes
             def ray_evaluate_gene(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
                                   use_real_data=False, real_data_cache=None, raw_market_index_data=None):
                 return _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,

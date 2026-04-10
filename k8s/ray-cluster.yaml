@@ -96,11 +96,11 @@ spec:
 
   workerGroupSpecs:
     - groupName: workers
-      replicas: 3
-      minReplicas: 3
+      replicas: 1
+      minReplicas: 1
       maxReplicas: 10
       rayStartParams:
-        num-cpus: "7"
+        num-cpus: "2"
         metrics-export-port: "8080"
       template:
         metadata:
@@ -109,6 +109,13 @@ spec:
             ray-role: worker
         spec:
           priorityClassName: robinhoodbot-high
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: DoNotSchedule
+              labelSelector:
+                matchLabels:
+                  ray-role: worker
           tolerations:
             - key: "node.kubernetes.io/not-ready"
               operator: "Exists"
@@ -130,8 +137,6 @@ spec:
                   value: "America/New_York"
                 - name: PYTHONUNBUFFERED
                   value: "1"
-                - name: RAY_DISABLE_MEMORY_MONITOR
-                  value: "1"
                 - name: RAY_gcs_rpc_server_connect_timeout_s
                   value: "30"
                 - name: RAY_grpc_client_keepalive_time_ms
@@ -149,11 +154,11 @@ spec:
                   mountPath: /dev/shm
               resources:
                 requests:
-                  cpu: "2"
+                  cpu: "1"
                   memory: "1Gi"
                 limits:
                   cpu: "7"
-                  memory: "8Gi"
+                  memory: "4Gi"
           volumes:
             - name: dshm
               emptyDir:
