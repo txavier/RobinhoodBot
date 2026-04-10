@@ -100,7 +100,7 @@ spec:
       minReplicas: 1
       maxReplicas: 10
       rayStartParams:
-        num-cpus: "2"
+        num-cpus: "6"
         metrics-export-port: "8080"
       template:
         metadata:
