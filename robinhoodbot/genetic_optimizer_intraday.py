@@ -1468,7 +1468,7 @@ class IntradayGeneticOptimizer:
             cv_folds_ref = ray.put(self._cv_folds) if self._cv_folds else None
             wf_windows_ref = ray.put(self._wf_windows) if self._wf_windows else None
             
-            @ray.remote(max_retries=3, memory=500 * 1024 * 1024)  # 2GB per task — prevents OOM on 8GB nodes
+            @ray.remote(max_retries=3, memory=1200 * 1024 * 1024)  # 1.2GB per task — limits concurrent tasks to prevent OOM
             def ray_evaluate_gene_cv(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
                                      use_real_data, cv_folds=None, wf_windows=None):
                 return _evaluate_gene_cv_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed,

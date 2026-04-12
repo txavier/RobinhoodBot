@@ -157,8 +157,8 @@ spec:
                   cpu: "1"
                   memory: "1Gi"
                 limits:
-                  cpu: "7"
-                  memory: "4Gi"
+                  cpu: "6"
+                  memory: "5Gi"
           volumes:
             - name: dshm
               emptyDir:
