@@ -56,4 +56,4 @@ Tuning the optimizer.
 /> Based on everything you have learned in this repository, create an agents.local.md file.
 /> What code improvement/security improvements can we make to the code in this repo?  List them in terms of severity.
 
-
+/> [Problem arises] how can we prevent this, natively or automatically, from happening again if we recreate the entire cluster?
