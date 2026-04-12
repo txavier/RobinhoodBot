@@ -87,6 +87,14 @@ prometheus:
     # Discover PrometheusRules in all namespaces
     ruleSelectorNilUsesHelmValues: false
     ruleNamespaceSelector: {}
+    # Resource requests/limits — prevents starvation on busy nodes
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: "2"
+        memory: 3Gi
     # Retention
     retention: 30d
     # Storage — use NFS so data survives node wipes/drains
