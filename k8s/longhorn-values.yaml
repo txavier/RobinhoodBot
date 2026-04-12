@@ -86,3 +86,33 @@ persistence:
   defaultClass: false  # Keep NFS as default; Longhorn is opt-in
   defaultClassReplicaCount: 2
   reclaimPolicy: Retain
+
+# ---------------------------------------------------------------------------
+# NFS mount options for RWX volumes (share-manager)
+# ---------------------------------------------------------------------------
+# Longhorn's default 'softerr' mount causes immediate Errno 121 when the
+# share-manager pod restarts (e.g. during auto-salvage). 'hard' makes
+# clients retry instead, surviving brief share-manager restarts.
+#
+# StorageClass parameters are immutable — must be set at creation time.
+# After installing Longhorn, BEFORE creating any PVCs, run:
+#
+#   kubectl delete storageclass longhorn
+#   kubectl apply -f - <<EOF
+#   allowVolumeExpansion: true
+#   apiVersion: storage.k8s.io/v1
+#   kind: StorageClass
+#   metadata:
+#     name: longhorn
+#   provisioner: driver.longhorn.io
+#   reclaimPolicy: Retain
+#   volumeBindingMode: Immediate
+#   parameters:
+#     numberOfReplicas: "2"
+#     staleReplicaTimeout: "30"
+#     fsType: ext4
+#     dataLocality: disabled
+#     disableRevisionCounter: "true"
+#     dataEngine: v1
+#     nfsOptions: "hard,timeo=300,retrans=5"
+#   EOF

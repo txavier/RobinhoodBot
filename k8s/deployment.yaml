@@ -57,10 +57,17 @@ spec:
               subPath: logs/robinhoodbot
           livenessProbe:
             exec:
-              command: ["sh", "-c", "[ -n \"$(find /app/logs/console_log.json -mmin -12)\" ]"]
+              command:
+                - sh
+                - -c
+                - |
+                  # Check 1: console_log.json was modified in the last 12 minutes (bot is alive)
+                  [ -n "$(find /app/logs/console_log.json -mmin -12)" ] &&
+                  # Check 2: NFS mount is writable (not stale after share-manager restart)
+                  touch /app/logs/.liveness-check
             initialDelaySeconds: 60
             periodSeconds: 120
-            timeoutSeconds: 10
+            timeoutSeconds: 15
             failureThreshold: 3
           resources:
             requests:
