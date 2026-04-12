@@ -67,8 +67,19 @@ grafana:
       label: grafana_dashboard
       labelValue: "1"
       folderAnnotation: grafana_folder
+      # Use WATCH method so the sidecar continuously monitors for new/changed
+      # ConfigMaps instead of only scanning once at startup. This prevents
+      # dashboards from being missed if the initial list-sync is incomplete
+      # (e.g. due to API server slowness during cluster bootstrap).
+      watchMethod: WATCH
       provider:
         foldersFromFilesStructure: true
+    resources:
+      requests:
+        cpu: 10m
+        memory: 48Mi
+      limits:
+        memory: 128Mi
 
 # Ensure node-exporter collects hardware temperature sensors
 prometheus-node-exporter:
