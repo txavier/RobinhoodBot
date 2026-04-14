@@ -21,8 +21,13 @@ defaultSettings:
   concurrentReplicaRebuildPerNodeLimit: 1
   # Auto-salvage replicas after unexpected detach
   autoSalvage: true
-  # Don't auto-delete workload pod when volume is degraded
-  autoDeletePodWhenVolumeDetachedUnexpectedly: false
+  # Auto-delete workload pod when volume detaches unexpectedly.
+  # Forces pod restart, clearing stale NFS inode caches that cause
+  # persistent Errno 5 / Errno 121 on previously-open files.
+  autoDeletePodWhenVolumeDetachedUnexpectedly: true
+  # Fast failover for RWX (NFS) volumes — monitors share-manager health
+  # via lease and triggers faster recovery on share-manager failure.
+  rwxVolumeFastFailover: true
   # Backup target (optional — can be set later to NFS)
   # backupTarget: nfs://192.168.87.35:/srv/nfs/longhorn-backup
 
