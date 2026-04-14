@@ -197,6 +197,8 @@ class JSONLogger:
             try:
                 with open(self.log_file, 'r') as f:
                     all_logs = json.load(f)
+                if not isinstance(all_logs, list):
+                    all_logs = []
             except (FileNotFoundError, json.JSONDecodeError):
                 all_logs = []
             
@@ -1255,7 +1257,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
         print("----- Scanning market reports to add stocks to watchlist -----")
         market_tag_report = get_market_tag_stocks_report()
         # If the market tag report has some stock values...
-        if len(market_tag_report) > 0 and market_tag_report[0] != '':
+        if market_tag_report and len(market_tag_report) > 0 and market_tag_report[0] != '':
             send_text(market_tag_report[0])
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
@@ -1276,7 +1278,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
             send_text(equityAndWithdrawable + "\n" + gainIncrease)
         # Get interesting stocks report.
         market_tag_report = get_market_tag_stocks_report()
-        if len(market_tag_report) > 0 and market_tag_report[0] != '':
+        if market_tag_report and len(market_tag_report) > 0 and market_tag_report[0] != '':
             # If the market tag report has some stock values...
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
@@ -1295,7 +1297,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
             send_text(equityAndWithdrawable + "\n" + gainIncrease)
         # Get interesting stocks report.
         market_tag_report = get_market_tag_stocks_report()
-        if len(market_tag_report) > 0 and market_tag_report[0] != '':
+        if market_tag_report and len(market_tag_report) > 0 and market_tag_report[0] != '':
             # If the market tag report has some stock values...
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
@@ -1309,7 +1311,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
         print("----- Scanning market reports to add stocks to watchlist -----")
         market_tag_report = get_market_tag_stocks_report()
         # If the market tag report has some stock values...
-        if len(market_tag_report) > 0 and market_tag_report[0] != '':
+        if market_tag_report and len(market_tag_report) > 0 and market_tag_report[0] != '':
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
         print("----- End market reports scan -----")    
@@ -1323,7 +1325,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
         print("----- Scanning market reports to add stocks to watchlist -----")
         market_tag_report = get_market_tag_stocks_report()
         # If the market tag report has some stock values...
-        if len(market_tag_report) > 0 and market_tag_report[0] != '':
+        if market_tag_report and len(market_tag_report) > 0 and market_tag_report[0] != '':
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
         print("----- End market reports scan -----") 
@@ -1691,14 +1693,19 @@ def get_market_tag_stocks_report():
     except IOError as e:
         print(e)
         print(sys.exc_info()[0])
+        login_to_sms()
+        send_text("IOError generating stocks report: " + str(e) + "\n Trace: " + traceback.format_exc())
+        return "", []
     except ValueError:
         print("Could not convert data to an integer.")
+        return "", []
     except Exception as e:
         print("Unexpected error could not generate interesting stocks report:", str(e))
 
         login_to_sms()
         send_text(
             "Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.format_exc())
+        return "", []
 
 # --- Trailing stop high-water-mark persistence ---
 _TRAILING_STOP_FILE = os.path.join(os.environ.get('DATA_DIR', os.path.dirname(os.path.abspath(__file__))), 'trailing_stop_state.json')
