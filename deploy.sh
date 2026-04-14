@@ -222,6 +222,10 @@ cmd_deploy_bot() {
     log "Applying bot deployment..."
     remote_kubectl "apply -f ${REMOTE_DIR}/k8s/deployment.yaml"
 
+    # Force restart so the pod picks up the new image (tag is always :latest)
+    log "Restarting bot pod..."
+    remote_kubectl "rollout restart deployment/robinhoodbot -n ${NAMESPACE}"
+
     # Wait for rollout
     log "Waiting for deployment rollout..."
     remote_kubectl "rollout status deployment/robinhoodbot -n ${NAMESPACE} --timeout=120s" || true
