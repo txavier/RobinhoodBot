@@ -1,15 +1,15 @@
 # ============================================================================
 # Longhorn distributed storage — values for bare-metal ThinkPad cluster
 # ============================================================================
-# Tuned for: 4 worker nodes, 44G disks, 8GB RAM, WiFi networking
+# Tuned for: 9 worker nodes, 44G disks, 8GB RAM, WiFi networking
 # Reference: https://longhorn.io/docs/1.8.1/references/settings/
 
 # ---------------------------------------------------------------------------
 # Storage defaults
 # ---------------------------------------------------------------------------
 defaultSettings:
-  # 2 replicas (not 3) — we only have 4 workers with 44G disks
-  defaultReplicaCount: 2
+  # 3 replicas for better resilience across 9 workers
+  defaultReplicaCount: 3
   # Data path on root FS (no raw disks available)
   defaultDataPath: /var/lib/longhorn
   # Reserve 25% of each disk so the OS doesn't run out of space
@@ -19,10 +19,23 @@ defaultSettings:
   nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
   # Reduce replica rebuild concurrency to avoid WiFi saturation
   concurrentReplicaRebuildPerNodeLimit: 1
+  # WiFi-tolerant engine↔replica timeout (default 8 is too aggressive for WiFi)
+  engineReplicaTimeout: 30
+  # Auto-rebalance replicas when nodes come/go
+  replicaAutoBalance: "best-effort"
+  # Allow replicas on same node as fallback (better than degraded/stuck volumes)
+  replicaSoftAntiAffinity: true
+  # Faster replica replenishment after failure (default 600 is too slow)
+  replicaReplenishmentWaitInterval: 120
   # Auto-salvage replicas after unexpected detach
   autoSalvage: true
-  # Don't auto-delete workload pod when volume is degraded
-  autoDeletePodWhenVolumeDetachedUnexpectedly: false
+  # Auto-delete workload pod when volume detaches unexpectedly.
+  # Forces pod restart, clearing stale NFS inode caches that cause
+  # persistent Errno 5 / Errno 121 on previously-open files.
+  autoDeletePodWhenVolumeDetachedUnexpectedly: true
+  # Fast failover for RWX (NFS) volumes — monitors share-manager health
+  # via lease and triggers faster recovery on share-manager failure.
+  rwxVolumeFastFailover: true
   # Backup target (optional — can be set later to NFS)
   # backupTarget: nfs://192.168.87.35:/srv/nfs/longhorn-backup
 
@@ -84,35 +97,22 @@ ingress:
 # ---------------------------------------------------------------------------
 persistence:
   defaultClass: false  # Keep NFS as default; Longhorn is opt-in
-  defaultClassReplicaCount: 2
+  defaultClassReplicaCount: 3
   reclaimPolicy: Retain
+  # Disable Helm-managed StorageClass so we can manage it ourselves
+  # with custom nfsOptions via k8s/longhorn-storageclass.yaml
+  removeSnapshotsDuringFilesystemTrim: ignored
 
 # ---------------------------------------------------------------------------
 # NFS mount options for RWX volumes (share-manager)
 # ---------------------------------------------------------------------------
 # Longhorn's default 'softerr' mount causes immediate Errno 121 when the
-# share-manager pod restarts (e.g. during auto-salvage). 'hard' makes
-# clients retry instead, surviving brief share-manager restarts.
+# share-manager pod restarts (e.g. during auto-salvage). We use 'soft' with
+# short timeouts so operations fail fast and the bot/liveness probe can react.
 #
-# StorageClass parameters are immutable — must be set at creation time.
-# After installing Longhorn, BEFORE creating any PVCs, run:
+# The StorageClass is managed by k8s/longhorn-storageclass.yaml (not Helm)
+# because Helm doesn't expose nfsOptions as a chart value.
 #
+# After upgrading Longhorn, re-apply the custom StorageClass:
 #   kubectl delete storageclass longhorn
-#   kubectl apply -f - <<EOF
-#   allowVolumeExpansion: true
-#   apiVersion: storage.k8s.io/v1
-#   kind: StorageClass
-#   metadata:
-#     name: longhorn
-#   provisioner: driver.longhorn.io
-#   reclaimPolicy: Retain
-#   volumeBindingMode: Immediate
-#   parameters:
-#     numberOfReplicas: "2"
-#     staleReplicaTimeout: "30"
-#     fsType: ext4
-#     dataLocality: disabled
-#     disableRevisionCounter: "true"
-#     dataEngine: v1
-#     nfsOptions: "hard,timeo=300,retrans=5"
-#   EOF
+#   kubectl apply -f k8s/longhorn-storageclass.yaml

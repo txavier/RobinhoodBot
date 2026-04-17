@@ -3,6 +3,8 @@ kind: PersistentVolumeClaim
 metadata:
   name: robinhoodbot-data-longhorn
   namespace: robinhoodbot
+  annotations:
+    numberOfReplicas: "3"
 spec:
   accessModes:
     - ReadWriteMany

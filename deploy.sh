@@ -61,7 +61,7 @@ DATA_FILES=(
     "robinhoodbot/logs/tradehistory-real.json"
     "robinhoodbot/logs/tradehistory.json"
     "robinhoodbot/logs/log.json"
-    "robinhoodbot/logs/console_log.json"
+    # Note: console_log files are daily (console_log_YYYY-MM-DD.json) and not synced individually
     "robinhoodbot/logs/buy_reasons.json"
     "robinhoodbot/logs/ai_changelog.json"
     "robinhoodbot/logs/ai_suggested_config_changelog.json"
@@ -221,6 +221,10 @@ cmd_deploy_bot() {
     # Deploy
     log "Applying bot deployment..."
     remote_kubectl "apply -f ${REMOTE_DIR}/k8s/deployment.yaml"
+
+    # Force restart so the pod picks up the new image (tag is always :latest)
+    log "Restarting bot pod..."
+    remote_kubectl "rollout restart deployment/robinhoodbot -n ${NAMESPACE}"
 
     # Wait for rollout
     log "Waiting for deployment rollout..."

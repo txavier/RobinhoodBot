@@ -61,8 +61,8 @@ spec:
                 - sh
                 - -c
                 - |
-                  # Check 1: console_log.json was modified in the last 12 minutes (bot is alive)
-                  [ -n "$(find /app/logs/console_log.json -mmin -12)" ] &&
+                  # Check 1: today's console_log was modified in the last 12 minutes (bot is alive)
+                  [ -n "$(find /app/logs/archive/ -name 'console_log_*.json' -mmin -12)" ] &&
                   # Check 2: NFS mount is writable (not stale after share-manager restart)
                   touch /app/logs/.liveness-check
             initialDelaySeconds: 60
