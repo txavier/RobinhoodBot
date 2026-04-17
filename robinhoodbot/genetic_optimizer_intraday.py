@@ -233,6 +233,19 @@ def _init_worker():
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
 
+# Process-level cache for shared data loaded from disk (used in Ray cluster mode)
+_shared_data_cache = {}
+
+def _load_shared_data(path):
+    """Load shared data from a pickle file with process-level caching.
+    Each Ray worker process reads the file once and caches it in memory."""
+    if path not in _shared_data_cache:
+        import pickle
+        with open(path, 'rb') as f:
+            _shared_data_cache[path] = pickle.load(f)
+    return _shared_data_cache[path]
+
+
 def _evaluate_gene_cv_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed,
                             max_positions, cv_folds, wf_windows) -> IntradayTradingGene:
     """
@@ -508,11 +521,12 @@ class IntradayGeneticOptimizer:
         self.use_real_data = use_real_data
         self.log_file = log_file
         self._log_fh = None
+        self._log_current_date = None
         self.train_test_split = train_test_split  # 0.0 = disabled, 0.7 = 70% train / 30% test
         
         # Open log file if specified
         if self.log_file:
-            self._log_fh = open(self.log_file, 'a')
+            self._rotate_log_file()
         
         # Real data caches (populated in run() if use_real_data=True)
         self.real_data_cache: Optional[Dict] = None
@@ -543,10 +557,30 @@ class IntradayGeneticOptimizer:
         self.checkpoint_path: Optional[str] = None
         self._interrupted = False
     
+    def _rotate_log_file(self):
+        """Switch to today's log file if the date has changed."""
+        today = datetime.now().strftime('%Y-%m-%d')
+        if today != self._log_current_date:
+            # Close previous day's file handle
+            if self._log_fh:
+                try:
+                    self._log_fh.close()
+                except Exception:
+                    pass
+            # Build daily path: e.g. logs/archive/optimizer_output_2026-04-15.log
+            log_dir = os.path.dirname(self.log_file) if os.path.dirname(self.log_file) else '.'
+            archive_dir = os.path.join(log_dir, 'archive')
+            os.makedirs(archive_dir, exist_ok=True)
+            base = os.path.splitext(os.path.basename(self.log_file))
+            daily_name = f"{base[0]}_{today}{base[1]}"
+            self._log_fh = open(os.path.join(archive_dir, daily_name), 'a')
+            self._log_current_date = today
+
     def _log(self, msg: str, **kwargs):
         """Print to stdout and optionally write to log file (unbuffered)."""
         print(msg, **kwargs)
-        if self._log_fh:
+        if self.log_file:
+            self._rotate_log_file()
             # Handle end='' or flush=True from kwargs
             end = kwargs.get('end', '\n')
             try:
@@ -1441,54 +1475,115 @@ class IntradayGeneticOptimizer:
                 init_kwargs["_metrics_export_port"] = 8080
 
             # ray.init() auto-detects: local CPUs, or connects to cluster via RAY_ADDRESS env var
-            # Use a timeout to avoid hanging forever on stale Ray Client connections
+            # Must run in the main thread — Ray Client stores connection state
+            # that breaks if the creating thread exits (causes ray.put() hangs).
             if connecting_to_cluster:
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(ray.init, **init_kwargs)
-                    try:
-                        future.result(timeout=120)
-                    except concurrent.futures.TimeoutError:
-                        raise ConnectionError(
-                            f"ray.init() timed out after 120s connecting to {ray_address}. "
-                            "The Ray head may need to be restarted."
-                        )
+                import signal
+                def _timeout_handler(signum, frame):
+                    raise ConnectionError(
+                        f"ray.init() timed out after 120s connecting to {ray_address}. "
+                        "The Ray head may need to be restarted."
+                    )
+                old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+                signal.alarm(120)
+                try:
+                    ray.init(**init_kwargs)
+                finally:
+                    signal.alarm(0)
+                    signal.signal(signal.SIGALRM, old_handler)
+                self._using_ray_client = True
             else:
                 ray.init(**init_kwargs)
+                self._using_ray_client = False
         
-        # Put large shared data into Ray object store once (avoids per-task serialization)
-        real_data_ref = ray.put(self.real_data_cache) if self.real_data_cache else None
-        raw_market_ref = ray.put(self.raw_market_index_data) if self.raw_market_index_data else None
-        
-        # Check if CV mode is active
         use_cv = bool(self._cv_folds or self._wf_windows)
+        use_disk = getattr(self, '_using_ray_client', False)
         
-        # max_retries=3: Ray auto-retries tasks that crash (e.g. GCS connection failures)
-        if use_cv:
-            cv_folds_ref = ray.put(self._cv_folds) if self._cv_folds else None
-            wf_windows_ref = ray.put(self._wf_windows) if self._wf_windows else None
+        if use_disk:
+            # Ray Client (ray://) can't transfer large data through gRPC efficiently.
+            # Write data to the shared PVC so workers read from disk instead.
+            import pickle
+            data_dir = os.path.join(os.environ.get('DATA_DIR', '/app/data'), '.ray_shared_data')
+            os.makedirs(data_dir, exist_ok=True)
             
-            @ray.remote(max_retries=3, memory=1200 * 1024 * 1024)  # 1.2GB per task — limits concurrent tasks to prevent OOM
-            def ray_evaluate_gene_cv(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
-                                     use_real_data, cv_folds=None, wf_windows=None):
-                return _evaluate_gene_cv_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed,
-                                              max_positions, cv_folds, wf_windows)
-            
-            futures = [
-                ray_evaluate_gene_cv.remote(*args, cv_folds_ref, wf_windows_ref) for args in eval_args
-            ]
+            if use_cv:
+                if self.verbose:
+                    self._log("  Writing CV splits to shared storage for workers...")
+                cv_folds_path = None
+                wf_windows_path = None
+                if self._cv_folds:
+                    cv_folds_path = os.path.join(data_dir, 'cv_folds.pkl')
+                    with open(cv_folds_path, 'wb') as f:
+                        pickle.dump(self._cv_folds, f, protocol=pickle.HIGHEST_PROTOCOL)
+                if self._wf_windows:
+                    wf_windows_path = os.path.join(data_dir, 'wf_windows.pkl')
+                    with open(wf_windows_path, 'wb') as f:
+                        pickle.dump(self._wf_windows, f, protocol=pickle.HIGHEST_PROTOCOL)
+                if self.verbose:
+                    self._log("  ✓ CV data written to shared storage")
+                
+                @ray.remote(max_retries=3, memory=1200 * 1024 * 1024)
+                def ray_evaluate_gene_cv(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
+                                         use_real_data, cv_folds_path=None, wf_windows_path=None):
+                    cv_folds = _load_shared_data(cv_folds_path) if cv_folds_path else None
+                    wf_windows = _load_shared_data(wf_windows_path) if wf_windows_path else None
+                    return _evaluate_gene_cv_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed,
+                                                  max_positions, cv_folds, wf_windows)
+                
+                futures = [
+                    ray_evaluate_gene_cv.remote(*args, cv_folds_path, wf_windows_path) for args in eval_args
+                ]
+            else:
+                if self.verbose:
+                    self._log("  Writing market data to shared storage for workers...")
+                real_data_path = os.path.join(data_dir, 'real_data_cache.pkl')
+                raw_market_path = os.path.join(data_dir, 'raw_market_index_data.pkl')
+                with open(real_data_path, 'wb') as f:
+                    pickle.dump(self.real_data_cache, f, protocol=pickle.HIGHEST_PROTOCOL)
+                with open(raw_market_path, 'wb') as f:
+                    pickle.dump(self.raw_market_index_data, f, protocol=pickle.HIGHEST_PROTOCOL)
+                if self.verbose:
+                    self._log("  ✓ Market data written to shared storage")
+                
+                @ray.remote(max_retries=3, memory=2500 * 1024 * 1024)
+                def ray_evaluate_gene(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
+                                      use_real_data=False, real_data_path=None, raw_market_path=None):
+                    real_data_cache = _load_shared_data(real_data_path) if real_data_path else None
+                    raw_market_index_data = _load_shared_data(raw_market_path) if raw_market_path else None
+                    return _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
+                                               use_real_data, real_data_cache, raw_market_index_data)
+                
+                futures = [
+                    ray_evaluate_gene.remote(*args, real_data_path, raw_market_path) for args in eval_args
+                ]
         else:
-            # Define remote function inside method to avoid module-level Ray dependency
-            @ray.remote(max_retries=3, memory=2500 * 1024 * 1024)  # 2GB per task — prevents OOM on 8GB nodes
-            def ray_evaluate_gene(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
-                                  use_real_data=False, real_data_cache=None, raw_market_index_data=None):
-                return _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
-                                           use_real_data, real_data_cache, raw_market_index_data)
-            
-            # Submit all tasks — append shared data refs to each 8-element arg tuple
-            futures = [
-                ray_evaluate_gene.remote(*args, real_data_ref, raw_market_ref) for args in eval_args
-            ]
+            # Local Ray — use object store (fast shared memory, no gRPC)
+            if use_cv:
+                cv_folds_ref = ray.put(self._cv_folds) if self._cv_folds else None
+                wf_windows_ref = ray.put(self._wf_windows) if self._wf_windows else None
+                
+                @ray.remote(max_retries=3, memory=1200 * 1024 * 1024)
+                def ray_evaluate_gene_cv(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
+                                         use_real_data, cv_folds=None, wf_windows=None):
+                    return _evaluate_gene_cv_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed,
+                                                  max_positions, cv_folds, wf_windows)
+                
+                futures = [
+                    ray_evaluate_gene_cv.remote(*args, cv_folds_ref, wf_windows_ref) for args in eval_args
+                ]
+            else:
+                real_data_ref = ray.put(self.real_data_cache) if self.real_data_cache else None
+                raw_market_ref = ray.put(self.raw_market_index_data) if self.raw_market_index_data else None
+                
+                @ray.remote(max_retries=3, memory=2500 * 1024 * 1024)
+                def ray_evaluate_gene(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
+                                      use_real_data=False, real_data_cache=None, raw_market_index_data=None):
+                    return _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
+                                               use_real_data, real_data_cache, raw_market_index_data)
+                
+                futures = [
+                    ray_evaluate_gene.remote(*args, real_data_ref, raw_market_ref) for args in eval_args
+                ]
         
         # Gather results with stall detection.
         # Instead of ray.get() which blocks forever, use ray.wait() in a loop
@@ -1815,6 +1910,13 @@ class IntradayGeneticOptimizer:
             if self.checkpoint_path:
                 self._archive_file(self.checkpoint_path)
         
+        # Touch heartbeat file early so K8s liveness probe doesn't kill us during data loading
+        try:
+            from pathlib import Path
+            Path('/tmp/optimizer-heartbeat').touch()
+        except OSError:
+            pass
+
         self._log(f"\n{'='*70}")
         self._log("INTRADAY GENETIC ALGORITHM OPTIMIZER")
         self._log(f"{'='*70}")
@@ -1879,6 +1981,11 @@ class IntradayGeneticOptimizer:
                     self._log(f"   Downloading {symbol} ({i+1}/{len(self.symbols)})...", end="", flush=True)
                     df = download_real_data(symbol, self.days, cache_max_age_hours=12)
                     self.real_data_cache[symbol] = df
+                    # Keep heartbeat alive during long data download
+                    try:
+                        Path('/tmp/optimizer-heartbeat').touch()
+                    except OSError:
+                        pass
                     trading_days = df['date'].nunique()
                     self._log(f" ✓ {len(df)} bars ({trading_days} days)")
                 except Exception as e:

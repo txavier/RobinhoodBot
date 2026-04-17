@@ -26,7 +26,7 @@ services:
       - ./robinhoodbot/tradehistory-real.json:/app/tradehistory-real.json
       - ./robinhoodbot/tradehistory.json:/app/tradehistory.json
       - ./robinhoodbot/log.json:/app/log.json
-      - ./robinhoodbot/console_log.json:/app/console_log.json
+      - ./robinhoodbot/logs:/app/logs
       - ./robinhoodbot/buy_reasons.json:/app/buy_reasons.json
       # Mount config so you can edit without rebuilding
       - ./robinhoodbot/config.py:/app/config.py

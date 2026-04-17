@@ -39,6 +39,8 @@ Values file: `k8s/longhorn-values.yaml` — tuned for WiFi + low-resource nodes:
 | `storageMinimalAvailablePercentage` | 25 | Reserve disk for OS |
 | `concurrentReplicaRebuildPerNodeLimit` | 1 | Avoid saturating WiFi |
 | `nodeDownPodDeletionPolicy` | delete-both-statefulset-and-deployment-pod | Auto-recover after node failures |
+| `autoDeletePodWhenVolumeDetachedUnexpectedly` | true | Restart pods on volume detach — clears stale NFS inode caches |
+| `rwxVolumeFastFailover` | true | Lease-based health monitoring for RWX share-manager recovery |
 | `persistence.defaultClass` | false | NFS remains the default StorageClass |
 | `persistence.reclaimPolicy` | Retain | Don't delete data on PVC removal |
 | Longhorn UI | NodePort 30081 | Access at `http://<any-node-ip>:30081` |

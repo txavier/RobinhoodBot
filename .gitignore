@@ -132,7 +132,7 @@ robinhoodbot/logs/log.json
 robinhoodbot/logs/ai_changelog.json
 
 # Log files
-robinhoodbot/logs/console_log.json
+robinhoodbot/logs/archive/
 robinhoodbot/logs/optimizer_output.log
 robinhoodbot/logs/tradehistory.json
 

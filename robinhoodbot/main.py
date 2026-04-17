@@ -197,6 +197,8 @@ class JSONLogger:
             try:
                 with open(self.log_file, 'r') as f:
                     all_logs = json.load(f)
+                if not isinstance(all_logs, list):
+                    all_logs = []
             except (FileNotFoundError, json.JSONDecodeError):
                 all_logs = []
             
@@ -217,13 +219,15 @@ class JSONLogger:
 json_logger = JSONLogger()
 
 
-# Console Logger - captures all print output to console_log.json
+# Console Logger - captures all print output to daily console_log files
 class ConsoleLogger:
-    def __init__(self, log_file="logs/console_log.json"):
-        self.log_file = log_file
+    def __init__(self, log_dir="logs"):
+        self.log_dir = log_dir
         self.session_id = str(pd.Timestamp("now"))
         self.original_stdout = sys.stdout
         self.buffer = ""
+        self._current_date = None
+        self._update_log_file()
     
     def write(self, message):
         """Capture print output and log to JSON"""
@@ -238,9 +242,19 @@ class ConsoleLogger:
         """Flush the output"""
         self.original_stdout.flush()
     
+    def _update_log_file(self):
+        """Switch to today's log file if the date has changed"""
+        today = datetime.date.today().isoformat()
+        if today != self._current_date:
+            self._current_date = today
+            archive_dir = os.path.join(self.log_dir, "archive")
+            os.makedirs(archive_dir, exist_ok=True)
+            self.log_file = os.path.join(archive_dir, f"console_log_{today}.json")
+
     def _log_to_file(self, message):
-        """Append message to the console log file (JSONL format — one JSON object per line)"""
+        """Append message to today's console log file (JSONL format — one JSON object per line)"""
         try:
+            self._update_log_file()
             entry = {
                 "timestamp": str(pd.Timestamp("now")),
                 "session_id": self.session_id,
@@ -250,21 +264,6 @@ class ConsoleLogger:
             # Append-only: write one JSON line without reading the whole file
             with open(self.log_file, 'a') as f:
                 f.write(json.dumps(entry) + '\n')
-            
-            # Periodically truncate to keep last 10000 lines
-            # Only check every 100 writes to avoid stat overhead
-            if not hasattr(self, '_write_count'):
-                self._write_count = 0
-            self._write_count += 1
-            if self._write_count % 100 == 0:
-                try:
-                    with open(self.log_file, 'r') as f:
-                        lines = f.readlines()
-                    if len(lines) > 10000:
-                        with open(self.log_file, 'w') as f:
-                            f.writelines(lines[-10000:])
-                except Exception:
-                    pass  # Non-critical — truncation can happen next time
         except Exception as e:
             # Use original stdout to avoid recursion
             self.original_stdout.write(f"Warning: Could not write to console log file: {e}\n")
@@ -1255,7 +1254,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
         print("----- Scanning market reports to add stocks to watchlist -----")
         market_tag_report = get_market_tag_stocks_report()
         # If the market tag report has some stock values...
-        if len(market_tag_report) > 0 and market_tag_report[0] != '':
+        if market_tag_report and len(market_tag_report) > 0 and market_tag_report[0] != '':
             send_text(market_tag_report[0])
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
@@ -1276,7 +1275,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
             send_text(equityAndWithdrawable + "\n" + gainIncrease)
         # Get interesting stocks report.
         market_tag_report = get_market_tag_stocks_report()
-        if len(market_tag_report) > 0 and market_tag_report[0] != '':
+        if market_tag_report and len(market_tag_report) > 0 and market_tag_report[0] != '':
             # If the market tag report has some stock values...
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
@@ -1295,7 +1294,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
             send_text(equityAndWithdrawable + "\n" + gainIncrease)
         # Get interesting stocks report.
         market_tag_report = get_market_tag_stocks_report()
-        if len(market_tag_report) > 0 and market_tag_report[0] != '':
+        if market_tag_report and len(market_tag_report) > 0 and market_tag_report[0] != '':
             # If the market tag report has some stock values...
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
@@ -1309,7 +1308,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
         print("----- Scanning market reports to add stocks to watchlist -----")
         market_tag_report = get_market_tag_stocks_report()
         # If the market tag report has some stock values...
-        if len(market_tag_report) > 0 and market_tag_report[0] != '':
+        if market_tag_report and len(market_tag_report) > 0 and market_tag_report[0] != '':
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
         print("----- End market reports scan -----")    
@@ -1323,7 +1322,7 @@ def get_accurate_gains(portfolio_symbols, watchlist_symbols, profileData):
         print("----- Scanning market reports to add stocks to watchlist -----")
         market_tag_report = get_market_tag_stocks_report()
         # If the market tag report has some stock values...
-        if len(market_tag_report) > 0 and market_tag_report[0] != '':
+        if market_tag_report and len(market_tag_report) > 0 and market_tag_report[0] != '':
             if market_report_auto_invest:
                 auto_invest(market_tag_report[1], portfolio_symbols, watchlist_symbols)
         print("----- End market reports scan -----") 
@@ -1691,14 +1690,19 @@ def get_market_tag_stocks_report():
     except IOError as e:
         print(e)
         print(sys.exc_info()[0])
+        login_to_sms()
+        send_text("IOError generating stocks report: " + str(e) + "\n Trace: " + traceback.format_exc())
+        return "", []
     except ValueError:
         print("Could not convert data to an integer.")
+        return "", []
     except Exception as e:
         print("Unexpected error could not generate interesting stocks report:", str(e))
 
         login_to_sms()
         send_text(
             "Unexpected error could not generate interesting stocks report:" + str(e) + "\n Trace: " + traceback.format_exc())
+        return "", []
 
 # --- Trailing stop high-water-mark persistence ---
 _TRAILING_STOP_FILE = os.path.join(os.environ.get('DATA_DIR', os.path.dirname(os.path.abspath(__file__))), 'trailing_stop_state.json')
