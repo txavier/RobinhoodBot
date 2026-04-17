@@ -1,0 +1,50 @@
+FROM python:3.11-slim AS python-builder
+
+# Build the venv in the python:3.11 image where wheels are available
+COPY requirements.txt /tmp/requirements.txt
+RUN python -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt pyotp
+
+# ---
+
+FROM docker/sandbox-templates:claude-code
+
+USER root
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       wget \
+       curl \
+       ca-certificates \
+       iputils-ping \
+       dnsutils \
+       procps \
+       tzdata \
+       git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Python 3.11 and the pre-built venv from the builder stage
+COPY --from=python-builder /usr/local /usr/local
+COPY --from=python-builder /opt/venv /opt/venv
+
+ENV TZ=America/New_York \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:/usr/local/bin:$PATH"
+
+# Wrapper: git clone on Longhorn NFS fails during index-pack (mmap/open race).
+# Clone to local tmpdir first, then move to the target on NFS.
+COPY --chmod=755 <<'EOF' /usr/local/bin/nfs-git-clone
+#!/bin/sh
+# Usage: nfs-git-clone <url> [directory]
+set -e
+URL="$1"; shift
+DIR="${1:-$(basename "${URL%.git}")}"; [ $# -gt 0 ] && shift
+tmpd=$(mktemp -d)
+trap 'rm -rf "$tmpd"' EXIT
+git clone "$URL" "$tmpd/repo" "$@"
+mv "$tmpd/repo" "$DIR"
+EOF
+
+USER 1000

@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: load-nfsd
+  namespace: robinhoodbot-dev
+spec:
+  selector:
+    matchLabels:
+      app: load-nfsd
+  template:
+    metadata:
+      labels:
+        app: load-nfsd
+    spec:
+      hostPID: true
+      hostNetwork: true
+      tolerations:
+      - operator: Exists
+      initContainers:
+      - name: modprobe
+        image: busybox
+        command: ["nsenter", "--target", "1", "--mount", "--uts", "--ipc", "--net", "--pid", "--", "sh", "-c", "modprobe nfsd && echo nfsd >> /etc/modules-load.d/nfsd.conf"]
+        securityContext:
+          privileged: true
+      containers:
+      - name: pause
+        image: registry.k8s.io/pause:3.9
+        resources:
+          requests:
+            cpu: 1m
+            memory: 4Mi
+          limits:
+            cpu: 1m
+            memory: 4Mi
