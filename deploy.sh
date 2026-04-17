@@ -61,7 +61,7 @@ DATA_FILES=(
     "robinhoodbot/logs/tradehistory-real.json"
     "robinhoodbot/logs/tradehistory.json"
     "robinhoodbot/logs/log.json"
-    "robinhoodbot/logs/console_log.json"
+    # Note: console_log files are daily (console_log_YYYY-MM-DD.json) and not synced individually
     "robinhoodbot/logs/buy_reasons.json"
     "robinhoodbot/logs/ai_changelog.json"
     "robinhoodbot/logs/ai_suggested_config_changelog.json"

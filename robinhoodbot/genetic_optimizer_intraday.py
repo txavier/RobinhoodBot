@@ -521,11 +521,12 @@ class IntradayGeneticOptimizer:
         self.use_real_data = use_real_data
         self.log_file = log_file
         self._log_fh = None
+        self._log_current_date = None
         self.train_test_split = train_test_split  # 0.0 = disabled, 0.7 = 70% train / 30% test
         
         # Open log file if specified
         if self.log_file:
-            self._log_fh = open(self.log_file, 'a')
+            self._rotate_log_file()
         
         # Real data caches (populated in run() if use_real_data=True)
         self.real_data_cache: Optional[Dict] = None
@@ -556,10 +557,30 @@ class IntradayGeneticOptimizer:
         self.checkpoint_path: Optional[str] = None
         self._interrupted = False
     
+    def _rotate_log_file(self):
+        """Switch to today's log file if the date has changed."""
+        today = datetime.now().strftime('%Y-%m-%d')
+        if today != self._log_current_date:
+            # Close previous day's file handle
+            if self._log_fh:
+                try:
+                    self._log_fh.close()
+                except Exception:
+                    pass
+            # Build daily path: e.g. logs/archive/optimizer_output_2026-04-15.log
+            log_dir = os.path.dirname(self.log_file) if os.path.dirname(self.log_file) else '.'
+            archive_dir = os.path.join(log_dir, 'archive')
+            os.makedirs(archive_dir, exist_ok=True)
+            base = os.path.splitext(os.path.basename(self.log_file))
+            daily_name = f"{base[0]}_{today}{base[1]}"
+            self._log_fh = open(os.path.join(archive_dir, daily_name), 'a')
+            self._log_current_date = today
+
     def _log(self, msg: str, **kwargs):
         """Print to stdout and optionally write to log file (unbuffered)."""
         print(msg, **kwargs)
-        if self._log_fh:
+        if self.log_file:
+            self._rotate_log_file()
             # Handle end='' or flush=True from kwargs
             end = kwargs.get('end', '\n')
             try:
@@ -1501,7 +1522,7 @@ class IntradayGeneticOptimizer:
                 if self.verbose:
                     self._log("  ✓ CV data written to shared storage")
                 
-                @ray.remote(num_cpus=2, max_retries=3, memory=1200 * 1024 * 1024)
+                @ray.remote(max_retries=3, memory=1200 * 1024 * 1024)
                 def ray_evaluate_gene_cv(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
                                          use_real_data, cv_folds_path=None, wf_windows_path=None):
                     cv_folds = _load_shared_data(cv_folds_path) if cv_folds_path else None
@@ -1524,7 +1545,7 @@ class IntradayGeneticOptimizer:
                 if self.verbose:
                     self._log("  ✓ Market data written to shared storage")
                 
-                @ray.remote(num_cpus=2, max_retries=3, memory=2500 * 1024 * 1024)
+                @ray.remote(max_retries=3, memory=2500 * 1024 * 1024)
                 def ray_evaluate_gene(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
                                       use_real_data=False, real_data_path=None, raw_market_path=None):
                     real_data_cache = _load_shared_data(real_data_path) if real_data_path else None
@@ -1541,7 +1562,7 @@ class IntradayGeneticOptimizer:
                 cv_folds_ref = ray.put(self._cv_folds) if self._cv_folds else None
                 wf_windows_ref = ray.put(self._wf_windows) if self._wf_windows else None
                 
-                @ray.remote(num_cpus=2, max_retries=3, memory=1200 * 1024 * 1024)
+                @ray.remote(max_retries=3, memory=1200 * 1024 * 1024)
                 def ray_evaluate_gene_cv(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
                                          use_real_data, cv_folds=None, wf_windows=None):
                     return _evaluate_gene_cv_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed,
@@ -1554,7 +1575,7 @@ class IntradayGeneticOptimizer:
                 real_data_ref = ray.put(self.real_data_cache) if self.real_data_cache else None
                 raw_market_ref = ray.put(self.raw_market_index_data) if self.raw_market_index_data else None
                 
-                @ray.remote(num_cpus=2, max_retries=3, memory=2500 * 1024 * 1024)
+                @ray.remote(max_retries=3, memory=2500 * 1024 * 1024)
                 def ray_evaluate_gene(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
                                       use_real_data=False, real_data_cache=None, raw_market_index_data=None):
                     return _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
