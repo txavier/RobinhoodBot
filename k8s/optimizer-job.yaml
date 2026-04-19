@@ -56,6 +56,20 @@ spec:
               value: "1"
             - name: DATA_DIR
               value: "/app/data"
+            - name: LOG_DIR
+              value: "/app/logs"
+            - name: S3_ENDPOINT
+              value: "http://garage.robinhoodbot.svc.cluster.local:3900"
+            - name: S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: garage-s3
+                  key: access-key-id
+            - name: S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: garage-s3
+                  key: secret-access-key
             - name: RAY_ADDRESS
               value: "ray://optimizer-ray-head-svc.robinhoodbot.svc.cluster.local:10001"
             - name: RAY_gcs_rpc_server_reconnect_timeout_s
@@ -100,4 +114,4 @@ spec:
             secretName: robinhoodbot-config
         - name: data
           persistentVolumeClaim:
-            claimName: robinhoodbot-data-longhorn
+            claimName: robinhoodbot-optimizer-data

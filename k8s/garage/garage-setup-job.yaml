@@ -1,0 +1,109 @@
+# ============================================================================
+# Garage S3 — One-time Setup Job
+# ============================================================================
+# Runs after Garage is deployed to:
+#   1. Assign storage layout to the Garage node
+#   2. Apply the layout
+#   3. Import the pre-generated API key
+#   4. Create the 'robinhoodbot' bucket
+#   5. Grant the API key read/write/owner access
+#
+# Safe to re-run — all operations are idempotent.
+# ============================================================================
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: garage-setup
+  namespace: robinhoodbot
+spec:
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: setup
+          image: dxflrs/garage:v1.0.1
+          env:
+            - name: GARAGE_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: garage-s3
+                  key: admin-token
+            - name: ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: garage-s3
+                  key: access-key-id
+            - name: SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: garage-s3
+                  key: secret-access-key
+          command: ["/bin/sh", "-exc"]
+          args:
+            - |
+              ADMIN="http://garage.robinhoodbot.svc.cluster.local:3903"
+
+              echo "=== Waiting for Garage admin API ==="
+              until wget -qO- "$ADMIN/health" 2>/dev/null; do
+                echo "  waiting..."; sleep 3
+              done
+              echo ""
+
+              echo "=== Getting node ID ==="
+              NODE_ID=$(wget -qO- \
+                --header="Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
+                "$ADMIN/v1/status" | sed -n 's/.*"node":"\([^"]*\)".*/\1/p')
+              echo "  Node: $NODE_ID"
+
+              echo "=== Assigning layout (1 GB, zone dc1) ==="
+              wget -qO- --method=POST \
+                --header="Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
+                --header="Content-Type: application/json" \
+                --body-data="[{\"id\":\"$NODE_ID\",\"zone\":\"dc1\",\"capacity\":1073741824}]" \
+                "$ADMIN/v1/layout" || echo "  (may already be assigned)"
+
+              echo "=== Applying layout ==="
+              # Get current staged layout version
+              LAYOUT_VER=$(wget -qO- \
+                --header="Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
+                "$ADMIN/v1/layout" | sed -n 's/.*"version":\([0-9]*\).*/\1/p')
+              wget -qO- --method=POST \
+                --header="Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
+                --header="Content-Type: application/json" \
+                --body-data="{\"version\":$LAYOUT_VER}" \
+                "$ADMIN/v1/layout/apply" || echo "  (may already be applied)"
+
+              echo "=== Importing API key ==="
+              wget -qO- --method=POST \
+                --header="Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
+                --header="Content-Type: application/json" \
+                --body-data="{\"name\":\"robinhoodbot\",\"accessKeyId\":\"$ACCESS_KEY_ID\",\"secretAccessKey\":\"$SECRET_ACCESS_KEY\"}" \
+                "$ADMIN/v1/key/import" || echo "  (key may already exist)"
+
+              echo "=== Creating bucket ==="
+              wget -qO- --method=POST \
+                --header="Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
+                --header="Content-Type: application/json" \
+                --body-data="{\"globalAlias\":\"robinhoodbot\"}" \
+                "$ADMIN/v1/bucket" || echo "  (bucket may already exist)"
+
+              echo "=== Getting bucket ID ==="
+              BUCKET_ID=$(wget -qO- \
+                --header="Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
+                "$ADMIN/v1/bucket?globalAlias=robinhoodbot" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+              echo "  Bucket ID: $BUCKET_ID"
+
+              echo "=== Granting key access ==="
+              wget -qO- --method=POST \
+                --header="Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
+                --header="Content-Type: application/json" \
+                --body-data="{\"bucketId\":\"$BUCKET_ID\",\"accessKeyId\":\"$ACCESS_KEY_ID\",\"permissions\":{\"read\":true,\"write\":true,\"owner\":true}}" \
+                "$ADMIN/v1/bucket/allow" || echo "  (permissions may already be set)"
+
+              echo ""
+              echo "=== Garage setup complete ==="
+              echo "  S3 endpoint: http://garage.robinhoodbot.svc.cluster.local:3900"
+              echo "  Bucket:      robinhoodbot"
+              echo "  Access Key:  $ACCESS_KEY_ID"

@@ -1,0 +1,19 @@
+# ============================================================================
+# Bot — Persistent Volume Claim (Longhorn RWO)
+# ============================================================================
+# Dedicated storage for the bot pod: logs, tokens, trailing stop state.
+# Uses Longhorn RWO (block) — no NFS share-manager overhead.
+# Cross-pod file sharing goes through Garage S3 instead.
+# ============================================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: robinhoodbot-bot-data
+  namespace: robinhoodbot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 2Gi

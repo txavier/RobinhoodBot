@@ -238,8 +238,20 @@ _shared_data_cache = {}
 
 def _load_shared_data(path):
     """Load shared data from a pickle file with process-level caching.
-    Each Ray worker process reads the file once and caches it in memory."""
+    Each Ray worker process reads the file once and caches it in memory.
+    If S3 is configured and the local file doesn't exist, downloads from S3 first."""
     if path not in _shared_data_cache:
+        if not os.path.exists(path) and os.environ.get('S3_ENDPOINT'):
+            # Ray worker doesn't have the shared PVC — pull from S3
+            try:
+                from s3_sync import download_ray_shared_file_from_s3
+                s3_key = '.ray_shared_data/' + os.path.basename(path)
+                os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+                download_ray_shared_file_from_s3(s3_key, path)
+            except Exception as e:
+                raise FileNotFoundError(
+                    f"Shared data not found locally or on S3: {path} ({e})"
+                )
         import pickle
         with open(path, 'rb') as f:
             _shared_data_cache[path] = pickle.load(f)
@@ -668,6 +680,15 @@ class IntradayGeneticOptimizer:
         with open(tmp_path, 'w') as f:
             json.dump(checkpoint, f, indent=2, default=numpy_serializer)
         os.replace(tmp_path, filepath)
+        
+        # Sync checkpoint to S3 so it survives pod restarts
+        if os.environ.get('S3_ENDPOINT'):
+            try:
+                from s3_sync import upload_optimizer_results_to_s3
+                upload_optimizer_results_to_s3()
+            except Exception as e:
+                if self.verbose:
+                    self._log(f"  ⚠️  S3 checkpoint sync failed: {e}")
         
         if self.verbose:
             self._log(f"  💾 Checkpoint saved: Gen {generation + 1}/{self.config.generations} → {filepath}")
@@ -1521,6 +1542,12 @@ class IntradayGeneticOptimizer:
                         pickle.dump(self._wf_windows, f, protocol=pickle.HIGHEST_PROTOCOL)
                 if self.verbose:
                     self._log("  ✓ CV data written to shared storage")
+                # Upload to S3 so Ray workers can download without shared PVC
+                if os.environ.get('S3_ENDPOINT'):
+                    from s3_sync import upload_ray_shared_data_to_s3
+                    upload_ray_shared_data_to_s3(data_dir)
+                    if self.verbose:
+                        self._log("  ✓ CV data uploaded to S3")
                 
                 @ray.remote(max_retries=3, memory=1200 * 1024 * 1024)
                 def ray_evaluate_gene_cv(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
@@ -1544,6 +1571,12 @@ class IntradayGeneticOptimizer:
                     pickle.dump(self.raw_market_index_data, f, protocol=pickle.HIGHEST_PROTOCOL)
                 if self.verbose:
                     self._log("  ✓ Market data written to shared storage")
+                # Upload to S3 so Ray workers can download without shared PVC
+                if os.environ.get('S3_ENDPOINT'):
+                    from s3_sync import upload_ray_shared_data_to_s3
+                    upload_ray_shared_data_to_s3(data_dir)
+                    if self.verbose:
+                        self._log("  ✓ Market data uploaded to S3")
                 
                 @ray.remote(max_retries=3, memory=2500 * 1024 * 1024)
                 def ray_evaluate_gene(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
@@ -2256,6 +2289,15 @@ class IntradayGeneticOptimizer:
             json.dump(results, f, indent=2)
         
         self._log(f"\nResults saved to {filepath}")
+        
+        # Sync final results to S3
+        if os.environ.get('S3_ENDPOINT'):
+            try:
+                from s3_sync import upload_optimizer_results_to_s3
+                upload_optimizer_results_to_s3()
+                self._log("Results synced to S3")
+            except Exception as e:
+                self._log(f"⚠️  S3 results sync failed: {e}")
     
     def print_best_config(self):
         """Print the best configuration found in a copyable format"""
@@ -2817,6 +2859,16 @@ def main():
     if args.train_test_split > 0 and (args.train_test_split < 0.5 or args.train_test_split > 0.95):
         print(f"⚠️  --train-test-split should be between 0.5 and 0.95 (got {args.train_test_split}). Using 0.7.")
         args.train_test_split = 0.7
+    
+    # Download shared inputs from S3 if configured (replaces NFS shared PVC)
+    if os.environ.get('S3_ENDPOINT'):
+        try:
+            from s3_sync import download_optimizer_inputs_from_s3
+            print("📥 Downloading shared inputs from S3...")
+            download_optimizer_inputs_from_s3()
+            print("✓  S3 inputs downloaded")
+        except Exception as e:
+            print(f"⚠️  S3 input download failed (continuing anyway): {e}")
     
     optimizer = IntradayGeneticOptimizer(
         symbols=symbols,

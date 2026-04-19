@@ -1,0 +1,19 @@
+# ============================================================================
+# Optimizer — Persistent Volume Claim (Longhorn RWO)
+# ============================================================================
+# Dedicated storage for the optimizer job: yfinance cache, working files,
+# checkpoints, ray shared data. Uses Longhorn RWO (block) — no NFS overhead.
+# Results are synced to Garage S3 for the bot/user to access.
+# ============================================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: robinhoodbot-optimizer-data
+  namespace: robinhoodbot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 3Gi
