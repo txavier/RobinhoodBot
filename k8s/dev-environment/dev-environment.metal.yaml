@@ -20,6 +20,7 @@ spec:
         app: robinhoodbot
         component: dev-sandbox
     spec:
+      serviceAccountName: dev-sandbox
       initContainers:
         - name: seed-home
           image: 192.168.87.35:5000/robinhoodbot-dev-sandbox:latest
