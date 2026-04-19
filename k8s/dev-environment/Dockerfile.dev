@@ -21,6 +21,8 @@ RUN apt-get update \
        procps \
        tzdata \
        git \
+    && curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl \
+    && chmod +x /usr/local/bin/kubectl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python 3.11 and the pre-built venv from the builder stage
