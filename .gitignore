@@ -98,6 +98,9 @@ celerybeat-schedule
 # Environments
 .env
 secrets.env
+
+# Kubernetes secrets (contain real credentials)
+k8s/garage/garage-secret.yaml
 .venv
 env/
 venv/
