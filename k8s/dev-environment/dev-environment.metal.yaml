@@ -20,14 +20,14 @@ spec:
     spec:
       initContainers:
         - name: seed-home
-          image: REGISTRY_HOST:5000/robinhoodbot-dev-sandbox:latest
+          image: 192.168.87.35:5000/robinhoodbot-dev-sandbox:latest
           command: ["sh", "-c", "if [ -z \"$(ls -A /home-data)\" ]; then cp -a /home/agent/. /home-data/; fi"]
           volumeMounts:
             - name: home-data
               mountPath: /home-data
         - name: fix-permissions
           image: busybox
-          command: ["sh", "-c", "chown -R 1000:1000 /workspace /home-data /settings"]
+          command: ["sh", "-c", "mkdir -p /settings/vscode-server /settings/github-copilot /settings/claude && chown -R 1000:1000 /workspace /home-data /settings"]
           securityContext:
             runAsUser: 0
           volumeMounts:
@@ -39,8 +39,7 @@ spec:
               mountPath: /settings
       containers:
         - name: claude-code-sandbox
-          # Replace REGISTRY_HOST with your cluster's registry IP (e.g. 192.168.87.35)
-          image: REGISTRY_HOST:5000/robinhoodbot-dev-sandbox:latest
+          image: 192.168.87.35:5000/robinhoodbot-dev-sandbox:latest
           command: ["sleep", "infinity"]
           stdin: true
           tty: true
@@ -71,27 +70,6 @@ spec:
             limits:
               cpu: "7"
               memory: "15Gi"
-        - name: nfs-server
-          image: erichough/nfs-server:latest
-          env:
-            - name: NFS_EXPORT_0
-              value: "/workspace *(rw,fsid=0,sync,no_subtree_check,no_root_squash)"
-          volumeMounts:
-            - name: workspace
-              mountPath: /workspace
-          securityContext:
-            privileged: true
-          ports:
-            - containerPort: 2049
-              name: nfs
-              protocol: TCP
-          resources:
-            requests:
-              cpu: "50m"
-              memory: "128Mi"
-            limits:
-              cpu: "200m"
-              memory: "512Mi"
       volumes:
         - name: workspace
           persistentVolumeClaim:
@@ -102,23 +80,3 @@ spec:
         - name: dev-settings
           persistentVolumeClaim:
             claimName: dev-settings-pvc
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: dev-sandbox-nfs
-  namespace: robinhoodbot-dev
-  labels:
-    app: robinhoodbot
-    component: dev-sandbox
-spec:
-  type: NodePort
-  selector:
-    app: robinhoodbot
-    component: dev-sandbox
-  ports:
-    - name: nfs
-      port: 2049
-      targetPort: 2049
-      protocol: TCP
-      nodePort: 31049
