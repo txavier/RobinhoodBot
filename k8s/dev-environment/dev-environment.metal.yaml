@@ -20,6 +20,7 @@ spec:
         app: robinhoodbot
         component: dev-sandbox
     spec:
+      serviceAccountName: dev-sandbox
       initContainers:
         - name: seed-home
           image: REGISTRY_HOST:5000/robinhoodbot-dev-sandbox:latest

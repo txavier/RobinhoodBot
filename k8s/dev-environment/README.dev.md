@@ -24,7 +24,7 @@ docker push REGISTRY_HOST:5000/robinhoodbot-dev-sandbox:latest
 
 ### Apply the deployment
 ```bash
-kubectl apply -f k8s/dev-environment/dev-pvc-metal.yaml -f k8s/dev-environment/dev-environment.metal.yaml
+kubectl apply -f k8s/dev-environment/dev-pvc-metal.yaml -f k8s/dev-environment/dev-rbac.yaml -f k8s/dev-environment/dev-environment.metal.yaml
 ```
 
 ### Rebuild and redeploy (after Dockerfile changes)
