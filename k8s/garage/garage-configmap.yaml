@@ -20,17 +20,13 @@ data:
     replication_factor = 1
     compression_level = 1
 
+    rpc_bind_addr = "[::]:3901"
+    rpc_secret = "${GARAGE_RPC_SECRET}"
+
     [s3_api]
     s3_region = "garage"
     api_bind_addr = "[::]:3900"
 
-    [s3_web]
-    bind_addr = "[::]:3902"
-
     [admin]
     api_bind_addr = "[::]:3903"
     admin_token = "${GARAGE_ADMIN_TOKEN}"
-
-    [rpc]
-    bind_addr = "[::]:3901"
-    secret = "${GARAGE_RPC_SECRET}"

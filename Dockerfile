@@ -42,8 +42,8 @@ COPY robinhoodbot/ .
 # Copy sample config as fallback (container won't start without a real config mount)
 COPY robinhoodbot/config.py.sample /app/config.py.sample
 
-# Make shell scripts executable
-RUN chmod +x run.sh run_optimizer.sh
+# Strip Windows CRLF line endings and make shell scripts executable
+RUN sed -i 's/\r$//' run.sh run_optimizer.sh && chmod +x run.sh run_optimizer.sh
 
 # The bot loops internally via run.sh (runs main.py every 7 minutes)
 CMD ["bash", "run.sh"]
