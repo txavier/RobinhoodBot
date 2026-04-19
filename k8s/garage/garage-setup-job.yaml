@@ -23,7 +23,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: setup
-          image: dxflrs/garage:v1.0.1
+          image: alpine:3.19
           env:
             - name: GARAGE_ADMIN_TOKEN
               valueFrom:
@@ -43,63 +43,61 @@ spec:
           command: ["/bin/sh", "-exc"]
           args:
             - |
+              apk add --no-cache curl jq >/dev/null
+
               ADMIN="http://garage.robinhoodbot.svc.cluster.local:3903"
+              AUTH="Authorization: Bearer $GARAGE_ADMIN_TOKEN"
 
               echo "=== Waiting for Garage admin API ==="
-              until wget -qO- "$ADMIN/health" 2>/dev/null; do
+              until curl -sf "$ADMIN/health" 2>/dev/null; do
                 echo "  waiting..."; sleep 3
               done
               echo ""
 
               echo "=== Getting node ID ==="
-              NODE_ID=$(wget -qO- \
-                --header="Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
-                "$ADMIN/v1/status" | sed -n 's/.*"node":"\([^"]*\)".*/\1/p')
+              NODE_ID=$(curl -sf -H "$AUTH" "$ADMIN/v1/status" | jq -r '.node')
               echo "  Node: $NODE_ID"
 
               echo "=== Assigning layout (1 GB, zone dc1) ==="
-              wget -qO- --method=POST \
-                --header="Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
-                --header="Content-Type: application/json" \
-                --body-data="[{\"id\":\"$NODE_ID\",\"zone\":\"dc1\",\"capacity\":1073741824}]" \
+              curl -sf -X POST -H "$AUTH" -H "Content-Type: application/json" \
+                -d "[{\"id\":\"$NODE_ID\",\"zone\":\"dc1\",\"capacity\":1073741824,\"tags\":[]}]" \
                 "$ADMIN/v1/layout" || echo "  (may already be assigned)"
 
               echo "=== Applying layout ==="
-              # Get current staged layout version
-              LAYOUT_VER=$(wget -qO- \
-                --header="Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
-                "$ADMIN/v1/layout" | sed -n 's/.*"version":\([0-9]*\).*/\1/p')
-              wget -qO- --method=POST \
-                --header="Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
-                --header="Content-Type: application/json" \
-                --body-data="{\"version\":$LAYOUT_VER}" \
+              LAYOUT_VER=$(curl -sf -H "$AUTH" "$ADMIN/v1/layout" | jq '.version')
+              NEXT_VER=$((LAYOUT_VER + 1))
+              curl -sf -X POST -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"version\":$NEXT_VER}" \
                 "$ADMIN/v1/layout/apply" || echo "  (may already be applied)"
 
               echo "=== Importing API key ==="
-              wget -qO- --method=POST \
-                --header="Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
-                --header="Content-Type: application/json" \
-                --body-data="{\"name\":\"robinhoodbot\",\"accessKeyId\":\"$ACCESS_KEY_ID\",\"secretAccessKey\":\"$SECRET_ACCESS_KEY\"}" \
-                "$ADMIN/v1/key/import" || echo "  (key may already exist)"
+              IMPORT_RESP=$(curl -s -w "\n%{http_code}" -X POST -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"name\":\"robinhoodbot\",\"accessKeyId\":\"$ACCESS_KEY_ID\",\"secretAccessKey\":\"$SECRET_ACCESS_KEY\"}" \
+                "$ADMIN/v1/key/import")
+              IMPORT_HTTP=$(echo "$IMPORT_RESP" | tail -1)
+              IMPORT_BODY=$(echo "$IMPORT_RESP" | sed '$d')
+              if [ "$IMPORT_HTTP" -ge 200 ] && [ "$IMPORT_HTTP" -lt 300 ]; then
+                echo "  Key imported: $ACCESS_KEY_ID"
+              elif echo "$IMPORT_BODY" | grep -q "already exists"; then
+                echo "  (key already exists)"
+              else
+                echo "  ERROR importing key (HTTP $IMPORT_HTTP): $IMPORT_BODY" >&2
+                exit 1
+              fi
 
               echo "=== Creating bucket ==="
-              wget -qO- --method=POST \
-                --header="Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
-                --header="Content-Type: application/json" \
-                --body-data="{\"globalAlias\":\"robinhoodbot\"}" \
+              curl -sf -X POST -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"globalAlias\":\"robinhoodbot\"}" \
                 "$ADMIN/v1/bucket" || echo "  (bucket may already exist)"
 
               echo "=== Getting bucket ID ==="
-              BUCKET_ID=$(wget -qO- \
-                --header="Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
-                "$ADMIN/v1/bucket?globalAlias=robinhoodbot" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+              BUCKET_ID=$(curl -sf -H "$AUTH" \
+                "$ADMIN/v1/bucket?globalAlias=robinhoodbot" | jq -r '.id')
               echo "  Bucket ID: $BUCKET_ID"
 
               echo "=== Granting key access ==="
-              wget -qO- --method=POST \
-                --header="Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
-                --header="Content-Type: application/json" \
-                --body-data="{\"bucketId\":\"$BUCKET_ID\",\"accessKeyId\":\"$ACCESS_KEY_ID\",\"permissions\":{\"read\":true,\"write\":true,\"owner\":true}}" \
+              curl -sf -X POST -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"bucketId\":\"$BUCKET_ID\",\"accessKeyId\":\"$ACCESS_KEY_ID\",\"permissions\":{\"read\":true,\"write\":true,\"owner\":true}}" \
                 "$ADMIN/v1/bucket/allow" || echo "  (permissions may already be set)"
 
               echo ""
