@@ -27,8 +27,3 @@ parameters:
   disableRevisionCounter: "false"
   dataEngine: v1
   backupTargetName: default
-  # Soft NFS mount: operations fail fast on share-manager restarts
-  # rather than blocking for minutes. The bot's error handling and
-  # liveness probe will catch failures and trigger a pod restart.
-  # timeo=100 (10s), 3 retransmits = ~30s max before error returned.
-  nfsOptions: "soft,timeo=100,retrans=3"

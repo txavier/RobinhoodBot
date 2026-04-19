@@ -14,3 +14,5 @@ cryptography
 yfinance
 # Ray for distributed genetic optimization (local or Kubernetes)
 ray[default]
+# S3-compatible storage (Garage) for cross-pod file sharing without NFS
+boto3

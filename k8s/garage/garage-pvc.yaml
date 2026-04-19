@@ -1,0 +1,18 @@
+# ============================================================================
+# Garage S3 — Persistent Volume Claim (Longhorn RWO)
+# ============================================================================
+# Fast local block storage for Garage metadata + object data.
+# Uses Longhorn RWO — no NFS overhead.
+# ============================================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: garage-data
+  namespace: robinhoodbot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 5Gi

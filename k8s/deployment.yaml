@@ -27,6 +27,30 @@ spec:
           operator: "Exists"
           effect: "NoExecute"
           tolerationSeconds: 30
+      initContainers:
+        # Download latest optimizer result from S3 (if available)
+        - name: s3-init
+          image: 192.168.87.35:5000/robinhoodbot:latest
+          imagePullPolicy: Always
+          command: ["python3", "s3_sync.py", "download-bot-inputs"]
+          env:
+            - name: DATA_DIR
+              value: "/app/data"
+            - name: S3_ENDPOINT
+              value: "http://garage.robinhoodbot.svc.cluster.local:3900"
+            - name: S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: garage-s3
+                  key: access-key-id
+            - name: S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: garage-s3
+                  key: secret-access-key
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
       containers:
         - name: bot
           image: 192.168.87.35:5000/robinhoodbot:latest
@@ -63,7 +87,7 @@ spec:
                 - |
                   # Check 1: today's console_log was modified in the last 12 minutes (bot is alive)
                   [ -n "$(find /app/logs/archive/ -name 'console_log_*.json' -mmin -12)" ] &&
-                  # Check 2: NFS mount is writable (not stale after share-manager restart)
+                  # Check 2: data volume is writable
                   touch /app/logs/.liveness-check
             initialDelaySeconds: 60
             periodSeconds: 120
@@ -76,10 +100,45 @@ spec:
             limits:
               memory: "2.5Gi"
               cpu: "500m"
+        # Sidecar: periodically upload bot outputs to S3 for the optimizer
+        - name: s3-sidecar
+          image: 192.168.87.35:5000/robinhoodbot:latest
+          imagePullPolicy: Always
+          command: ["python3", "s3_sync.py", "bot-sidecar", "604800"]
+          env:
+            - name: DATA_DIR
+              value: "/app/data"
+            - name: LOG_DIR
+              value: "/app/logs"
+            - name: S3_ENDPOINT
+              value: "http://garage.robinhoodbot.svc.cluster.local:3900"
+            - name: S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: garage-s3
+                  key: access-key-id
+            - name: S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: garage-s3
+                  key: secret-access-key
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: data
+              mountPath: /app/logs
+              subPath: logs/robinhoodbot
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "10m"
+            limits:
+              memory: "128Mi"
+              cpu: "50m"
       volumes:
         - name: config
           secret:
             secretName: robinhoodbot-config
         - name: data
           persistentVolumeClaim:
-            claimName: robinhoodbot-data-longhorn
+            claimName: robinhoodbot-bot-data
