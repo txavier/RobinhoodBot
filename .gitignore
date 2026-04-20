@@ -155,3 +155,4 @@ k8s/config
 AGENTS.local.md
 CLAUDE.local.md
 k8s/garage/garage-secret.yaml
+robinhoodbot/logs/console_log.json
