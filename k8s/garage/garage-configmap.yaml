@@ -21,6 +21,7 @@ data:
     compression_level = 1
 
     rpc_bind_addr = "[::]:3901"
+    rpc_public_addr = "garage.robinhoodbot.svc.cluster.local:3901"
     rpc_secret = "${GARAGE_RPC_SECRET}"
 
     [s3_api]

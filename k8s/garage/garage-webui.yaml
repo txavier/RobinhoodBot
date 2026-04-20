@@ -1,0 +1,79 @@
+# ============================================================================
+# Garage WebUI — Deployment + Service
+# ============================================================================
+# Admin dashboard for Garage S3 (https://github.com/khairul169/garage-webui).
+# Pinned to v1.0.9 — the last release compatible with Garage v1.x API.
+# Upgrade to webui v1.1.0+ when Garage is upgraded to v2.0.0+.
+#
+# Access: kubectl port-forward -n robinhoodbot svc/garage-webui 3909:3909
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: garage-webui
+  namespace: robinhoodbot
+  labels:
+    app: garage-webui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: garage-webui
+  template:
+    metadata:
+      labels:
+        app: garage-webui
+    spec:
+      containers:
+        - name: webui
+          image: khairul169/garage-webui:1.0.9
+          ports:
+            - containerPort: 3909
+              name: http
+          env:
+            - name: API_BASE_URL
+              value: "http://garage.robinhoodbot.svc.cluster.local:3903"
+            - name: API_ADMIN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: garage-s3
+                  key: admin-token
+            - name: S3_ENDPOINT_URL
+              value: "http://garage.robinhoodbot.svc.cluster.local:3900"
+            - name: S3_REGION
+              value: "garage"
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3909
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3909
+            initialDelaySeconds: 10
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage-webui
+  namespace: robinhoodbot
+  labels:
+    app: garage-webui
+spec:
+  type: ClusterIP
+  selector:
+    app: garage-webui
+  ports:
+    - name: http
+      port: 3909
+      targetPort: 3909
