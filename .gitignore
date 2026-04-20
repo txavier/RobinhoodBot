@@ -154,3 +154,4 @@ k8s/config
 .github/agents.local.md
 AGENTS.local.md
 CLAUDE.local.md
+k8s/garage/garage-secret.yaml

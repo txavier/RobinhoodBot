@@ -804,5 +804,4 @@ Cluster Dashboard: http://localhost:30300
 Ray Dashboard: http://localhost:30265
 Ray Grafana Dashboard:  http://localhost:30080
 Longhorn Dashboard: http://localhost:30081
-Garage Admin API: `kubectl port-forward -n robinhoodbot svc/garage 3903:3903` → http://localhost:3903/health
-Garage S3 API: `kubectl port-forward -n robinhoodbot svc/garage 3900:3900` → http://localhost:3900
+Garage: http://localhost:3909
