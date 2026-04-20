@@ -30,14 +30,13 @@ defaultSettings:
   # Auto-salvage replicas after unexpected detach
   autoSalvage: true
   # Auto-delete workload pod when volume detaches unexpectedly.
-  # Forces pod restart, clearing stale NFS inode caches that cause
-  # persistent Errno 5 / Errno 121 on previously-open files.
+  # Forces pod restart, clearing stale caches from previously-open files.
   autoDeletePodWhenVolumeDetachedUnexpectedly: true
-  # Fast failover for RWX (NFS) volumes — monitors share-manager health
-  # via lease and triggers faster recovery on share-manager failure.
+  # Fast failover for RWX volumes — monitors share-manager health
+  # via lease and triggers faster recovery on failure.
   rwxVolumeFastFailover: true
-  # Backup target (optional — can be set later to NFS)
-  # backupTarget: nfs://192.168.87.35:/srv/nfs/longhorn-backup
+  # Backup target (optional — can be set later)
+  # backupTarget: ""
 
 # ---------------------------------------------------------------------------
 # Longhorn Manager (runs on every node as DaemonSet)
@@ -77,7 +76,7 @@ longhornDriver:
 
 # ---------------------------------------------------------------------------
 # Don't schedule Longhorn storage on the control plane (4 CPU, 8G RAM,
-# already running NFS + etcd + API server)
+# already running etcd + API server)
 # ---------------------------------------------------------------------------
 longhornManager:
   nodeSelector: {}
@@ -96,23 +95,14 @@ ingress:
 # StorageClass
 # ---------------------------------------------------------------------------
 persistence:
-  defaultClass: false  # Keep NFS as default; Longhorn is opt-in
+  defaultClass: false  # Longhorn is opt-in; local-path is default
   defaultClassReplicaCount: 3
   reclaimPolicy: Retain
-  # Disable Helm-managed StorageClass so we can manage it ourselves
-  # with custom nfsOptions via k8s/longhorn-storageclass.yaml
   removeSnapshotsDuringFilesystemTrim: ignored
 
 # ---------------------------------------------------------------------------
-# NFS mount options for RWX volumes (share-manager)
+# StorageClass — managed by k8s/longhorn-storageclass.yaml
 # ---------------------------------------------------------------------------
-# Longhorn's default 'softerr' mount causes immediate Errno 121 when the
-# share-manager pod restarts (e.g. during auto-salvage). We use 'soft' with
-# short timeouts so operations fail fast and the bot/liveness probe can react.
-#
-# The StorageClass is managed by k8s/longhorn-storageclass.yaml (not Helm)
-# because Helm doesn't expose nfsOptions as a chart value.
-#
 # After upgrading Longhorn, re-apply the custom StorageClass:
 #   kubectl delete storageclass longhorn
 #   kubectl apply -f k8s/longhorn-storageclass.yaml

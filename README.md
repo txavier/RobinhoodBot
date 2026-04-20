@@ -762,21 +762,9 @@ local-path-storage   Active
 robinhoodbot         Active   
 tigera-operator      Active   
 
-### File exchange location
-/srv/nfs/robinhoodbot/robinhoodbot-robinhoodbot-data-nfs-pvc-529a9db2-2ce8-408e-89b5-797a8c68d462/
+### File exchange
 
-#### Mount remote nfs location
-# 1. Install NFS client
-sudo apt-get install -y nfs-common
-
-# 2. Create mount point
-sudo mkdir -p /mnt/robinhoodbot-nfs
-
-# 3. Mount the NFS share
-sudo mount -t nfs 192.168.87.35:/srv/nfs/robinhoodbot/robinhoodbot-robinhoodbot-data-nfs-pvc-529a9db2-2ce8-408e-89b5-797a8c68d462 /mnt/robinhoodbot-nfs
-
-# 4. (Optional) Make it persist across reboots — add to /etc/fstab:
-# 192.168.87.35:/srv/nfs/robinhoodbot/robinhoodbot-robinhoodbot-data-nfs-pvc-529a9db2-2ce8-408e-89b5-797a8c68d462 /mnt/robinhoodbot-nfs nfs defaults,soft,timeo=10 0 0
+Bot ↔ optimizer file sharing uses Garage S3 (in-cluster). See [docs/optimizer_bot_dependency.md](docs/optimizer_bot_dependency.md) for details.
 
 ### View output of robinhoodbot from within cluster:
 ```bash
