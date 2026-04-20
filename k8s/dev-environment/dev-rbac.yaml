@@ -21,11 +21,17 @@ metadata:
     component: dev-sandbox
 rules:
   - apiGroups: [""]
-    resources: ["nodes", "namespaces", "persistentvolumes"]
+    resources: ["nodes", "namespaces"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "delete"]
   - apiGroups: ["storage.k8s.io"]
     resources: ["storageclasses"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["longhorn.io"]
+    resources: ["nodes", "volumes", "replicas"]
+    verbs: ["get", "list", "watch", "delete"]
   - apiGroups: ["metrics.k8s.io"]
     resources: ["nodes", "pods"]
     verbs: ["get", "list"]
@@ -70,6 +76,60 @@ kind: RoleBinding
 metadata:
   name: dev-sandbox-edit
   namespace: robinhoodbot-dev
+  labels:
+    app: robinhoodbot
+    component: dev-sandbox
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit
+subjects:
+  - kind: ServiceAccount
+    name: dev-sandbox
+    namespace: robinhoodbot-dev
+---
+# Read/write access to the fingerprint-dev namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-sandbox-edit
+  namespace: fingerprint-dev
+  labels:
+    app: robinhoodbot
+    component: dev-sandbox
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit
+subjects:
+  - kind: ServiceAccount
+    name: dev-sandbox
+    namespace: robinhoodbot-dev
+---
+# Read/write access to the longhorn-system namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-sandbox-edit
+  namespace: longhorn-system
+  labels:
+    app: robinhoodbot
+    component: dev-sandbox
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit
+subjects:
+  - kind: ServiceAccount
+    name: dev-sandbox
+    namespace: robinhoodbot-dev
+---
+# Read/write access to the default namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-sandbox-edit
+  namespace: default
   labels:
     app: robinhoodbot
     component: dev-sandbox
