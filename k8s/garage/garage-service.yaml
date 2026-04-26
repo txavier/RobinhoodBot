@@ -3,13 +3,13 @@
 # ============================================================================
 # Exposes Garage's S3 API (3900), RPC (3901), web (3902), and admin (3903)
 # within the cluster. The S3 endpoint for boto3 clients is:
-#   http://garage.robinhoodbot.svc.cluster.local:3900
+#   http://garage.garage.svc.cluster.local:3900
 # ============================================================================
 apiVersion: v1
 kind: Service
 metadata:
   name: garage
-  namespace: robinhoodbot
+  namespace: garage
   labels:
     app: garage
 spec:

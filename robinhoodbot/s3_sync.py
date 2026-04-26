@@ -5,7 +5,7 @@ Provides file upload/download to a Garage (S3-compatible) bucket for sharing
 data between the bot and optimizer pods without NFS.
 
 Configuration via environment variables:
-    S3_ENDPOINT        - Garage S3 endpoint (e.g. http://garage.robinhoodbot.svc.cluster.local:3900)
+    S3_ENDPOINT        - Garage S3 endpoint (e.g. http://garage.garage.svc.cluster.local:3900)
     S3_ACCESS_KEY_ID   - Garage access key
     S3_SECRET_ACCESS_KEY - Garage secret key
     S3_BUCKET          - Bucket name (default: robinhoodbot)
