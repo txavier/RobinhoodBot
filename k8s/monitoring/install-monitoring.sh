@@ -85,7 +85,24 @@ kubectl annotate configmap node-temp-dashboard \
 echo "Node CPU Temperature dashboard imported."
 
 echo ""
-echo "=== Step 7: Deploy node network watchdog ==="
+echo "=== Step 7: Import Kepler Power Consumption dashboard ==="
+kubectl create configmap kepler-dashboard \
+  --namespace "$NAMESPACE" \
+  --from-file="kepler-power.json=$SCRIPT_DIR/kepler-dashboard.json" \
+  --dry-run=client -o yaml | \
+  kubectl apply -f -
+kubectl label configmap kepler-dashboard \
+  --namespace "$NAMESPACE" \
+  grafana_dashboard=1 \
+  --overwrite
+kubectl annotate configmap kepler-dashboard \
+  --namespace "$NAMESPACE" \
+  grafana_folder=Hardware \
+  --overwrite
+echo "Kepler Power Consumption dashboard imported."
+
+echo ""
+echo "=== Step 9: Deploy node network watchdog ==="
 kubectl apply -f "$SCRIPT_DIR/../node-watchdog-daemonset.yaml"
 echo "Node network watchdog deployed."
 
