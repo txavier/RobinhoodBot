@@ -11,7 +11,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: garage-webui
-  namespace: robinhoodbot
+  namespace: garage
   labels:
     app: garage-webui
 spec:
@@ -32,14 +32,14 @@ spec:
               name: http
           env:
             - name: API_BASE_URL
-              value: "http://garage.robinhoodbot.svc.cluster.local:3903"
+              value: "http://garage.garage.svc.cluster.local:3903"
             - name: API_ADMIN_KEY
               valueFrom:
                 secretKeyRef:
                   name: garage-s3
                   key: admin-token
             - name: S3_ENDPOINT_URL
-              value: "http://garage.robinhoodbot.svc.cluster.local:3900"
+              value: "http://garage.garage.svc.cluster.local:3900"
             - name: S3_REGION
               value: "garage"
           resources:
@@ -66,14 +66,15 @@ apiVersion: v1
 kind: Service
 metadata:
   name: garage-webui
-  namespace: robinhoodbot
+  namespace: garage
   labels:
     app: garage-webui
 spec:
-  type: ClusterIP
+  type: NodePort
   selector:
     app: garage-webui
   ports:
     - name: http
       port: 3909
       targetPort: 3909
+      nodePort: 30909
