@@ -156,3 +156,4 @@ AGENTS.local.md
 CLAUDE.local.md
 k8s/garage/garage-secret.yaml
 robinhoodbot/logs/console_log.json
+robinhoodbot/config.py.new
