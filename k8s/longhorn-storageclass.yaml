@@ -1,12 +1,21 @@
 # ============================================================================
-# Longhorn StorageClass — hardened for WiFi bare-metal cluster
+# Longhorn StorageClasses — v1.11.1 defaults
 # ============================================================================
 # StorageClass parameters are IMMUTABLE. To update, delete and recreate:
-#   kubectl delete storageclass longhorn
+#   kubectl delete storageclass longhorn longhorn-redundant
 #   kubectl apply -f k8s/longhorn-storageclass.yaml
 #
 # Existing PVCs/PVs are unaffected — only new PVCs pick up changes.
 # To update existing volumes, use the Longhorn UI or API.
+#
+# All parameters are v1.11.1 defaults unless noted.
+#
+# StorageClass replica policy:
+#   longhorn            — 1 replica  (default, monitoring, dev, ollama)
+#   longhorn-redundant  — 2 replicas (robinhoodbot, garage — important data)
+# ---------------------------------------------------------------------------
+# longhorn — 1 replica (default for non-critical workloads)
+# ---------------------------------------------------------------------------
 allowVolumeExpansion: true
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -15,15 +24,37 @@ metadata:
   annotations:
     storageclass.kubernetes.io/is-default-class: "false"
 provisioner: driver.longhorn.io
-reclaimPolicy: Retain
+reclaimPolicy: Delete
 volumeBindingMode: Immediate
 parameters:
-  numberOfReplicas: "3"
+  numberOfReplicas: "1"
   staleReplicaTimeout: "30"
   fromBackup: ""
   fsType: ext4
-  dataLocality: best-effort
+  dataLocality: disabled
   unmapMarkSnapChainRemoved: ignored
-  disableRevisionCounter: "false"
+  disableRevisionCounter: "true"
+  dataEngine: v1
+  backupTargetName: default
+---
+# ---------------------------------------------------------------------------
+# longhorn-redundant — 2 replicas (robinhoodbot, garage)
+# ---------------------------------------------------------------------------
+allowVolumeExpansion: true
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: longhorn-redundant
+provisioner: driver.longhorn.io
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "2"
+  staleReplicaTimeout: "30"
+  fromBackup: ""
+  fsType: ext4
+  dataLocality: disabled
+  unmapMarkSnapChainRemoved: ignored
+  disableRevisionCounter: "true"
   dataEngine: v1
   backupTargetName: default

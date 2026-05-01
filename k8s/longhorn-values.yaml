@@ -1,42 +1,46 @@
 # ============================================================================
 # Longhorn distributed storage — values for bare-metal ThinkPad cluster
 # ============================================================================
-# Tuned for: 9 worker nodes, 44G disks, 8GB RAM, WiFi networking
-# Reference: https://longhorn.io/docs/1.8.1/references/settings/
+# Reference: https://longhorn.io/docs/1.11.1/references/settings/
+# Current version: v1.11.1
+#
+# These settings are the v1.11.1 defaults EXCEPT where noted with [WiFi override].
+# To customize for this cluster, add settings below and document each deviation.
+# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# Storage defaults
+# Storage defaults (all v1.11.1 defaults)
 # ---------------------------------------------------------------------------
 defaultSettings:
-  # 3 replicas for better resilience across 9 workers
-  defaultReplicaCount: 3
+  # v1.11.1 default: 3 replicas — set to 1 for single-node-survivable WiFi cluster
+  # Critical namespaces (robinhoodbot, garage) use longhorn-redundant SC (2 replicas)
+  defaultReplicaCount: 1
   # Data path on root FS (no raw disks available)
   defaultDataPath: /var/lib/longhorn
-  # Reserve 25% of each disk so the OS doesn't run out of space
+  # v1.11.1 default: 25%
   storageMinimalAvailablePercentage: 25
+  # v1.11.1 default: 100%
   storageOverProvisioningPercentage: 100
-  # WiFi-friendly: increase timeouts to avoid false node-down on flaky WiFi
-  nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
-  # Reduce replica rebuild concurrency to avoid WiFi saturation
+  # v1.11.1 default: do-nothing
+  nodeDownPodDeletionPolicy: do-nothing
+  # [WiFi override] Keep at 1 to avoid saturating WiFi during rebuilds.
+  # v1.11.1 default is 5.
   concurrentReplicaRebuildPerNodeLimit: 1
-  # WiFi-tolerant engine↔replica timeout (default 8 is too aggressive for WiFi)
+  # [WiFi override] Keep at 30s to tolerate flaky WiFi latency spikes.
+  # v1.11.1 default is 8s. Setting to 8s causes false detachments on WiFi.
   engineReplicaTimeout: 30
-  # Auto-rebalance replicas when nodes come/go
-  replicaAutoBalance: "best-effort"
-  # Allow replicas on same node as fallback (better than degraded/stuck volumes)
-  replicaSoftAntiAffinity: true
-  # Faster replica replenishment after failure (default 600 is too slow)
-  replicaReplenishmentWaitInterval: 120
-  # Auto-salvage replicas after unexpected detach
+  # v1.11.1 default: disabled
+  replicaAutoBalance: "disabled"
+  # v1.11.1 default: false
+  replicaSoftAntiAffinity: false
+  # v1.11.1 default: 600s
+  replicaReplenishmentWaitInterval: 600
+  # v1.11.1 default: true
   autoSalvage: true
-  # Auto-delete workload pod when volume detaches unexpectedly.
-  # Forces pod restart, clearing stale caches from previously-open files.
+  # v1.11.1 default: true
   autoDeletePodWhenVolumeDetachedUnexpectedly: true
-  # Fast failover for RWX volumes — monitors share-manager health
-  # via lease and triggers faster recovery on failure.
-  rwxVolumeFastFailover: true
-  # Backup target (optional — can be set later)
-  # backupTarget: ""
+  # v1.11.1 default: false
+  rwxVolumeFastFailover: false
 
 # ---------------------------------------------------------------------------
 # Longhorn Manager (runs on every node as DaemonSet)
