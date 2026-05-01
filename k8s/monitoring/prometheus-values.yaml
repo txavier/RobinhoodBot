@@ -87,6 +87,14 @@ prometheus-node-exporter:
     - --collector.hwmon
     - --collector.thermal_zone
 
+# kube-state-metrics scrapes a large payload (many resources across all namespaces).
+# The default 10s scrape timeout causes broken pipes → liveness probe failures → crash loop.
+kube-state-metrics:
+  prometheus:
+    monitor:
+      scrapeTimeout: 60s
+      interval: 60s
+
 prometheus:
   prometheusSpec:
     # Discover PodMonitors in all namespaces
@@ -108,6 +116,7 @@ prometheus:
         memory: 3Gi
     # Retention
     retention: 30d
+    retentionSize: 18GB
     # Storage — use Longhorn so data survives node wipes/drains
     storageSpec:
       volumeClaimTemplate:
@@ -116,4 +125,4 @@ prometheus:
           accessModes: ["ReadWriteOnce"]
           resources:
             requests:
-              storage: 5Gi
+              storage: 20Gi
