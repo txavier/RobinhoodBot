@@ -14,7 +14,7 @@ Configuration via environment variables:
 Usage as CLI:
     python3 s3_sync.py upload <local_path> <s3_key>
     python3 s3_sync.py download <s3_key> <local_path>
-    python3 s3_sync.py bot-sidecar          # Loop: upload bot outputs every 5 min
+    python3 s3_sync.py bot-sidecar          # Loop: upload bot outputs every 7 days (default)
     python3 s3_sync.py download-bot-inputs  # One-shot: download shared files for bot
     python3 s3_sync.py download-optimizer-inputs  # One-shot: download files for optimizer
 
