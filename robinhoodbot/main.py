@@ -2292,7 +2292,11 @@ def scan_stocks():
         print("----- Scan over -----\n")
 
         # Sign out of the email server.
-        server.quit()
+        try:
+            if 'server' in globals() and server:
+                server.quit()
+        except Exception:
+            pass
 
         if debug:
             print("----- DEBUG MODE -----\n")
