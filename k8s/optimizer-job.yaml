@@ -13,6 +13,17 @@ spec:
     spec:
       restartPolicy: Never
       priorityClassName: robinhoodbot-high
+      # The optimizer shares the ReadWriteOnce PVC (robinhoodbot-optimizer-data)
+      # with the Ray head pod. RWO volumes only attach to one node at a time, so
+      # the optimizer MUST schedule onto the same node that hosts the Ray head,
+      # otherwise it deadlocks with a Multi-Attach error.
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  ray.io/node-type: head
+              topologyKey: kubernetes.io/hostname
       tolerations:
         - key: "node.kubernetes.io/not-ready"
           operator: "Exists"
