@@ -33,8 +33,9 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field, asdict
-from collections import Counter
+from collections import Counter, OrderedDict
 import numpy as np
+import pandas as pd
 from multiprocessing import Pool, cpu_count
 from functools import partial
 
@@ -236,26 +237,196 @@ def _init_worker():
 # Process-level cache for shared data loaded from disk (used in Ray cluster mode)
 _shared_data_cache = {}
 
+
+def _downcast_cache(df: "pd.DataFrame") -> "pd.DataFrame":
+    """Downcast a real-data OHLCV DataFrame to cut its memory footprint ~2x.
+
+    The per-worker price/volume cache is the dominant RAM cost in Ray cluster
+    mode (every worker loads the full ~600-symbol dict). The backtest only needs
+    ~1e-2 precision, so float64 -> float32 and int64 volume -> int32 is exact
+    enough to not change fitness outcomes, while roughly halving the cached
+    data size. Keeps non-numeric columns (datetime/date) untouched.
+    """
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return df
+    out = df.copy()
+    float_cols = [c for c in ('open', 'high', 'low', 'close') if c in out.columns]
+    if float_cols:
+        out[float_cols] = out[float_cols].astype('float32')
+    if 'volume' in out.columns:
+        out['volume'] = pd.to_numeric(out['volume'], errors='coerce').astype('int32')
+    if 'hour' in out.columns:
+        out['hour'] = pd.to_numeric(out['hour'], errors='coerce').astype('int8')
+    return out
+
+
+class LazySymbolCache:
+    """Lazy per-symbol cache backed by parquet files on disk (SSD/local PVC).
+
+    Replaces the old "load the entire ~576-symbol universe into RAM" model.
+    A worker holds only the symbols it actually touches, in a bounded LRU,
+    so steady RAM stays at ~LRU_CAP symbols instead of the whole universe.
+    This is the same principle as iacon's SSD streaming (spill bulk data to
+    local disk, access lazily per-item) applied to pandas DataFrames.
+
+    The backtester needs dict-like access: `symbol in cache`,
+    `cache[symbol]`, `cache.get(symbol)` (-> None if absent). We answer
+    `in` from the cheap symbols.json list without reading any parquet.
+    """
+    def __init__(self, parquet_dir, symbols_list, lru_cap=64):
+        self._dir = parquet_dir
+        self._symbols = set(symbols_list)
+        self._lru_cap = lru_cap
+        self._is_lazy_cache = True
+        # OrderedDict as an LRU: most-recently-used at the end.
+        self._hot = OrderedDict()
+
+    def __contains__(self, symbol):
+        return symbol in self._symbols
+
+    def __bool__(self):
+        return True
+
+    def __len__(self):
+        return len(self._symbols)
+
+    def keys(self):
+        return list(self._symbols)
+
+    def values(self):
+        # Lazily materializes each symbol once (LRU evicts the big DataFrames
+        # after the caller has consumed them). Used only for one-shot index
+        # builds, not per-bar.
+        for s in self._symbols:
+            yield self[s]
+
+    def items(self):
+        for s in self._symbols:
+            yield s, self[s]
+
+    def get(self, symbol, default=None):
+        if symbol not in self._symbols:
+            return default
+        return self[symbol]
+
+    def __getitem__(self, symbol):
+        if symbol not in self._symbols:
+            raise KeyError(symbol)
+        if symbol in self._hot:
+            self._hot.move_to_end(symbol)
+            return self._hot[symbol]
+        df = pd.read_parquet(os.path.join(self._dir, f'{symbol}.parquet'))
+        self._hot[symbol] = df
+        self._hot.move_to_end(symbol)
+        # Evict oldest beyond the cap so RAM stays bounded.
+        while len(self._hot) > self._lru_cap:
+            self._hot.popitem(last=False)
+        return df
+
+
 def _load_shared_data(path):
-    """Load shared data from a pickle file with process-level caching.
-    Each Ray worker process reads the file once and caches it in memory.
-    If S3 is configured and the local file doesn't exist, downloads from S3 first."""
-    if path not in _shared_data_cache:
-        if not os.path.exists(path) and os.environ.get('S3_ENDPOINT'):
-            # Ray worker doesn't have the shared PVC — pull from S3
-            try:
-                from s3_sync import download_ray_shared_file_from_s3
-                s3_key = '.ray_shared_data/' + os.path.basename(path)
-                os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
-                download_ray_shared_file_from_s3(s3_key, path)
-            except Exception as e:
-                raise FileNotFoundError(
-                    f"Shared data not found locally or on S3: {path} ({e})"
-                )
-        import pickle
+    """Load shared data from disk with process-level caching.
+
+    Two shapes are supported:
+      * A *directory* of per-symbol parquet files (real_data_parquet/) plus
+        a real_data_symbols.json sibling -> returns a LazySymbolCache that
+        streams only the touched symbols from SSD (bounded LRU, low RAM).
+      * A single pickle file (e.g. raw_market_index_data.pkl) -> loaded
+        whole into RAM as before.
+
+    If S3 is configured and the local path is missing/corrupt, it is
+    re-downloaded from S3 and retried. Load failures surface as catchable
+    Python exceptions (not native segfaults) so Ray's max_retries can recover.
+    """
+    if path in _shared_data_cache:
+        return _shared_data_cache[path]
+
+    s3_endpoint = os.environ.get('S3_ENDPOINT')
+
+    def _download_from_s3():
+        from s3_sync import download_ray_shared_file_from_s3
+        s3_key = '.ray_shared_data/' + os.path.basename(path)
+        os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+        download_ray_shared_file_from_s3(s3_key, path)
+
+    # Directory of per-symbol parquet -> lazy streamer.
+    if os.path.isdir(path):
+        sym_json = os.path.join(path, '..', 'real_data_symbols.json')
+        sym_json = os.path.normpath(sym_json)
+        if not os.path.exists(sym_json):
+            if s3_endpoint:
+                try:
+                    _download_from_s3()
+                except Exception as e:
+                    raise FileNotFoundError(
+                        f"Shared symbol list not found locally or on S3: {sym_json} ({e})"
+                    )
+        with open(sym_json) as f:
+            import json as _json
+            symbols = _json.load(f)
+        cache = LazySymbolCache(path, symbols)
+        _shared_data_cache[path] = cache
+        return cache
+
+    if not os.path.exists(path) and s3_endpoint:
+        try:
+            _download_from_s3()
+        except Exception as e:
+            raise FileNotFoundError(
+                f"Shared data not found locally or on S3: {path} ({e})"
+            )
+
+    import pickle
+    try:
         with open(path, 'rb') as f:
             _shared_data_cache[path] = pickle.load(f)
+    except Exception as e:
+        # A corrupt/partial/unreadable pickle (storage EIO, truncated S3
+        # download) must become a catchable Python exception, not a native
+        # segfault that kills the worker and strands the generation in an
+        # infinite resume loop. Retry once from S3 when available.
+        if s3_endpoint:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            try:
+                _download_from_s3()
+                with open(path, 'rb') as f:
+                    _shared_data_cache[path] = pickle.load(f)
+                return _shared_data_cache[path]
+            except Exception as e2:
+                raise RuntimeError(
+                    f"Failed to load shared data {path}: local load raised "
+                    f"{type(e).__name__}: {e}; S3 retry raised "
+                    f"{type(e2).__name__}: {e2}"
+                ) from e2
+        raise RuntimeError(
+            f"Failed to load shared data {path}: {type(e).__name__}: {e}"
+        ) from e
     return _shared_data_cache[path]
+
+# Backwards-compatible alias kept for any callers that referenced the old name.
+_load_shared_data_legacy = _load_shared_data
+
+
+def write_cv_folds_to_disk(folds, base_dir, prefix):
+    """Write CV folds as FLAT per-fold pickle files at the data_dir ROOT (not
+    subdirectories) so they upload to S3 as flat files (the uploader only
+    handles root-level files). Each file is one full fold tuple
+    (train_cache, train_market, test_cache, test_market). Workers stream ONE
+    fold at a time (load -> eval -> free) instead of holding all ~16 copies
+    (~16 full-universe copies) resident. Returns manifest entries (flat paths)
+    so the worker loads each lazily with an S3 fallback."""
+    import pickle
+    entries = []
+    for i, fold in enumerate(folds):
+        path = os.path.join(base_dir, f'{prefix}{i}.pkl')
+        with open(path, 'wb') as f:
+            pickle.dump(fold, f, protocol=pickle.HIGHEST_PROTOCOL)
+        entries.append({'path': path})
+    return entries
+
 
 
 def _evaluate_gene_cv_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed,
@@ -267,9 +438,34 @@ def _evaluate_gene_cv_impl(gene, symbols, days, initial_capital, fitness_weights
     """
     all_fitnesses = []
 
+    # cv_folds/wf_windows are either:
+    #  - an in-RAM list of (train_cache, train_market, test_cache, test_market)
+    #    tuples (non-Ray/local path), or
+    #  - a manifest PATH (Ray path) whose folds we stream one at a time so a
+    #    worker holds only ONE fold resident instead of ~16 full-universe copies.
+    def _iter_folds(spec):
+        if spec is None:
+            return
+        if isinstance(spec, str):
+            manifest = json.load(open(spec))
+            s3_endpoint = os.environ.get('S3_ENDPOINT')
+            for fe in manifest['folds']:
+                path = fe['path']
+                # Workers don't share the optimizer's PVC; load with an S3
+                # fallback (same basename-key scheme as _load_shared_data).
+                if not os.path.exists(path) and s3_endpoint:
+                    from s3_sync import download_ray_shared_file_from_s3
+                    download_ray_shared_file_from_s3('.ray_shared_data/' + os.path.basename(path), path)
+                with open(path, 'rb') as _f:
+                    fold = pickle.load(_f)
+                yield fold
+                del fold  # free this fold before loading the next
+        else:
+            yield from spec
+
     # K-fold evaluations
     if cv_folds:
-        for train_cache, train_market, test_cache, test_market in cv_folds:
+        for train_cache, train_market, test_cache, test_market in _iter_folds(cv_folds):
             fold_gene = copy.deepcopy(gene)
             fold_gene = _evaluate_gene_impl(
                 fold_gene, symbols, days, initial_capital,
@@ -282,7 +478,7 @@ def _evaluate_gene_cv_impl(gene, symbols, days, initial_capital, fitness_weights
 
     # Walk-forward evaluations
     if wf_windows:
-        for train_cache, train_market, test_cache, test_market in wf_windows:
+        for train_cache, train_market, test_cache, test_market in _iter_folds(wf_windows):
             wf_gene = copy.deepcopy(gene)
             wf_gene = _evaluate_gene_impl(
                 wf_gene, symbols, days, initial_capital,
@@ -1530,55 +1726,66 @@ class IntradayGeneticOptimizer:
             if use_cv:
                 if self.verbose:
                     self._log("  Writing CV splits to shared storage for workers...")
-                cv_folds_path = None
-                wf_windows_path = None
+                cv_manifest_path = None
+                wf_manifest_path = None
                 if self._cv_folds:
-                    cv_folds_path = os.path.join(data_dir, 'cv_folds.pkl')
-                    with open(cv_folds_path, 'wb') as f:
-                        pickle.dump(self._cv_folds, f, protocol=pickle.HIGHEST_PROTOCOL)
+                    # Per-fold FLAT pickles (cv0.pkl, cv1.pkl, ...) at the
+                    # data_dir root so they upload to S3 as flat files and
+                    # workers stream one fold at a time (1 copy resident, not
+                    # ~16). The giant whole-fold pickle is dropped.
+                    cv_manifest_path = os.path.join(data_dir, 'cv_manifest.json')
+                    entries = write_cv_folds_to_disk(self._cv_folds, data_dir, 'cv')
+                    json.dump({'folds': entries}, open(cv_manifest_path, 'w'))
                 if self._wf_windows:
-                    wf_windows_path = os.path.join(data_dir, 'wf_windows.pkl')
-                    with open(wf_windows_path, 'wb') as f:
-                        pickle.dump(self._wf_windows, f, protocol=pickle.HIGHEST_PROTOCOL)
+                    wf_manifest_path = os.path.join(data_dir, 'wf_manifest.json')
+                    entries = write_cv_folds_to_disk(self._wf_windows, data_dir, 'wf')
+                    json.dump({'folds': entries}, open(wf_manifest_path, 'w'))
                 if self.verbose:
-                    self._log("  ✓ CV data written to shared storage")
-                # Upload to S3 so Ray workers can download without shared PVC
+                    self._log("  ✓ CV data written to shared storage (per-fold flat pickles + manifest)")
+                # Upload to S3 so Ray workers (which don't share the cv-cache PVC) can download
                 if os.environ.get('S3_ENDPOINT'):
                     from s3_sync import upload_ray_shared_data_to_s3
-                    upload_ray_shared_data_to_s3(data_dir)
-                    if self.verbose:
-                        self._log("  ✓ CV data uploaded to S3")
+                    uploaded = upload_ray_shared_data_to_s3(data_dir)
+                    if uploaded:
+                        if self.verbose:
+                            self._log(f"  ✓ CV data uploaded to S3 ({uploaded} file(s))")
+                    else:
+                        self._log("  ⚠️  CV data S3 upload FAILED — workers may hang/explode if S3 is down")
                 
-                @ray.remote(max_retries=3, memory=1200 * 1024 * 1024)
+                @ray.remote(max_retries=3, num_cpus=0.5, memory=700 * 1024 * 1024)
                 def ray_evaluate_gene_cv(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
-                                         use_real_data, cv_folds_path=None, wf_windows_path=None):
-                    cv_folds = _load_shared_data(cv_folds_path) if cv_folds_path else None
-                    wf_windows = _load_shared_data(wf_windows_path) if wf_windows_path else None
+                                         use_real_data, cv_manifest_path=None, wf_manifest_path=None):
+                    # Pass the manifest PATH through; the impl streams one fold at
+                    # a time (load -> eval -> free) so only one fold is resident.
                     return _evaluate_gene_cv_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed,
-                                                  max_positions, cv_folds, wf_windows)
+                                                  max_positions, cv_manifest_path, wf_manifest_path)
                 
                 futures = [
-                    ray_evaluate_gene_cv.remote(*args, cv_folds_path, wf_windows_path) for args in eval_args
+                    ray_evaluate_gene_cv.remote(*args, cv_manifest_path, wf_manifest_path) for args in eval_args
                 ]
             else:
                 if self.verbose:
                     self._log("  Writing market data to shared storage for workers...")
-                real_data_path = os.path.join(data_dir, 'real_data_cache.pkl')
+                real_data_dir = os.path.join(data_dir, 'real_data_parquet')
                 raw_market_path = os.path.join(data_dir, 'raw_market_index_data.pkl')
-                with open(real_data_path, 'wb') as f:
-                    pickle.dump(self.real_data_cache, f, protocol=pickle.HIGHEST_PROTOCOL)
+                # Per-symbol parquet cache is written once in run() (post-download),
+                # so both Ray and non-Ray paths share it; only the raw-index pkl
+                # (consumed by the local eval path) is written here.
                 with open(raw_market_path, 'wb') as f:
                     pickle.dump(self.raw_market_index_data, f, protocol=pickle.HIGHEST_PROTOCOL)
                 if self.verbose:
-                    self._log("  ✓ Market data written to shared storage")
+                    self._log(f"  ✓ Raw market index written to shared storage")
                 # Upload to S3 so Ray workers can download without shared PVC
                 if os.environ.get('S3_ENDPOINT'):
                     from s3_sync import upload_ray_shared_data_to_s3
-                    upload_ray_shared_data_to_s3(data_dir)
-                    if self.verbose:
-                        self._log("  ✓ Market data uploaded to S3")
+                    uploaded = upload_ray_shared_data_to_s3(data_dir)
+                    if uploaded:
+                        if self.verbose:
+                            self._log(f"  ✓ Market data uploaded to S3 ({uploaded} file(s))")
+                    else:
+                        self._log("  ⚠️  Market data S3 upload FAILED — workers may hang/explode if S3 is down")
                 
-                @ray.remote(max_retries=3, memory=2500 * 1024 * 1024)
+                @ray.remote(max_retries=3, num_cpus=0.5, memory=900 * 1024 * 1024)
                 def ray_evaluate_gene(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
                                       use_real_data=False, real_data_path=None, raw_market_path=None):
                     real_data_cache = _load_shared_data(real_data_path) if real_data_path else None
@@ -1589,13 +1796,14 @@ class IntradayGeneticOptimizer:
                 futures = [
                     ray_evaluate_gene.remote(*args, real_data_path, raw_market_path) for args in eval_args
                 ]
+                submit_fn, submit_extra = ray_evaluate_gene, lambda a: (*a, real_data_path, raw_market_path)
         else:
             # Local Ray — use object store (fast shared memory, no gRPC)
             if use_cv:
                 cv_folds_ref = ray.put(self._cv_folds) if self._cv_folds else None
                 wf_windows_ref = ray.put(self._wf_windows) if self._wf_windows else None
                 
-                @ray.remote(max_retries=3, memory=1200 * 1024 * 1024)
+                @ray.remote(max_retries=3, num_cpus=0.5, memory=700 * 1024 * 1024)
                 def ray_evaluate_gene_cv(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
                                          use_real_data, cv_folds=None, wf_windows=None):
                     return _evaluate_gene_cv_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed,
@@ -1604,11 +1812,12 @@ class IntradayGeneticOptimizer:
                 futures = [
                     ray_evaluate_gene_cv.remote(*args, cv_folds_ref, wf_windows_ref) for args in eval_args
                 ]
+                submit_fn, submit_extra = ray_evaluate_gene_cv, lambda a: (*a, cv_folds_ref, wf_windows_ref)
             else:
                 real_data_ref = ray.put(self.real_data_cache) if self.real_data_cache else None
                 raw_market_ref = ray.put(self.raw_market_index_data) if self.raw_market_index_data else None
                 
-                @ray.remote(max_retries=3, memory=2500 * 1024 * 1024)
+                @ray.remote(max_retries=3, num_cpus=0.5, memory=900 * 1024 * 1024)
                 def ray_evaluate_gene(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
                                       use_real_data=False, real_data_cache=None, raw_market_index_data=None):
                     return _evaluate_gene_impl(gene, symbols, days, initial_capital, fitness_weights, data_seed, max_positions,
@@ -1617,6 +1826,7 @@ class IntradayGeneticOptimizer:
                 futures = [
                     ray_evaluate_gene.remote(*args, real_data_ref, raw_market_ref) for args in eval_args
                 ]
+                submit_fn, submit_extra = ray_evaluate_gene, lambda a: (*a, real_data_ref, raw_market_ref)
         
         # Gather results with stall detection.
         # Instead of ray.get() which blocks forever, use ray.wait() in a loop
@@ -1624,13 +1834,41 @@ class IntradayGeneticOptimizer:
         STALL_TIMEOUT_MINUTES = 120  # max time with zero progress before failing
         remaining = list(futures)
         completed_results = {}  # future -> result, preserving order
+        resubmit_counts = {}   # future-index -> NodeDied retries
         last_progress_time = time.time()
+        MAX_NODEDIED_RETRIES = 3
         
         while remaining:
             ready, remaining = ray.wait(remaining, num_returns=1, timeout=60.0)
             if ready:
                 for ref in ready:
-                    completed_results[ref] = ray.get(ref)
+                    try:
+                        completed_results[ref] = ray.get(ref)
+                    except ray.exceptions.NodeDiedError:
+                        # A worker node died mid-task. Resubmit just that gene on
+                        # a (hopefully) healthy node instead of crashing the whole
+                        # generation. The scheduler fences workers off known-flaky
+                        # nodes (see ray-cluster.yaml worker nodeAffinity), but a
+                        # *new* node death is still possible; this lets the optimizer
+                        # survive it and keep making progress. Past MAX, give up and
+                        # let the existing checkpoint/restart path take over.
+                        idx = futures.index(ref)
+                        resubmit_counts[idx] = resubmit_counts.get(idx, 0) + 1
+                        if resubmit_counts[idx] > MAX_NODEDIED_RETRIES:
+                            raise RuntimeError(
+                                f"Gene {idx} failed {resubmit_counts[idx]}x due to node death. "
+                                f"Checkpoint saved — restart to resume."
+                            )
+                        try:
+                            ray.cancel(ref, force=True)
+                        except Exception:
+                            pass
+                        new_ref = submit_fn.remote(*submit_extra(eval_args[idx]))
+                        futures[idx] = new_ref
+                        remaining.append(new_ref)
+                        if self.verbose:
+                            self._log(f"  ⚠️  Node died mid-task (gene {idx}); resubmitting "
+                                      f"(retry {resubmit_counts[idx]}/{MAX_NODEDIED_RETRIES})")
                 last_progress_time = time.time()
                 done_count = len(completed_results)
                 total_count = len(futures)
@@ -1996,44 +2234,101 @@ class IntradayGeneticOptimizer:
             self._log(f"\n📥 Downloading real market data for {len(self.symbols)} symbols...")
             self._log("   (cached to disk - subsequent runs will be instant)")
             
-            # Download raw market index data (threshold-independent, shared across all genes)
-            self._log("   Downloading SPY/DIA/QQQ raw index data...")
-            self.raw_market_index_data = download_raw_market_index_data(
-                days=self.days,
-                cache_max_age_hours=12
-            )
-            # Compute with default thresholds just for the summary count
-            sample_market = compute_market_conditions(self.raw_market_index_data)
-            self._log(f"   ✓ Market data: {len(sample_market)} trading days (each gene computes its own thresholds)")
-            
-            # Download each symbol
-            self.real_data_cache = {}
-            failed_symbols = []
-            for i, symbol in enumerate(self.symbols):
+            # (A) fast-path: reuse the persistent per-symbol parquet cache on the
+            # cv-cache PVC so deploys/cluster-recreates skip the ~20-40min yfinance
+            # re-download. Only valid when the cached symbol set covers the
+            # configured universe; otherwise we fall through to a fresh download.
+            _cache_base = os.path.join(os.environ.get('DATA_DIR', '/app/data'), '.ray_shared_data')
+            _pq_dir = os.path.join(_cache_base, 'real_data_parquet')
+            _sym_json = os.path.join(_cache_base, 'real_data_symbols.json')
+            self._cache_loaded_from_disk = False
+            if os.path.isfile(_sym_json) and os.path.isdir(_pq_dir):
                 try:
-                    self._log(f"   Downloading {symbol} ({i+1}/{len(self.symbols)})...", end="", flush=True)
-                    df = download_real_data(symbol, self.days, cache_max_age_hours=12)
-                    self.real_data_cache[symbol] = df
-                    # Keep heartbeat alive during long data download
+                    import pandas as _pd
+                    with open(_sym_json) as _fj:
+                        _cached_syms = set(json.load(_fj))
+                    if _cached_syms >= set(self.symbols):
+                        self.real_data_cache = {}
+                        for _s in self.symbols:
+                            _p = os.path.join(_pq_dir, f'{_s}.parquet')
+                            if not os.path.isfile(_p):
+                                raise FileNotFoundError(_s)
+                            self.real_data_cache[_s] = _pd.read_parquet(_p)
+                        self._cache_loaded_from_disk = True
+                        self._log(f"   ✓ Loaded {len(self.real_data_cache)} symbols from parquet cache "
+                                  f"(skipping yfinance re-download)")
+                except Exception as _e:
+                    self._log(f"   ⚠️  Parquet cache load failed ({_e}); re-downloading")
+                    self.real_data_cache = {}
+
+            if getattr(self, '_cache_loaded_from_disk', False):
+                # raw index data still has its own short-lived disk cache
+                self.raw_market_index_data = download_raw_market_index_data(
+                    days=self.days, cache_max_age_hours=12)
+                sample_market = compute_market_conditions(self.raw_market_index_data)
+                self._log(f"   ✓ Market data: {len(sample_market)} trading days")
+                self._log(f"\n   ✓ Real data ready: {len(self.symbols)} symbols, {len(sample_market)} market days (from cache)\n")
+            else:
+                # Download raw market index data (threshold-independent, shared across all genes)
+                self._log("   Downloading SPY/DIA/QQQ raw index data...")
+                self.raw_market_index_data = download_raw_market_index_data(
+                    days=self.days,
+                    cache_max_age_hours=12
+                )
+                # Compute with default thresholds just for the summary count
+                sample_market = compute_market_conditions(self.raw_market_index_data)
+                self._log(f"   ✓ Market data: {len(sample_market)} trading days (each gene computes its own thresholds)")
+
+                # Download each symbol
+                self.real_data_cache = {}
+                failed_symbols = []
+                for i, symbol in enumerate(self.symbols):
                     try:
-                        Path('/tmp/optimizer-heartbeat').touch()
-                    except OSError:
-                        pass
-                    trading_days = df['date'].nunique()
-                    self._log(f" ✓ {len(df)} bars ({trading_days} days)")
-                except Exception as e:
-                    self._log(f" ✗ FAILED: {e}")
-                    failed_symbols.append(symbol)
-            
-            # Remove failed symbols
-            if failed_symbols:
-                self._log(f"\n   ⚠️  Removing {len(failed_symbols)} failed symbols: {', '.join(failed_symbols)}")
-                self.symbols = [s for s in self.symbols if s not in failed_symbols]
-                if not self.symbols:
-                    raise ValueError("All symbols failed to download. Check internet connection and symbol names.")
-            
-            self._log(f"\n   ✓ Real data ready: {len(self.symbols)} symbols, {len(sample_market)} market days\n")
+                        self._log(f"   Downloading {symbol} ({i+1}/{len(self.symbols)})...", end="", flush=True)
+                        df = download_real_data(symbol, self.days, cache_max_age_hours=12)
+                        # Downcast to float32/int32 to shrink the per-worker RAM footprint
+                        # (see _downcast_cache). Applied once here so train/test, CV folds,
+                        # and the S3/disk pickle all inherit the smaller form.
+                        self.real_data_cache[symbol] = _downcast_cache(df)
+                        # Keep heartbeat alive during long data download
+                        try:
+                            Path('/tmp/optimizer-heartbeat').touch()
+                        except OSError:
+                            pass
+                        trading_days = df['date'].nunique()
+                        self._log(f" ✓ {len(df)} bars ({trading_days} days)")
+                    except Exception as e:
+                        self._log(f" ✗ FAILED: {e}")
+                        failed_symbols.append(symbol)
+
+                # Remove failed symbols
+                if failed_symbols:
+                    self._log(f"\n   ⚠️  Removing {len(failed_symbols)} failed symbols: {', '.join(failed_symbols)}")
+                    self.symbols = [s for s in self.symbols if s not in failed_symbols]
+                    if not self.symbols:
+                        raise ValueError("All symbols failed to download. Check internet connection and symbol names.")
+
+                self._log(f"\n   ✓ Real data ready: {len(self.symbols)} symbols, {len(sample_market)} market days\n")
         
+        # (A) Persist the per-symbol parquet cache to the cv-cache PVC. This must
+        # run in run() (not only in the non-Ray eval branch) because the optimizer
+        # always evaluates via Ray, whose worker path never reaches that branch.
+        # The fast-path at the top of this block loads from it on subsequent
+        # deploys, so the ~20-40min yfinance re-download is skipped.
+        if not getattr(self, '_cache_loaded_from_disk', False):
+            _cache_base = os.path.join(os.environ.get('DATA_DIR', '/app/data'), '.ray_shared_data')
+            _pq_dir = os.path.join(_cache_base, 'real_data_parquet')
+            import shutil
+            if os.path.isdir(_pq_dir):
+                shutil.rmtree(_pq_dir)
+            os.makedirs(_pq_dir, exist_ok=True)
+            for _s, _df in self.real_data_cache.items():
+                _df.to_parquet(os.path.join(_pq_dir, f'{_s}.parquet'), index=False, compression='snappy')
+            with open(os.path.join(_cache_base, 'real_data_symbols.json'), 'w') as _fj:
+                json.dump(list(self.real_data_cache.keys()), _fj)
+            if self.verbose:
+                self._log(f"  ✓ Market data written to parquet cache ({len(self.real_data_cache)} symbols)")
+
         # Apply train/test split if requested (must happen after data download)
         if self.train_test_split > 0:
             self._split_data_by_dates()

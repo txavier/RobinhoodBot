@@ -1,0 +1,305 @@
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: optimizer-ray
+  namespace: robinhoodbot
+spec:
+  enableInTreeAutoscaling: true
+  headGroupSpec:
+    rayStartParams:
+      num-cpus: "1"
+    template:
+      metadata:
+        labels:
+          app: robinhoodbot-optimizer
+          ray-role: head
+      spec:
+        # Head is pinned to k8s-node-12dc7f because the optimizer's
+        # robinhoodbot-optimizer-cv-cache PVC is local-path storage with a
+        # nodeAffinity hardcoded to 12dc7f (provisioned there when it was last
+        # re-created). The optimizer must co-locate with the head (RWO cv-cache
+        # PVC + pod-affinity), so pinning the head keeps head + optimizer + cache
+        # volume permanently co-located. This makes the (A) parquet cache persist
+        # across RayCluster recreates -> deploys skip the ~20-40min yfinance
+        # re-download. Pinning also removes the latent risk that an unpinned head
+        # lands on a different node and can't bind the 12dc7f-pinned PVC
+        # (PersistentVolume node-affinity Pending failure).
+        # NOTE: 12dc7f is a WiFi homelab node that can flap; if it becomes
+        # persistently unreachable, delete the cv-cache PVC + re-apply so it
+        # re-provisions on the node the head moves to, then update this pin.
+        # Tolerate the flaky-homelab taints so the head rides out transient
+        # node flaps instead of staying Pending.
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: In
+                  values:
+                  - k8s-node-12dc7f
+        tolerations:
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 300
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoSchedule
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 300
+        containers:
+        - env:
+          - name: RAY_DISABLE_MEMORY_MONITOR
+            value: "1"
+          - name: RAY_memory_monitor_refresh_ms
+            value: "0"
+          - name: RAY_gcs_rpc_server_reconnect_timeout_s
+            value: "120"
+          - name: PYTHONPATH
+            value: /app
+          - name: DATA_DIR
+            value: /app/data
+          - name: LOG_DIR
+            value: /app/logs
+          - name: TZ
+            value: America/New_York
+          - name: AWS_REQUEST_CHECKSUM_CALCULATION
+            value: when_required
+          - name: AWS_RESPONSE_CHECKSUM_VALIDATION
+            value: when_required
+          - name: S3_ENDPOINT
+            value: http://garage.garage.svc.cluster.local:3900
+          - name: S3_ACCESS_KEY_ID
+            valueFrom:
+              secretKeyRef:
+                key: access-key-id
+                name: garage-s3
+          - name: S3_SECRET_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                key: secret-access-key
+                name: garage-s3
+          # Pinned to an immutable registry digest (NOT :latest) so head and
+          # workers can never drift to different Ray versions. Repointed by
+          # deploy.sh on every build. Current digest = Ray 2.56.1.
+          image: REGISTRY_HOST:5000/robinhoodbot@sha256:1ff1813d97c0921d1b7df47ae280d7115ea183fd36d6ce29d2d4a4a7f81d0926
+          imagePullPolicy: IfNotPresent
+          name: ray-head
+          ports:
+          - containerPort: 6379
+            name: gcs
+            protocol: TCP
+          - containerPort: 8265
+            name: dashboard
+            protocol: TCP
+          - containerPort: 10001
+            name: client
+            protocol: TCP
+          resources:
+            limits:
+              cpu: "2"
+              memory: 8Gi
+            requests:
+              cpu: "1"
+              memory: 4Gi
+          volumeMounts:
+          - mountPath: /app/config.py
+            name: config
+            readOnly: true
+            subPath: config.py
+          - mountPath: /app/data
+            name: data
+          - mountPath: /app/.yfinance_cache
+            name: data
+            subPath: .yfinance_cache
+          - mountPath: /app/logs
+            name: data
+            subPath: logs/optimizer
+        restartPolicy: Always
+        tolerations:
+        - effect: NoExecute
+          key: node.kubernetes.io/not-ready
+          operator: Exists
+          tolerationSeconds: 30
+        - effect: NoExecute
+          key: node.kubernetes.io/unreachable
+          operator: Exists
+          tolerationSeconds: 30
+        volumes:
+        - name: config
+          secret:
+            secretName: robinhoodbot-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: robinhoodbot-optimizer-data
+  rayVersion: 2.56.1
+  workerGroupSpecs:
+  - groupName: workers
+    maxReplicas: 8
+    minReplicas: 3
+    numOfHosts: 1
+    rayStartParams:
+      num-cpus: "2"
+      # Cap Ray's object store (plasma) per worker. In Ray cluster mode the
+      # eval data flows through disk/S3 pickle (NOT the object store), and task
+      # args/returns are tiny, so the default ~30% of pod RAM is idle and just
+      # reserves RAM we'd rather give to the data cache. 1GiB is plenty.
+      object-store-memory: "1073741824"
+    replicas: 6
+    template:
+      metadata:
+        labels:
+          app: robinhoodbot-optimizer
+          ray-role: worker
+      spec:
+        affinity:
+          podAntiAffinity:
+            # STRICT 1-worker-per-node (required, not preferred). A worker's
+            # node-RAM footprint is ~5.5GiB (3.5Gi limit + 2Gi /dev/shm); the
+            # small homelab nodes are only ~6.8GiB, so 2 workers oversubscribe
+            # a node and the raylet starves -> "GCS overloaded" startup crash.
+            # required (not preferred) is mandatory: preferred let 2 slip onto
+            # one node. With the smaller post-downcast footprint, 1-per-node
+            # across the small nodes yields ~12 workers -- far more than the
+            # old ~5 we got when workers were ~10.5GiB each.
+            requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                - key: ray-role
+                  operator: In
+                  values:
+                  - worker
+              topologyKey: kubernetes.io/hostname
+          # Keep workers OFF the head's node (087fab) so the head + optimizer
+          # own that node's CPU/RAM, AND off the known-flaky/unreachable nodes
+          # (12dc7f, 4d3509, 93a54c -- all shown Ready=Unknown with unreachable
+          # taints). The autoscaler otherwise places workers there; when such a
+          # node dies mid-generation the optimizer's ray.get() throws
+          # NodeDiedError and crashes the whole Job. Excluding them makes the
+          # worker pool resilient to this flaky-homelab failure mode.
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - theo-thinkpad-l430
+                  - k8s-node-087fab
+                  - k8s-node-12dc7f
+                  - k8s-node-4d3509
+                  - k8s-node-93a54c
+        volumes:
+        - name: shared-mem
+          emptyDir:
+            medium: Memory
+            # Override KubeRay's auto-injected /dev/shm (which it sizes to the
+            # memory LIMIT, i.e. 4.5Gi -> was oversubscribing the 6.8GiB homelab
+            # nodes and crashing workers). Ray's object store is capped at 1GiB
+            # (#4), so 2Gi of shm is ample headroom. Keeping this small is what
+            # lets a 6.8GiB node hold one worker (limit 3.5Gi + shm 2Gi = 5.5GiB).
+            sizeLimit: 2Gi
+        containers:
+        - env:
+          - name: RAY_DISABLE_MEMORY_MONITOR
+            value: "1"
+          - name: RAY_memory_monitor_refresh_ms
+            value: "0"
+          - name: PYTHONPATH
+            value: /app
+          - name: AWS_REQUEST_CHECKSUM_CALCULATION
+            value: when_required
+          - name: AWS_RESPONSE_CHECKSUM_VALIDATION
+            value: when_required
+          - name: S3_ENDPOINT
+            value: http://garage.garage.svc.cluster.local:3900
+          - name: S3_ACCESS_KEY_ID
+            valueFrom:
+              secretKeyRef:
+                key: access-key-id
+                name: garage-s3
+          - name: S3_SECRET_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                key: secret-access-key
+                name: garage-s3
+          # Pinned to an immutable registry digest (NOT :latest) so head and
+          # workers can never drift to different Ray versions. Repointed by
+          # deploy.sh on every build. Current digest = Ray 2.56.1.
+          image: REGISTRY_HOST:5000/robinhoodbot@sha256:1ff1813d97c0921d1b7df47ae280d7115ea183fd36d6ce29d2d4a4a7f81d0926
+          imagePullPolicy: IfNotPresent
+          name: machine-learning
+          resources:
+            limits:
+              cpu: "3"
+              # With float32/int32 data downcast (#1) + 1GiB object-store cap
+              # (#4), measured peak is ~3GiB. 3.5Gi leaves headroom without
+              # wasting node RAM. NOTE: total node-RAM per worker = this limit
+              # + the /dev/shm emptyDir below; keep both small enough that a
+              # 6.8GiB homelab node can hold one worker (see shared-mem volume).
+              memory: 3.5Gi
+            requests:
+              cpu: "2"
+              # Lowered from 4Gi: smaller per-pod footprint after downcast +
+              # object-store cap lets the scheduler pack more workers per node
+              # (relaxed anti-affinity weight=1). Above measured peak or pods
+              # OOMKill — re-measure with Prometheus before dropping further.
+              memory: 2.5Gi
+        restartPolicy: Always
+        tolerations:
+        - effect: NoExecute
+          key: node.kubernetes.io/not-ready
+          operator: Exists
+          tolerationSeconds: 30
+        - effect: NoExecute
+          key: node.kubernetes.io/unreachable
+          operator: Exists
+          tolerationSeconds: 30
+status:
+  availableWorkerReplicas: 10
+  conditions:
+  - lastTransitionTime: "2026-07-18T21:08:45Z"
+    message: ""
+    reason: HeadPodRunningAndReady
+    status: "True"
+    type: HeadPodReady
+  - lastTransitionTime: "2026-07-17T05:38:36Z"
+    message: All Ray Pods are ready for the first time
+    reason: AllPodRunningAndReadyFirstTime
+    status: "True"
+    type: RayClusterProvisioned
+  - lastTransitionTime: "2026-07-17T05:18:30Z"
+    message: ""
+    reason: RayClusterSuspended
+    status: "False"
+    type: RayClusterSuspended
+  - lastTransitionTime: "2026-07-17T05:18:30Z"
+    message: ""
+    reason: RayClusterSuspending
+    status: "False"
+    type: RayClusterSuspending
+  desiredCPU: "21"
+  desiredGPU: "0"
+  desiredMemory: 44Gi
+  desiredTPU: "0"
+  desiredWorkerReplicas: 10
+  endpoints:
+    client: "10001"
+    dashboard: "8265"
+    gcs: "6379"
+    metrics: "8080"
+  head:
+    podIP: 192.172.154.104
+    podName: optimizer-ray-head-tvxnt
+    serviceIP: 192.172.154.104
+    serviceName: optimizer-ray-head-svc
+  lastUpdateTime: "2026-07-21T00:23:47Z"
+  maxWorkerReplicas: 24
+  minWorkerReplicas: 3
+  observedGeneration: 12
+  state: ready
+  stateTransitionTimes:
+    ready: "2026-07-17T05:39:00Z"

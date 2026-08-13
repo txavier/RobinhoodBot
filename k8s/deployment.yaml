@@ -30,8 +30,12 @@ spec:
       initContainers:
         # Download latest optimizer result from S3 (if available)
         - name: s3-init
-          image: REGISTRY_HOST:5000/robinhoodbot:latest
-          imagePullPolicy: Always
+          # Pinned to the same immutable digest as the Ray cluster + optimizer
+          # (Ray 2.56.1) so the whole app runs one consistent image. Repointed
+          # by deploy.sh on every build. imagePullPolicy IfNotPresent makes the
+          # pin authoritative even if :latest is repushed.
+          image: REGISTRY_HOST:5000/robinhoodbot@sha256:1ff1813d97c0921d1b7df47ae280d7115ea183fd36d6ce29d2d4a4a7f81d0926
+          imagePullPolicy: IfNotPresent
           command: ["python3", "s3_sync.py", "download-bot-inputs"]
           env:
             - name: DATA_DIR
@@ -53,8 +57,12 @@ spec:
               mountPath: /app/data
       containers:
         - name: bot
-          image: REGISTRY_HOST:5000/robinhoodbot:latest
-          imagePullPolicy: Always
+          # Pinned to the same immutable digest as the Ray cluster + optimizer
+          # (Ray 2.56.1) so the whole app runs one consistent image. Repointed
+          # by deploy.sh on every build. imagePullPolicy IfNotPresent makes the
+          # pin authoritative even if :latest is repushed.
+          image: REGISTRY_HOST:5000/robinhoodbot@sha256:1ff1813d97c0921d1b7df47ae280d7115ea183fd36d6ce29d2d4a4a7f81d0926
+          imagePullPolicy: IfNotPresent
           env:
             - name: TZ
               value: "America/New_York"
@@ -102,8 +110,12 @@ spec:
               cpu: "500m"
         # Sidecar: periodically upload bot outputs to S3 for the optimizer
         - name: s3-sidecar
-          image: REGISTRY_HOST:5000/robinhoodbot:latest
-          imagePullPolicy: Always
+          # Pinned to the same immutable digest as the Ray cluster + optimizer
+          # (Ray 2.56.1) so the whole app runs one consistent image. Repointed
+          # by deploy.sh on every build. imagePullPolicy IfNotPresent makes the
+          # pin authoritative even if :latest is repushed.
+          image: REGISTRY_HOST:5000/robinhoodbot@sha256:1ff1813d97c0921d1b7df47ae280d7115ea183fd36d6ce29d2d4a4a7f81d0926
+          imagePullPolicy: IfNotPresent
           command: ["python3", "s3_sync.py", "bot-sidecar", "604800"]
           env:
             - name: DATA_DIR
