@@ -34,7 +34,7 @@ spec:
           # (Ray 2.56.1) so the whole app runs one consistent image. Repointed
           # by deploy.sh on every build. imagePullPolicy IfNotPresent makes the
           # pin authoritative even if :latest is repushed.
-          image: REGISTRY_HOST:5000/robinhoodbot@sha256:1ff1813d97c0921d1b7df47ae280d7115ea183fd36d6ce29d2d4a4a7f81d0926
+          image: REGISTRY_HOST:5000/robinhoodbot@sha256:f68ca4f9c9d4c99a4a1feb89a0ccf652eabd52ec0de26b564d0e52c796c79fdc
           imagePullPolicy: IfNotPresent
           command: ["python3", "s3_sync.py", "download-bot-inputs"]
           env:
@@ -61,7 +61,7 @@ spec:
           # (Ray 2.56.1) so the whole app runs one consistent image. Repointed
           # by deploy.sh on every build. imagePullPolicy IfNotPresent makes the
           # pin authoritative even if :latest is repushed.
-          image: REGISTRY_HOST:5000/robinhoodbot@sha256:1ff1813d97c0921d1b7df47ae280d7115ea183fd36d6ce29d2d4a4a7f81d0926
+          image: REGISTRY_HOST:5000/robinhoodbot@sha256:f68ca4f9c9d4c99a4a1feb89a0ccf652eabd52ec0de26b564d0e52c796c79fdc
           imagePullPolicy: IfNotPresent
           env:
             - name: TZ
@@ -114,7 +114,7 @@ spec:
           # (Ray 2.56.1) so the whole app runs one consistent image. Repointed
           # by deploy.sh on every build. imagePullPolicy IfNotPresent makes the
           # pin authoritative even if :latest is repushed.
-          image: REGISTRY_HOST:5000/robinhoodbot@sha256:1ff1813d97c0921d1b7df47ae280d7115ea183fd36d6ce29d2d4a4a7f81d0926
+          image: REGISTRY_HOST:5000/robinhoodbot@sha256:f68ca4f9c9d4c99a4a1feb89a0ccf652eabd52ec0de26b564d0e52c796c79fdc
           imagePullPolicy: IfNotPresent
           command: ["python3", "s3_sync.py", "bot-sidecar", "604800"]
           env:

@@ -85,7 +85,7 @@ spec:
           # Pinned to an immutable registry digest (NOT :latest) so head and
           # workers can never drift to different Ray versions. Repointed by
           # deploy.sh on every build. Current digest = Ray 2.56.1.
-          image: REGISTRY_HOST:5000/robinhoodbot@sha256:1ff1813d97c0921d1b7df47ae280d7115ea183fd36d6ce29d2d4a4a7f81d0926
+          image: REGISTRY_HOST:5000/robinhoodbot@sha256:f68ca4f9c9d4c99a4a1feb89a0ccf652eabd52ec0de26b564d0e52c796c79fdc
           imagePullPolicy: IfNotPresent
           name: ray-head
           ports:
@@ -135,7 +135,7 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: robinhoodbot-optimizer-data
-  rayVersion: 2.56.1
+  rayVersion: 2.57.0
   workerGroupSpecs:
   - groupName: workers
     maxReplicas: 8
@@ -229,7 +229,7 @@ spec:
           # Pinned to an immutable registry digest (NOT :latest) so head and
           # workers can never drift to different Ray versions. Repointed by
           # deploy.sh on every build. Current digest = Ray 2.56.1.
-          image: REGISTRY_HOST:5000/robinhoodbot@sha256:1ff1813d97c0921d1b7df47ae280d7115ea183fd36d6ce29d2d4a4a7f81d0926
+          image: REGISTRY_HOST:5000/robinhoodbot@sha256:f68ca4f9c9d4c99a4a1feb89a0ccf652eabd52ec0de26b564d0e52c796c79fdc
           imagePullPolicy: IfNotPresent
           name: machine-learning
           resources:
