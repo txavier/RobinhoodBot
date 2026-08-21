@@ -1816,11 +1816,18 @@ def scan_stocks():
                 print("⚠️  Login failed but network is down — will retry on next loop iteration.")
                 json_logger.log("warning", "Login returned None but network is down", {"action": "retry"})
                 return
-            print("❌ Login failed (token expired or credentials invalid). Manual re-login required.")
-            print("   Run: cd ~/dev/RobinhoodBot/robinhoodbot && python main.py")
-            json_logger.log("error", "Login failed - session expired", {"action": "exit"})
-            _send_password_required_email()
-            sys.exit(75)
+            # Login could not complete (device approval not given within the window,
+            # or credentials invalid). We do NOT sys.exit(75) here: under Kubernetes
+            # (restartPolicy: Always) that would crash-loop the pod and re-issue a
+            # brand-new device-approval challenge on every restart — the user ends up
+            # approving stale challenges while the live pod polls a different one.
+            # Instead signal the caller to retry in-process so a single pod keeps a
+            # single live challenge open for the user to approve.
+            print("❌ Login failed (device approval not completed or session invalid).")
+            print("   The bot will retry in-process and keep the current challenge open.")
+            print("   APPROVE THE LATEST login prompt on your phone when it appears.")
+            json_logger.log("warning", "Login returned None - will retry in-process (no exit)", {"action": "retry_in_process"})
+            return "AUTH_RETRY"
 
         login_to_sms()
 
@@ -2321,11 +2328,14 @@ def scan_stocks():
             json_logger.log("error", "Robinhood password required - session expired", {
                 "error_type": "RobinhoodPasswordRequired",
                 "message": str(e),
-                "action": "Notification sent. Manual login required to refresh session."
+                "action": "Notification sent. AUTH_RETRY — bot will loop in-process and keep retrying so a single challenge stays open."
             })
-            print("Bot will exit. Run 'python main.py' manually to enter password, then restart with './run.sh'.")
-            print("run.sh will NOT restart automatically to avoid triggering Robinhood security lockout.")
-            sys.exit(75)  # EX_TEMPFAIL - distinctive code so run.sh stops looping
+            # NOTE: intentionally do NOT sys.exit(75) here. Under Kubernetes
+            # (restartPolicy: Always) that crash-loops the pod and spawns a fresh
+            # device-approval challenge each time. Return AUTH_RETRY so the
+            # in-process retry loop at the bottom keeps ONE challenge open to approve.
+            print("Password required — bot will keep retrying in-process. Approve the latest login prompt on your phone.")
+            return "AUTH_RETRY"
     except Exception as e:
         print("Unexpected error:", str(e))
         print(traceback.format_exc())
@@ -2419,4 +2429,29 @@ def genetic_generation_add(symbol, is_take_profit):
         return False
 
 # execute the scan
-scan_stocks()
+# Drive the scan in-process with a bounded auth-retry loop. When login cannot
+# complete (device approval not yet given, or session invalid), scan_stocks()
+# returns the sentinel "AUTH_RETRY" instead of exiting. We retry here with a
+# short backoff so a SINGLE pod keeps ONE live Robinhood challenge open for the
+# user to approve — this avoids crash-looping under Kubernetes (restartPolicy:
+# Always), which would otherwise re-issue a fresh challenge on every restart.
+MAX_AUTH_RETRIES = 30  # ~30 * 20s = 10 min of continuous waiting before a longer pause
+auth_attempts = 0
+while True:
+    result = scan_stocks()
+    if result == "AUTH_RETRY":
+        auth_attempts += 1
+        if auth_attempts >= MAX_AUTH_RETRIES:
+            # Genuinely stuck (e.g. wrong creds). Back off hard and let run.sh's
+            # 7-minute loop take over rather than spinning forever in-process.
+            print(f"⚠️  Auth still not resolved after {MAX_AUTH_RETRIES} attempts. "
+                  "Pausing; run.sh will retry on its normal cadence.")
+            break
+        print(f"Auth retry {auth_attempts}/{MAX_AUTH_RETRIES} — issuing a fresh device-approval "
+              f"challenge. Check logs for 'DEBUG: verification workflow_id' and approve THAT one on your phone.")
+        time.sleep(20)
+        continue
+    # scan_stocks completed a full scan (or hit a non-auth error that it handled
+    # internally / raised to be retried by run.sh). Exit the in-process loop and
+    # let run.sh sleep 7 minutes as designed.
+    break

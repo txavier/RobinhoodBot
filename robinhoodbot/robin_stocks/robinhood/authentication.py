@@ -40,9 +40,20 @@ def _validate_sherrif_id(device_token: str, workflow_id: str):
     machine_id = _get_sherrif_id(machine_data)
     inquiries_url = f"https://api.robinhood.com/pathfinder/inquiries/{machine_id}/user_view/"
 
-    start_time = time.time()
-    
-    while time.time() - start_time < 120:  # 2-minute timeout
+    # Robinhood issues a NEW workflow_id + challenge on EVERY login attempt.
+    # The user must approve the *most recent* (latest) challenge — an approval
+    # applied to an already-expired attempt will NOT satisfy the current one.
+    # This is why a stale "waiting for device approval" message can persist:
+    # the live pod is polling a fresh challenge, not the one you already approved.
+    print(f"DEBUG: verification workflow_id: {workflow_id} machine_id: {machine_id}")
+
+    # ------------------------------------------------------------------
+    # Phase 1: poll the inquiry until the challenge reaches 'validated'
+    # (app prompt approved, SMS/email code entered, etc.).
+    # ------------------------------------------------------------------
+    phase1_start = time.time()
+    challenge_approved = False
+    while time.time() - phase1_start < 120:  # 2-minute timeout
         time.sleep(5)
         inquiries_response = request_get(inquiries_url)
 
@@ -57,17 +68,20 @@ def _validate_sherrif_id(device_token: str, workflow_id: str):
             challenge_id = challenge["id"]
             if challenge_type == "prompt":
                 print("Check robinhood app for device approvals method...")
+                print("  -> APPROVE THE LATEST challenge on your phone (older approvals will not match).")
                 prompt_url = f"https://api.robinhood.com/push/{challenge_id}/get_prompts_status/"
                 prompt_start = time.time()
                 while time.time() - prompt_start < 120:
                     time.sleep(5)
                     prompt_challenge_status = request_get(url=prompt_url)
                     if prompt_challenge_status and prompt_challenge_status.get("challenge_status") == "validated":
+                        challenge_approved = True
                         break
                 break
 
             if challenge_status == "validated":
                 print("Verification successful!")
+                challenge_approved = True
                 break  # Stop polling once verification is complete
 
             if challenge_type in ["sms", "email"] and challenge_status == "issued":
@@ -77,36 +91,46 @@ def _validate_sherrif_id(device_token: str, workflow_id: str):
                 challenge_response = request_post(url=challenge_url, payload=challenge_payload)
 
                 if challenge_response.get("status") == "validated":
+                    challenge_approved = True
                     break
 
-    # **Now poll the workflow status to confirm final approval**
-    inquiries_url = f"https://api.robinhood.com/pathfinder/inquiries/{machine_id}/user_view/"
-    
+    if not challenge_approved:
+        # Timed out waiting for the user to approve the challenge. The caller
+        # will retry on its next loop; that attempt issues a fresh challenge.
+        raise TimeoutError("Timed out waiting for device approval (no approval within 2 minutes).")
+
+    # ------------------------------------------------------------------
+    # Phase 2: confirm final workflow approval.
+    # IMPORTANT: use a FRESH deadline here. Phase-1 polling may have already
+    # consumed the original start time, so reusing it made this loop exit
+    # immediately and the approval could never be confirmed (the bot would
+    # always report "still waiting" even right after a successful approval).
+    # ------------------------------------------------------------------
+    print("Device approval received — confirming Robinhood login approval...")
     retry_attempts = 5  # Allow up to 5 retries in case of 500 errors
-    while time.time() - start_time < 120:  # 2-minute timeout 
+    confirm_start = time.time()  # fresh timer for phase 2
+    while time.time() - confirm_start < 120:  # 2-minute timeout
         try:
             inquiries_payload = {"sequence": 0, "user_input": {"status": "continue"}}
-            inquiries_response = request_post(url=inquiries_url, payload=inquiries_payload,json=True)
-            if "type_context" in inquiries_response and inquiries_response["type_context"]["result"] == "workflow_status_approved":
+            inquiries_response = request_post(url=inquiries_url, payload=inquiries_payload, json=True)
+            if inquiries_response and "type_context" in inquiries_response and inquiries_response["type_context"]["result"] == "workflow_status_approved":
                 print("Verification successful!")
                 return
-            else:
-                time.sleep(5)  # **Increase delay between requests to prevent rate limits**
         except requests.exceptions.RequestException as e:
-            time.sleep(5)
-            print(f"API request failed: {e}")
             retry_attempts -= 1
-            if retry_attempts == 0:
+            print(f"API request failed: {e}")
+            if retry_attempts <= 0:
                 raise TimeoutError("Max retries reached. Assuming login approved and proceeding.")
             print("Retrying workflow status check...")
+            time.sleep(5)
             continue
 
         if not inquiries_response:  # Handle None response
-            time.sleep(5)
-            print("Error: No response from Robinhood API. Retrying...")
             retry_attempts -= 1
-            if retry_attempts == 0:
+            print("Error: No response from Robinhood API. Retrying...")
+            if retry_attempts <= 0:
                 raise TimeoutError("Max retries reached. Assuming login approved and proceeding.")
+            time.sleep(5)
             continue
 
         workflow_status = inquiries_response.get("verification_workflow", {}).get("workflow_status")
@@ -118,8 +142,9 @@ def _validate_sherrif_id(device_token: str, workflow_id: str):
             print("Still waiting for Robinhood to finalize login approval...")
         else:
             retry_attempts -= 1
-            if retry_attempts == 0:
+            if retry_attempts <= 0:
                 raise TimeoutError("Max retries reached. Assuming login approved and proceeding.")
+        time.sleep(5)
 
     raise TimeoutError("Timeout reached. Assuming login is approved and proceeding.")
 
