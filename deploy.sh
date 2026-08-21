@@ -94,6 +94,62 @@ remote() {
     ssh "${SSH_OPTS[@]}" "${REMOTE_SSH}" "$@"
 }
 
+# ---------------------------------------------------------------------------
+# Pin all k8s manifests to the immutable digest of the just-pushed :latest image.
+#
+# WHY: A mutable :latest tag on a Ray cluster lets the head and workers drift to
+# different Ray versions (the optimizer was downed by exactly this: head on
+# Ray 2.55.0, workers pulled a newer 2.56.1 and refused to join). We resolve
+# :latest to its registry digest and rewrite every manifest to use
+# image@sha256:... + imagePullPolicy: IfNotPresent so all workloads always run
+# the identical, immutable build.
+# ---------------------------------------------------------------------------
+repin_images() {
+    header "Pinning k8s manifests to the new image digest"
+    local idx digest
+    log "Resolving digest of ${REGISTRY_IMAGE}:latest ..."
+    # The registry stores :latest as an OCI image index; request that media type.
+    idx=$(curl -s --connect-timeout 10 \
+        -H "Accept: application/vnd.oci.image.index.v1+json" \
+        "http://${REGISTRY}/v2/robinhoodbot/manifests/latest")
+    digest=$(printf '%s' "$idx" | grep -i -o 'sha256:[0-9a-f]\{64\}' | head -n1)
+    if [[ -z "$digest" ]]; then
+        err "Could not resolve digest for ${REGISTRY_IMAGE}:latest — leaving manifests unchanged."
+        return 1
+    fi
+    log "Resolved digest: ${digest}"
+
+    local f
+    for f in "${LOCAL_DIR}/k8s/deployment.yaml" \
+             "${LOCAL_DIR}/k8s/optimizer-job.yaml" \
+             "${LOCAL_DIR}/k8s/ray-cluster.yaml"; do
+        if [[ ! -f "$f" ]]; then
+            warn "Manifest not found, skipping: $f"
+            continue
+        fi
+        # Replace every '<registry>/robinhoodbot:latest' (optionally with a
+        # digest already present) with the pinned digest, and set
+        # imagePullPolicy: Always -> IfNotPresent.
+        sed -i -E \
+            -e "s#192\.168\.87\.35:5000/robinhoodbot(:[^ \"']*|@sha256:[0-9a-f]{64})?#REGISTRY_HOST:5000/robinhoodbot@${digest}#g" \
+            -e "s#imagePullPolicy: Always#imagePullPolicy: IfNotPresent#g" \
+            "$f"
+        log "  pinned: $f"
+    done
+
+    # Keep the RayCluster's declared rayVersion in sync with the image.
+    local ray_ver
+    ray_ver=$(docker run --rm --entrypoint ray \
+        "REGISTRY_HOST:5000/robinhoodbot@${digest}" --version 2>/dev/null \
+        | grep -o 'version [0-9.]*' | awk '{print $2}')
+    if [[ -n "$ray_ver" && -f "${LOCAL_DIR}/k8s/ray-cluster.yaml" ]]; then
+        sed -i -E "s#^(\s*)rayVersion: .*#\1rayVersion: ${ray_ver}#" \
+            "${LOCAL_DIR}/k8s/ray-cluster.yaml"
+        log "  set rayVersion: ${ray_ver}"
+    fi
+    log "All manifests pinned to ${digest}"
+}
+
 remote_kubectl() {
     remote "kubectl $*"
 }
@@ -169,6 +225,10 @@ cmd_build() {
     remote "docker tag ${IMAGE_NAME} localhost:5000/${IMAGE_NAME} && docker push localhost:5000/${IMAGE_NAME}"
 
     log "Image available to all Kubernetes nodes via ${REGISTRY_IMAGE}"
+
+    # Pin all k8s manifests to the new image's immutable digest so head/worker/
+    # optimizer can never drift to different Ray versions again.
+    repin_images || warn "repin_images failed; manifests still reference :latest."
 }
 
 cmd_deploy_bot() {
@@ -240,6 +300,10 @@ cmd_deploy_optimizer() {
     # Ensure PVCs exist
     remote_kubectl "apply -f ${REMOTE_DIR}/k8s/optimizer-cache-pvc.yaml"
     remote_kubectl "apply -f ${REMOTE_DIR}/k8s/optimizer-data-pvc.yaml"
+
+    # Re-pin manifests to the current image digest (idempotent — no-op if the
+    # image hasn't changed) so the Ray cluster and optimizer Job stay aligned.
+    repin_images || warn "repin_images failed; using existing pinned digest."
 
     # Deploy the Ray cluster (head + workers across nodes)
     log "Creating Ray cluster (1 head + 4 workers)..."

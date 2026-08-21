@@ -70,11 +70,28 @@ def _validate_sherrif_id(device_token: str, workflow_id: str):
                 print("Check robinhood app for device approvals method...")
                 print("  -> APPROVE THE LATEST challenge on your phone (older approvals will not match).")
                 prompt_url = f"https://api.robinhood.com/push/{challenge_id}/get_prompts_status/"
-                prompt_start = time.time()
-                while time.time() - prompt_start < 120:
-                    time.sleep(5)
+                # Device approval may take a while (user must accept in the Robinhood
+                # app). Check gently: once every 30 minutes. Polling faster (e.g. every
+                # few seconds) hammers the endpoint and Robinhood rate-limits it with
+                # 429s, which blocks login entirely.
+                #
+                # Between checks we still emit a heartbeat every 5 minutes. This keeps
+                # the pod's liveness probe (console_log modified within 12 min) alive
+                # so k8s doesn't restart us and re-enter the verification loop.
+                print("   Waiting for device approval — re-checking every 30 minutes.")
+                next_prompt_check = time.time() + 30 * 60
+                while True:
+                    time.sleep(5 * 60)  # heartbeat interval, keeps liveness alive
+                    if time.time() < next_prompt_check:
+                        print("   Still waiting for device approval...")
+                        continue
+                    next_prompt_check = time.time() + 30 * 60
                     prompt_challenge_status = request_get(url=prompt_url)
                     if prompt_challenge_status and prompt_challenge_status.get("challenge_status") == "validated":
+                        # (merged) keep the incoming gentle-polling success message,
+                        # but also set the flag so Phase 2 (fresh-timer workflow
+                        # confirmation) still runs correctly.
+                        print("Verification successful!")
                         challenge_approved = True
                         break
                 break

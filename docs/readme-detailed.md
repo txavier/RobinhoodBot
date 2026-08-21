@@ -2,7 +2,14 @@
 
 ## Trading Flow
 
-The bot runs `scan_stocks()` in a continuous loop (every 5 minutes via `run.sh`). Each scan follows this flow:
+The bot runs `scan_stocks()` in a continuous loop (every 7 minutes via `run.sh`). Each scan follows this flow:
+
+> **Note on device (2FA) verification.** If a login attempt hits Robinhood's push-prompt
+> challenge (approve-in-app), `_validate_sherrif_id()` in
+> `robin_stocks/robinhood/authentication.py` waits for approval by re-checking
+> `get_prompts_status` **once every 30 minutes** (with a 5-minute heartbeat so the pod's
+> liveness probe stays satisfied). It deliberately does not poll every few seconds — that
+> hammering gets rate-limited (429) by Robinhood and blocks login entirely.
 
 ```mermaid
 flowchart TD
@@ -219,7 +226,7 @@ Watchlist symbols are ordered by price slope (steepest positive slope first). Ea
 | `console_log.json` | Raw console output log |
 | `genetic_optimization_intraday_result.json` | Optimizer results with best gene per generation |
 | `ai_suggested_config_changelog.json` | History of AI-recommended config changes |
-| `run.sh` | Main bot runner (loops `scan_stocks()` every 5 min) |
+| `run.sh` | Main bot runner (loops `scan_stocks()` every 7 min) |
 | `run_optimizer.sh` | Genetic optimizer runner with logging |
 
 ## Genetic Optimizer

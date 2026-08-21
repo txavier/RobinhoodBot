@@ -13,6 +13,17 @@ spec:
     spec:
       restartPolicy: Never
       priorityClassName: robinhoodbot-high
+      # The optimizer shares the ReadWriteOnce PVC (robinhoodbot-optimizer-data)
+      # with the Ray head pod. RWO volumes only attach to one node at a time, so
+      # the optimizer MUST schedule onto the same node that hosts the Ray head,
+      # otherwise it deadlocks with a Multi-Attach error.
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  ray.io/node-type: head
+              topologyKey: kubernetes.io/hostname
       tolerations:
         - key: "node.kubernetes.io/not-ready"
           operator: "Exists"
@@ -28,8 +39,12 @@ spec:
           command: ['sh', '-c', 'echo "Waiting for Ray head..."; until nc -z optimizer-ray-head-svc.robinhoodbot.svc.cluster.local 10001; do sleep 5; done; echo "Ray head is ready"']
       containers:
         - name: optimizer
-          image: REGISTRY_HOST:5000/robinhoodbot:latest
-          imagePullPolicy: Always
+          # Pinned to the SAME immutable digest as the Ray cluster (Ray 2.56.1)
+          # so the optimizer never joins a mismatched Ray head. Repointed by
+          # deploy.sh on every build. imagePullPolicy IfNotPresent guarantees
+          # the pinned digest is used even if :latest is later repushed.
+          image: REGISTRY_HOST:5000/robinhoodbot@sha256:f68ca4f9c9d4c99a4a1feb89a0ccf652eabd52ec0de26b564d0e52c796c79fdc
+          imagePullPolicy: IfNotPresent
           command: ["python3", "genetic_optimizer_intraday.py"]
           args:
             - "--num-stocks=600"
@@ -95,6 +110,14 @@ spec:
               readOnly: true
             - name: data
               mountPath: /app/data
+            # Dedicated (non-shared) PVC for the Ray CV/market-data pickle cache.
+            # The CV pickle is written here (DATA_DIR/.ray_shared_data, see
+            # genetic_optimizer_intraday.py ~L1527). It MUST NOT live on the
+            # shared robinhoodbot-optimizer-data RWO PVC that the Ray head also
+            # mounts RW — that dual-mount contention stalled the optimizer in
+            # disk-sleep writing the pickle. This volume shadows /app/data/.ray_shared_data.
+            - name: cv-cache
+              mountPath: /app/data/.ray_shared_data
             - name: data
               mountPath: /app/.yfinance_cache
               subPath: .yfinance_cache
@@ -103,10 +126,14 @@ spec:
               subPath: logs/optimizer
           resources:
             requests:
+              # Measured peak working-set ~1.77Gi (Prometheus, run 2026-07-20).
+              # 2.5Gi request gives ~40% headroom for data-load/checkpoint spikes.
               memory: "2560Mi"
               cpu: "500m"
             limits:
-              memory: "5Gi"
+              # Was 5Gi; real peak is ~1.77Gi, so 3Gi cap still leaves ~70% headroom
+              # while preventing a runaway optimizer from starving the Ray head node.
+              memory: "3Gi"
               cpu: "1000m"
       volumes:
         - name: config
@@ -115,3 +142,6 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: robinhoodbot-optimizer-data
+        - name: cv-cache
+          persistentVolumeClaim:
+            claimName: robinhoodbot-optimizer-cv-cache

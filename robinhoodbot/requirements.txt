@@ -16,3 +16,5 @@ yfinance
 ray[default]
 # S3-compatible storage (Garage) for cross-pod file sharing without NFS
 boto3
+# Parquet engine: per-symbol cache files (lazy SSD streaming to workers)
+pyarrow

@@ -1653,22 +1653,30 @@ class IntradayBacktester:
                 )
             
             symbol_data: Dict[str, pd.DataFrame] = {}
-            for i, symbol in enumerate(symbols):
-                try:
-                    if real_data_cache is not None and symbol in real_data_cache:
-                        df = real_data_cache[symbol].copy()
-                    elif real_data_cache is not None:
-                        # Cache provided but symbol missing (e.g. filtered out in CV fold) — skip
+            # Lazy parquet cache (cloud Ray): DON'T pre-materialize the whole
+            # universe into symbol_data — assign the proxy directly. The sim
+            # loop already pulls each symbol on demand via .get(), which the
+            # proxy streams from SSD into a bounded LRU. This keeps a worker's
+            # RAM at the LRU working set instead of ~576 symbols.
+            if real_data_cache is not None and getattr(real_data_cache, '_is_lazy_cache', False):
+                symbol_data = real_data_cache
+            else:
+                for i, symbol in enumerate(symbols):
+                    try:
+                        if real_data_cache is not None and symbol in real_data_cache:
+                            df = real_data_cache[symbol].copy()
+                        elif real_data_cache is not None:
+                            # Cache provided but symbol missing (e.g. filtered out in CV fold) — skip
+                            continue
+                        else:
+                            if verbose:
+                                print(f"Downloading real data for {symbol}...")
+                            df = download_real_data(symbol, days)
+                        df = self.strategy.calculate_indicators(df)
+                        symbol_data[symbol] = df
+                    except (ValueError, TypeError, KeyError):
+                        # Skip symbols that fail download (e.g. Yahoo throttling)
                         continue
-                    else:
-                        if verbose:
-                            print(f"Downloading real data for {symbol}...")
-                        df = download_real_data(symbol, days)
-                    df = self.strategy.calculate_indicators(df)
-                    symbol_data[symbol] = df
-                except (ValueError, TypeError, KeyError):
-                    # Skip symbols that fail download (e.g. Yahoo throttling)
-                    continue
         else:
             # Synthetic data (original behavior)
             market_data = generate_market_data(

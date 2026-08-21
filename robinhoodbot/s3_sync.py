@@ -168,8 +168,19 @@ def upload_optimizer_results_to_s3():
 
 
 def upload_ray_shared_data_to_s3(data_dir):
-    """Upload .ray_shared_data/ pickle files to S3 for Ray workers."""
-    upload_directory(data_dir, ".ray_shared_data")
+    """Upload .ray_shared_data/ pickle files to S3 for Ray workers.
+
+    Returns the number of files successfully uploaded (0 if none / all failed).
+    """
+    if not os.path.isdir(data_dir):
+        return 0
+    ok = 0
+    for filename in os.listdir(data_dir):
+        filepath = os.path.join(data_dir, filename)
+        if os.path.isfile(filepath):
+            if upload_file(filepath, f".ray_shared_data/{filename}"):
+                ok += 1
+    return ok
 
 
 def download_ray_shared_file_from_s3(s3_key, local_path):
