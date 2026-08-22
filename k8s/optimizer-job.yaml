@@ -43,7 +43,7 @@ spec:
           # so the optimizer never joins a mismatched Ray head. Repointed by
           # deploy.sh on every build. imagePullPolicy IfNotPresent guarantees
           # the pinned digest is used even if :latest is later repushed.
-          image: REGISTRY_HOST:5000/robinhoodbot@sha256:f68ca4f9c9d4c99a4a1feb89a0ccf652eabd52ec0de26b564d0e52c796c79fdc
+          image: REGISTRY_HOST:5000/robinhoodbot:latest
           imagePullPolicy: IfNotPresent
           command: ["python3", "genetic_optimizer_intraday.py"]
           args:

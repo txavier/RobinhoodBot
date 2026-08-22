@@ -46,7 +46,12 @@ REMOTE_SSH="${REMOTE_USER}@${REMOTE_HOST}"
 
 NAMESPACE="robinhoodbot"
 IMAGE_NAME="robinhoodbot:latest"
-REGISTRY="REGISTRY_HOST:5000"
+# REGISTRY must be set in secrets.env (LAN IP:port of the in-cluster registry,
+# e.g. REGISTRY="192.168.1.10:5000"). Never hardcode it here — it's personal.
+if [[ -z "${REGISTRY:-}" ]]; then
+    err "REGISTRY is not set. Add REGISTRY=\"<registry-host>:5000\" to secrets.env."
+    exit 1
+fi
 REGISTRY_IMAGE="${REGISTRY}/${IMAGE_NAME}"
 
 # SSH ControlMaster — multiplex all SSH connections over a single session.
@@ -127,11 +132,11 @@ repin_images() {
             warn "Manifest not found, skipping: $f"
             continue
         fi
-        # Replace every '<registry>/robinhoodbot:latest' (optionally with a
-        # digest already present) with the pinned digest, and set
+        # Replace every 'REGISTRY_HOST:5000/robinhoodbot...' placeholder (or an
+        # already-pinned digest) with the real registry + pinned digest, and set
         # imagePullPolicy: Always -> IfNotPresent.
         sed -i -E \
-            -e "s#192\.168\.87\.35:5000/robinhoodbot(:[^ \"']*|@sha256:[0-9a-f]{64})?#REGISTRY_HOST:5000/robinhoodbot@${digest}#g" \
+            -e "s#REGISTRY_HOST:5000/robinhoodbot(:[^ \"']*|@sha256:[0-9a-f]{64})?#${REGISTRY}/robinhoodbot@${digest}#g" \
             -e "s#imagePullPolicy: Always#imagePullPolicy: IfNotPresent#g" \
             "$f"
         log "  pinned: $f"
@@ -140,7 +145,7 @@ repin_images() {
     # Keep the RayCluster's declared rayVersion in sync with the image.
     local ray_ver
     ray_ver=$(docker run --rm --entrypoint ray \
-        "REGISTRY_HOST:5000/robinhoodbot@${digest}" --version 2>/dev/null \
+        "${REGISTRY}/robinhoodbot@${digest}" --version 2>/dev/null \
         | grep -o 'version [0-9.]*' | awk '{print $2}')
     if [[ -n "$ray_ver" && -f "${LOCAL_DIR}/k8s/ray-cluster.yaml" ]]; then
         sed -i -E "s#^(\s*)rayVersion: .*#\1rayVersion: ${ray_ver}#" \
@@ -220,7 +225,7 @@ cmd_build() {
 
     # Push to local registry so all K8s nodes can pull it.
     # Use localhost:5000 for the push (Docker trusts localhost as insecure by default).
-    # K8s manifests reference REGISTRY_HOST:5000 so workers can pull.
+    # K8s manifests reference ${REGISTRY} so workers can pull.
     log "Pushing image to local registry (${REGISTRY})..."
     remote "docker tag ${IMAGE_NAME} localhost:5000/${IMAGE_NAME} && docker push localhost:5000/${IMAGE_NAME}"
 

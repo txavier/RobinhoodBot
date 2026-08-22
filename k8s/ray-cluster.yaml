@@ -85,7 +85,7 @@ spec:
           # Pinned to an immutable registry digest (NOT :latest) so head and
           # workers can never drift to different Ray versions. Repointed by
           # deploy.sh on every build. Current digest = Ray 2.56.1.
-          image: REGISTRY_HOST:5000/robinhoodbot@sha256:f68ca4f9c9d4c99a4a1feb89a0ccf652eabd52ec0de26b564d0e52c796c79fdc
+          image: REGISTRY_HOST:5000/robinhoodbot:latest
           imagePullPolicy: IfNotPresent
           name: ray-head
           ports:
@@ -229,7 +229,7 @@ spec:
           # Pinned to an immutable registry digest (NOT :latest) so head and
           # workers can never drift to different Ray versions. Repointed by
           # deploy.sh on every build. Current digest = Ray 2.56.1.
-          image: REGISTRY_HOST:5000/robinhoodbot@sha256:f68ca4f9c9d4c99a4a1feb89a0ccf652eabd52ec0de26b564d0e52c796c79fdc
+          image: REGISTRY_HOST:5000/robinhoodbot:latest
           imagePullPolicy: IfNotPresent
           name: machine-learning
           resources:
