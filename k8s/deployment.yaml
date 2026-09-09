@@ -34,7 +34,7 @@ spec:
           # (Ray 2.56.1) so the whole app runs one consistent image. Repointed
           # by deploy.sh on every build. imagePullPolicy IfNotPresent makes the
           # pin authoritative even if :latest is repushed.
-          image: REGISTRY_HOST:5000/robinhoodbot:latest
+          image: 192.168.87.35:5000/robinhoodbot@sha256:aa0c508154bace4e64e86624c9586fa72b7233cc7dc9ef0cadddbb7531632127
           imagePullPolicy: IfNotPresent
           command: ["python3", "s3_sync.py", "download-bot-inputs"]
           env:
@@ -61,13 +61,20 @@ spec:
           # (Ray 2.56.1) so the whole app runs one consistent image. Repointed
           # by deploy.sh on every build. imagePullPolicy IfNotPresent makes the
           # pin authoritative even if :latest is repushed.
-          image: REGISTRY_HOST:5000/robinhoodbot:latest
+          image: 192.168.87.35:5000/robinhoodbot@sha256:aa0c508154bace4e64e86624c9586fa72b7233cc7dc9ef0cadddbb7531632127
           imagePullPolicy: IfNotPresent
           env:
             - name: TZ
               value: "America/New_York"
             - name: DATA_DIR
               value: "/app/data"
+            # Buy kill-switch: set to "false" to halt ALL buy orders while leaving
+            # sells and watchlist management intact. Toggle at runtime (no rebuild):
+            #   kubectl set env deployment/robinhoodbot BUY_ENABLED=false -n robinhoodbot
+            #   kubectl rollout restart deployment/robinhoodbot -n robinhoodbot
+            # Defaults to "true" (buying enabled) when unset.
+            - name: BUY_ENABLED
+              value: "true"
             - name: RH_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -114,7 +121,7 @@ spec:
           # (Ray 2.56.1) so the whole app runs one consistent image. Repointed
           # by deploy.sh on every build. imagePullPolicy IfNotPresent makes the
           # pin authoritative even if :latest is repushed.
-          image: REGISTRY_HOST:5000/robinhoodbot:latest
+          image: 192.168.87.35:5000/robinhoodbot@sha256:aa0c508154bace4e64e86624c9586fa72b7233cc7dc9ef0cadddbb7531632127
           imagePullPolicy: IfNotPresent
           command: ["python3", "s3_sync.py", "bot-sidecar", "604800"]
           env:

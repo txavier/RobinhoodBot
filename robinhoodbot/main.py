@@ -21,6 +21,14 @@ from misc import *
 from tradingstats import *
 from config import *
 from email.mime.text import MIMEText
+
+# Global kill-switch for BUY orders only (sells are unaffected).
+# Read from the BUY_ENABLED env var so it can be toggled at runtime via
+# `kubectl set env deployment/robinhoodbot BUY_ENABLED=false` + rollout, with
+# NO image rebuild. Defaults to True (buying enabled) to preserve current behavior.
+# Note: `debug=True` also suppresses buys (and more); BUY_ENABLED is a narrower,
+# buy-only lever that leaves selling and watchlist writes intact.
+BUY_ENABLED = os.environ.get('BUY_ENABLED', 'true').strip().lower() not in ('0', 'false', 'no', 'off')
 from email.mime.multipart import MIMEMultipart
 from scipy.stats import linregress
 from pyotp import TOTP as otp
@@ -995,7 +1003,7 @@ def buy_holdings(potential_buys, cash, equity, holdings_data_length, buy_reasons
 
         message = "BUY: \nBuying " + str(num_shares) + " shares of " + potential_buys[i] + " at " + str(stock_price) + " costing ${:.2f}".format(stock_price * num_shares) + " with ${:.2f}".format(cash) 
 
-        if not debug:
+        if not debug and BUY_ENABLED:
             result = rr.order_buy_market(potential_buys[i], num_shares)
             if 'detail' in result:
                 print(result['detail'])
@@ -1018,10 +1026,25 @@ def buy_holdings(potential_buys, cash, equity, holdings_data_length, buy_reasons
                     "cash_available": cash,
                     "reason": buy_reasons.get(potential_buys[i]) if buy_reasons else None
                 })
+        else:
+            # Buys suppressed (debug=True OR BUY_ENABLED=false). No live order is
+            # placed and no BUY SMS is sent, but we still track the intended
+            # investment below so later symbols in this cycle size correctly.
+            suppressed_by = "debug" if debug else "BUY_ENABLED=false"
+            print(f"BUY DISABLED ({suppressed_by}): would have bought {num_shares} shares of {potential_buys[i]} at {stock_price}")
+            json_logger.log("buy_disabled", f"Buy suppressed for {potential_buys[i]} ({suppressed_by})", {
+                "symbol": potential_buys[i],
+                "num_shares": num_shares,
+                "stock_price": stock_price,
+                "total_cost": stock_price * num_shares,
+                "suppressed_by": suppressed_by
+            })
+            message = None  # do not send a BUY SMS when no order was placed
         # Track the investment for the budget limiter (even in debug mode, track the intent)
         currently_invested += num_shares * stock_price
         cash -= num_shares * stock_price
-        send_text(message)
+        if message is not None:
+            send_text(message)
 
 def purchase_limiter(num_shares, stock_price, equity, currently_invested):
     """Limit purchases based on purchase_limit_percentage.
