@@ -78,14 +78,18 @@ def _validate_sherrif_id(device_token: str, workflow_id: str):
                 # Between checks we still emit a heartbeat every 5 minutes. This keeps
                 # the pod's liveness probe (console_log modified within 12 min) alive
                 # so k8s doesn't restart us and re-enter the verification loop.
-                print("   Waiting for device approval — re-checking every 30 minutes.")
-                next_prompt_check = time.time() + 30 * 60
+                print("   Waiting for device approval — re-checking every 60 seconds.")
+                next_prompt_check = time.time() + 60
                 while True:
-                    time.sleep(5 * 60)  # heartbeat interval, keeps liveness alive
+                    time.sleep(60)  # poll Robinhood's push status every 60s; gentle
+                                   # enough to avoid 429 rate-limits (those only hit
+                                   # sub-second hammering) yet short enough to catch a
+                                   # device approval BEFORE Robinhood's challenge TTL
+                                   # expires (it is far shorter than the old 30-min wait,
+                                   # which let approvals lapse and looped the bot for days).
                     if time.time() < next_prompt_check:
-                        print("   Still waiting for device approval...")
                         continue
-                    next_prompt_check = time.time() + 30 * 60
+                    next_prompt_check = time.time() + 60
                     prompt_challenge_status = request_get(url=prompt_url)
                     if prompt_challenge_status and prompt_challenge_status.get("challenge_status") == "validated":
                         # (merged) keep the incoming gentle-polling success message,

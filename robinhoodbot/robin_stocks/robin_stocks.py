@@ -1357,8 +1357,12 @@ class robin_stocks:
         res_data = self.append_dataset_with_pagination(res,res_data)
 
         dividend_total = 0
-        for item in res_data:
-            dividend_total += float(item['amount'])
+        for item in res_data or []:
+            # Robinhood's dividends endpoint can return null entries in the list;
+            # guard against None (and missing keys) instead of crashing the whole run.
+            if not item:
+                continue
+            dividend_total += float(item.get('amount') or 0)
         return("{0:.2f}".format(dividend_total))
 
     def get_documents(self,info=None):

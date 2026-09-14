@@ -192,8 +192,14 @@ def get_total_dividends():
     data = helper.request_get(url, 'pagination')
 
     dividend_total = 0
-    for item in data:
-        dividend_total += float(item['amount']) if (item['state'] == 'paid' or item['state'] == 'reinvested') else 0
+    for item in data or []:
+        # Robinhood's dividends endpoint can return null entries in the list;
+        # guard against None (and missing keys) instead of crashing the whole run.
+        if not item:
+            continue
+        item_state = item.get('state')
+        if item_state == 'paid' or item_state == 'reinvested':
+            dividend_total += float(item.get('amount') or 0)
     return(dividend_total)
 
 
